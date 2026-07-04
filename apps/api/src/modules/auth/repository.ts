@@ -1,4 +1,4 @@
-import type { AuthRepository } from "./auth-service";
+import type { AuthRepository } from "./service";
 
 interface UserRecord {
   id: string;

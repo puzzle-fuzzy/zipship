@@ -44,7 +44,6 @@ describe("auth routes", () => {
     expect(response.status).toBe(409);
     expect((response.error?.value as unknown)).toEqual({
       code: "DUPLICATE_EMAIL",
-      message: "Email already registered",
     });
   });
 });

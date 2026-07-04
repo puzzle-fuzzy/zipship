@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createAuthService, DuplicateEmailError } from "../../apps/api/src/auth/auth-service";
+import { AuthServiceError, DuplicateEmailError } from "../../apps/api/src/modules/auth/model";
+import { AuthService } from "../../apps/api/src/modules/auth/service";
 
 function createRepository() {
   const emails = new Set<string>();
@@ -30,7 +31,7 @@ function createRepository() {
 describe("auth registration", () => {
   test("creates a user, default organization, and owner member", async () => {
     const repository = createRepository();
-    const auth = createAuthService({
+    const auth = new AuthService({
       repository,
       hashPassword: async (password) => `hashed:${password}`,
     });
@@ -40,6 +41,11 @@ describe("auth registration", () => {
       email: "  ADA@Example.COM ",
       password: "correct-horse-battery",
     });
+
+    expect(result).not.toBeInstanceOf(AuthServiceError);
+    if (result instanceof AuthServiceError) {
+      throw new Error("Registration unexpectedly failed");
+    }
 
     expect(result.user).toEqual({ id: "user-1", name: "Ada Lovelace", email: "ada@example.com" });
     expect(result.organization).toEqual({ id: "org-1", name: "Ada Lovelace", slug: "ada" });
@@ -65,7 +71,7 @@ describe("auth registration", () => {
 
   test("rejects duplicate email addresses after normalization", async () => {
     const repository = createRepository();
-    const auth = createAuthService({
+    const auth = new AuthService({
       repository,
       hashPassword: async (password) => `hashed:${password}`,
     });
@@ -76,12 +82,12 @@ describe("auth registration", () => {
       password: "correct-horse-battery",
     });
 
-    await expect(
-      auth.register({
+    const result = await auth.register({
         name: "Ada Again",
         email: " ADA@example.com ",
         password: "correct-horse-battery",
-      }),
-    ).rejects.toBeInstanceOf(DuplicateEmailError);
+      });
+
+    expect(result).toBeInstanceOf(DuplicateEmailError);
   });
 });
