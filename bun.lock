@@ -8,6 +8,7 @@
         "drizzle-orm": "catalog:",
       },
       "devDependencies": {
+        "@elysia/eden": "catalog:",
         "@types/bun": "catalog:",
         "@types/react": "catalog:",
         "@types/react-dom": "catalog:",

@@ -1,10 +1,17 @@
 import { Elysia } from "elysia";
+import { createInMemoryAuthRepository } from "./auth/in-memory-auth-repository";
+import { createAuthRoutes } from "./auth/routes";
 
-export const app = new Elysia()
-  .get("/_health", () => ({
+export function createApp() {
+  return new Elysia()
+    .get("/_health", () => ({
     status: "ok",
     service: "zipship-api",
-  }));
+  }))
+    .use(createAuthRoutes({ repository: createInMemoryAuthRepository() }));
+}
+
+export const app = createApp();
 
 export type App = typeof app;
 

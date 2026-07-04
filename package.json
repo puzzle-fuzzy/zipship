@@ -48,6 +48,7 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "devDependencies": {
+    "@elysia/eden": "catalog:",
     "@types/bun": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
