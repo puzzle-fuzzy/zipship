@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import type { AuditCreateInput } from "../../apps/api/src/modules/audit/model";
+import { AuditService } from "../../apps/api/src/modules/audit/service";
 import { AuthServiceError, InvalidCredentialsError, UnauthorizedError } from "../../apps/api/src/modules/auth/model";
 import { AuthService } from "../../apps/api/src/modules/auth/service";
 
 function createRepository() {
   const users = new Map<string, { id: string; name: string; email: string; passwordHash: string }>();
   const sessions: unknown[] = [];
+  const auditLogs: unknown[] = [];
 
   return {
     sessions,
+    auditLogs,
     addUser(user: { id: string; name: string; email: string; passwordHash: string }) {
       users.set(user.email, user);
     },
@@ -70,6 +74,20 @@ function createRepository() {
         },
       };
     },
+    async findDefaultOrganizationForUser(userId: string) {
+      return {
+        id: "org-1",
+        userId,
+      };
+    },
+    async createAuditLog(input: AuditCreateInput) {
+      auditLogs.push(input);
+      return {
+        id: "audit-1",
+        ...input,
+        createdAt: input.createdAt.toISOString(),
+      };
+    },
   };
 }
 
@@ -90,6 +108,10 @@ describe("auth login", () => {
       createRefreshToken: () => "refresh-token",
       hashRefreshToken: async (token) => `hashed-refresh:${token}`,
       now: () => new Date("2026-07-05T00:00:00.000Z"),
+      audit: new AuditService({
+        repository,
+        now: () => new Date("2026-07-05T00:00:00.000Z"),
+      }),
     });
 
     const result = await auth.login({
@@ -122,6 +144,22 @@ describe("auth login", () => {
         clientType: "desktop",
         refreshTokenHash: "hashed-refresh:refresh-token",
         expiresAt,
+      },
+    ]);
+    expect(repository.auditLogs).toEqual([
+      {
+        organizationId: "org-1",
+        projectId: null,
+        actorId: "user-1",
+        action: "auth.login_succeeded",
+        targetType: "session",
+        targetId: "session-1",
+        metadata: {
+          clientType: "desktop",
+        },
+        ipAddress: null,
+        userAgent: null,
+        createdAt: new Date("2026-07-05T00:00:00.000Z"),
       },
     ]);
   });

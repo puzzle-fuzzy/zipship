@@ -2,12 +2,18 @@ import { Elysia } from "elysia";
 import { authModels, AuthServiceError } from "./model";
 import { AuthService } from "./service";
 import type { AuthRepository } from "./service";
+import { AuditService } from "../audit/service";
+import type { AuditRepository } from "../audit/service";
 
 export interface AuthModuleOptions {
-  repository: AuthRepository;
+  repository: AuthRepository & AuditRepository;
 }
 
 export function authModule(options: AuthModuleOptions) {
+  const audit = new AuditService({
+    repository: options.repository,
+    now: () => new Date(),
+  });
   const auth = new AuthService({
     repository: options.repository,
     hashPassword: (password) => Bun.password.hash(password),
@@ -15,6 +21,7 @@ export function authModule(options: AuthModuleOptions) {
     createRefreshToken: () => crypto.randomUUID(),
     hashRefreshToken,
     now: () => new Date(),
+    audit,
   });
 
   return new Elysia({ name: "auth", prefix: "/_api/auth" })

@@ -34,6 +34,9 @@ function createRepository() {
     async findSessionByRefreshTokenHash() {
       return null;
     },
+    async findDefaultOrganizationForUser() {
+      return null;
+    },
   };
 }
 

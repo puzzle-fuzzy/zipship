@@ -1,4 +1,6 @@
 import type { AuthRepository } from "./service";
+import type { AuditLog } from "../audit/model";
+import type { AuditRepository } from "../audit/service";
 import type { OrganizationsRepository } from "../organizations/service";
 
 interface UserRecord {
@@ -31,11 +33,26 @@ interface SessionRecord {
   expiresAt: Date;
 }
 
-export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository {
+interface AuditLogRecord {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+}
+
+export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository & AuditRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
   const sessions = new Map<string, SessionRecord>();
+  const auditLogs = new Map<string, AuditLogRecord>();
 
   return {
     async emailExists(email) {
@@ -125,6 +142,20 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
       };
     },
 
+    async findDefaultOrganizationForUser(userId) {
+      const member = Array.from(members.values()).find((candidate) => candidate.userId === userId && candidate.status === "active");
+
+      if (!member) return null;
+
+      const organization = organizations.get(member.organizationId);
+
+      if (!organization) return null;
+
+      return {
+        id: organization.id,
+      };
+    },
+
     async listOrganizationsForUser(userId) {
       return Array.from(members.values())
         .filter((member) => member.userId === userId && member.status === "active")
@@ -142,5 +173,32 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
         })
         .filter((organization): organization is NonNullable<typeof organization> => organization !== null);
     },
+
+    async createAuditLog(input) {
+      const auditLog: AuditLogRecord = {
+        id: crypto.randomUUID(),
+        ...input,
+      };
+
+      auditLogs.set(auditLog.id, auditLog);
+
+      return toAuditLog(auditLog);
+    },
+  };
+}
+
+function toAuditLog(record: AuditLogRecord): AuditLog {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    projectId: record.projectId,
+    actorId: record.actorId,
+    action: record.action,
+    targetType: record.targetType,
+    targetId: record.targetId,
+    metadata: record.metadata,
+    ipAddress: record.ipAddress,
+    userAgent: record.userAgent,
+    createdAt: record.createdAt.toISOString(),
   };
 }

@@ -1,5 +1,6 @@
 import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
 import type { AuthServiceError, LoginBody, LoginSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
+import type { AuditService } from "../audit/service";
 
 const refreshTokenTtlMs = 1000 * 60 * 60 * 24 * 7;
 
@@ -51,6 +52,9 @@ export interface AuthRepository {
       expiresAt: string;
     };
   } | null>;
+  findDefaultOrganizationForUser(userId: string): Promise<{
+    id: string;
+  } | null>;
 }
 
 export interface AuthServiceOptions {
@@ -60,6 +64,7 @@ export interface AuthServiceOptions {
   createRefreshToken: () => string;
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
+  audit?: AuditService;
 }
 
 export class AuthService {
@@ -93,7 +98,7 @@ export class AuthService {
         role: "owner",
         status: "active",
       },
-      });
+    });
   }
 
   async login(input: LoginBody): Promise<LoginSuccess | AuthServiceError> {
@@ -124,6 +129,23 @@ export class AuthService {
       refreshTokenHash,
       expiresAt,
     });
+    const organization = await this.options.repository.findDefaultOrganizationForUser(user.id);
+
+    if (organization && this.options.audit) {
+      await this.options.audit.record({
+        organizationId: organization.id,
+        projectId: null,
+        actorId: user.id,
+        action: "auth.login_succeeded",
+        targetType: "session",
+        targetId: session.id,
+        metadata: {
+          clientType: session.clientType,
+        },
+        ipAddress: null,
+        userAgent: null,
+      });
+    }
 
     return {
       user: {
