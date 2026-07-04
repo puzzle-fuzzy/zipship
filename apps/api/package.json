@@ -1,0 +1,21 @@
+{
+  "name": "@zipship/api",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun ../../scripts/kill-port.ts 3001 && ZIPSHIP_API_PORT=3001 bun --watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zipship/config": "workspace:*",
+    "@zipship/db": "workspace:*",
+    "@zipship/shared": "workspace:*",
+    "elysia": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

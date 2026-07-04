@@ -1,0 +1,4 @@
+export const config = {
+  databaseUrl: process.env.DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship",
+  storageRoot: process.env.ZIPSHIP_STORAGE_ROOT ?? "/srv/zipship",
+};

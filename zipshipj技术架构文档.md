@@ -1,0 +1,829 @@
+# ZipShip 技术架构文档
+
+## 1. 技术选型
+
+推荐技术栈：
+
+```txt
+Runtime：Bun
+Backend：Elysia
+Frontend：Vite + React + TypeScript
+Desktop：Electron + React
+Database：PostgreSQL
+ORM：Drizzle ORM
+Static Gateway：Nginx
+Storage：本地文件系统，后期可切换 OSS / S3 / MinIO
+Monorepo：Bun Workspace
+Testing：Bun Test + Playwright
+```
+
+Bun 支持 workspace 组织 monorepo，根 `package.json` 的 `workspaces` 字段用于声明子包目录，并支持 `workspace:*` 这类工作区依赖。
+
+Bun 自带 Jest-compatible 测试运行器，支持 TypeScript、JSX、生命周期钩子、mock、snapshot、watch 等能力，适合作为后端和 packages 的默认单元测试工具。
+
+Nginx 原生适合服务静态文件，并且可以通过 `try_files` 实现文件查找和 SPA fallback，因此 ZipShip 的生产产物访问应该交给 Nginx，而不是让 Elysia 承担所有静态资源访问。
+
+Electron 支持自定义协议 Deep Link，适合实现网页端授权后调起桌面端登录；Electron 官方文档也提供了将应用注册为协议处理程序的流程。
+
+Playwright 支持 Web 端端到端测试，并且对 Electron 自动化有实验性支持，适合 Desktop 做 smoke test 和关键流程测试。
+
+## 2. 总体架构
+
+ZipShip 分成两个面：
+
+```txt
+控制面：账号、组织、权限、项目、上传、检测、发布、回滚、审计
+访问面：正式产物和测试产物的静态访问
+```
+
+控制面：
+
+```txt
+Bun + Elysia + PostgreSQL + Drizzle
+```
+
+访问面：
+
+```txt
+Nginx + 文件系统
+```
+
+整体流量：
+
+```txt
+浏览器 / Desktop
+        ↓
+      Nginx
+        ├── /_api/        → Elysia API
+        ├── /_console/    → 管理后台
+        ├── /:slug/       → 当前正式版本 current
+        └── /:slug/:hash/ → 指定测试版本 release
+```
+
+## 3. 为什么不用 Elysia static 承载生产产物
+
+Elysia static 插件可以保留，但它只适合：
+
+```txt
+开发期预览
+服务固定 public 文件
+服务少量内部静态资源
+```
+
+不建议用它承载所有用户产物访问。
+
+原因：
+
+```txt
+1. 用户产物访问量可能远高于 API 请求量。
+2. 静态资源缓存、gzip、range、sendfile 更适合由 Nginx 负责。
+3. Elysia 重启不应该影响已发布项目访问。
+4. 用户产物访问和业务 API 应该解耦。
+5. 后续做缓存、限速、HTTPS、自定义域名时，Nginx 更合适。
+```
+
+最终职责：
+
+```txt
+Elysia = 控制面
+Nginx  = 访问面
+PostgreSQL = 元数据
+文件系统 = 产物实体
+```
+
+## 4. Monorepo 结构
+
+推荐目录：
+
+```txt
+zipship/
+├── apps/
+│   ├── api/                    # Bun + Elysia 后端
+│   ├── web-shell/              # Web 外壳
+│   └── desktop-shell/          # Electron 外壳
+│
+├── packages/
+│   ├── console-app/            # Web / Desktop 共用 React 页面
+│   ├── runtime/                # WebRuntime / ElectronRuntime
+│   ├── api-client/             # API 请求 SDK
+│   ├── deploy-core/            # 解压、检测、hash、发布、回滚
+│   ├── storage/                # 本地文件系统 / 未来对象存储抽象
+│   ├── db/                     # Drizzle schema / migrations
+│   ├── shared/                 # 类型、常量
+│   └── config/                 # env、路径配置
+│
+├── infra/
+│   ├── nginx/
+│   ├── docker/
+│   └── scripts/
+│
+├── tests/                      # 跨应用 e2e / 集成测试
+├── docs/
+├── package.json
+├── bun.lock
+└── README.md
+```
+
+## 5. Workspace 依赖关系
+
+依赖方向：
+
+```txt
+apps/api
+  ├── packages/db
+  ├── packages/shared
+  ├── packages/config
+  ├── packages/storage
+  └── packages/deploy-core
+
+apps/web-shell
+  ├── packages/console-app
+  ├── packages/runtime
+  ├── packages/api-client
+  └── packages/shared
+
+apps/desktop-shell
+  ├── packages/console-app
+  ├── packages/runtime
+  ├── packages/api-client
+  └── packages/shared
+
+packages/console-app
+  ├── packages/runtime
+  ├── packages/api-client
+  └── packages/shared
+
+packages/deploy-core
+  ├── packages/storage
+  ├── packages/shared
+  └── packages/config
+```
+
+禁止：
+
+```txt
+packages/shared 不能依赖 apps/*
+packages/db 不能依赖 apps/web-shell
+packages/db 不能依赖 apps/desktop-shell
+packages/console-app 不能直接依赖 packages/db
+apps/web-shell 不能直接操作数据库
+apps/desktop-shell 不能直接操作数据库
+```
+
+## 6. Web 与 Desktop 共用页面
+
+Web 和 Desktop 页面不写两套。
+
+设计：
+
+```txt
+packages/console-app
+  真正的 React 页面
+
+apps/web-shell
+  注入 WebRuntime
+
+apps/desktop-shell
+  注入 ElectronRuntime
+```
+
+统一 Runtime 接口：
+
+```ts
+export interface ZipShipRuntime {
+  mode: 'web' | 'desktop'
+
+  pickZip(): Promise<PickedZip | null>
+
+  pickDirectory(): Promise<PickedDirectory | null>
+
+  createArchive(input: ArchiveInput): Promise<ArchiveResult>
+
+  uploadRelease(input: UploadReleaseInput): Promise<UploadResult>
+
+  openExternal(url: string): Promise<void>
+
+  getDeviceInfo(): Promise<DeviceInfo>
+}
+```
+
+WebRuntime 负责：
+
+```txt
+浏览器选择 zip
+浏览器选择文件夹
+通过 HTTP 上传
+打开浏览器地址
+显示上传进度
+```
+
+ElectronRuntime 负责：
+
+```txt
+调用系统文件夹选择器
+读取本地 dist 文件夹
+本地压缩 zip
+调用 API 上传
+处理 Deep Link
+保存 Desktop session
+显示上传进度
+```
+
+## 7. Desktop 登录架构
+
+Desktop 登录支持两种方式：
+
+```txt
+1. 账号密码登录。
+2. 网页授权登录。
+```
+
+### 7.1 账号密码登录
+
+API：
+
+```txt
+POST /_api/auth/login
+```
+
+请求：
+
+```json
+{
+  "email": "user@example.com",
+  "password": "password",
+  "client_type": "desktop",
+  "device_id": "device_xxx"
+}
+```
+
+返回：
+
+```json
+{
+  "access_token": "xxx",
+  "refresh_token": "xxx",
+  "expires_in": 3600,
+  "device_id": "device_xxx"
+}
+```
+
+Desktop 需要把 refresh token 存入系统安全存储，不要明文写入普通 JSON 文件。
+
+### 7.2 Desktop 发起浏览器授权
+
+API 流程：
+
+```txt
+POST /_api/desktop/login-requests
+GET  /desktop/authorize?request_id=xxx
+POST /_api/desktop/token
+```
+
+流程：
+
+```txt
+Desktop 生成 state、code_verifier、code_challenge、device_id
+↓
+Desktop 调用 /_api/desktop/login-requests
+↓
+后端创建 login_request
+↓
+Desktop 打开系统浏览器
+↓
+用户在网页端确认授权
+↓
+网页端重定向 / 调起：
+zipship://auth/callback?code=xxx&state=xxx
+↓
+Desktop 接收 Deep Link
+↓
+Desktop 用 code + code_verifier 换 token
+↓
+后端校验通过
+↓
+Desktop 登录成功
+```
+
+### 7.3 Web 主动调起 Desktop
+
+API：
+
+```txt
+POST /_api/desktop/tickets
+POST /_api/desktop/exchange-ticket
+```
+
+流程：
+
+```txt
+用户已登录 Web Console
+↓
+点击“登录桌面端”
+↓
+后端生成一次性 ticket
+↓
+网页打开：
+zipship://login?ticket=xxx
+↓
+Desktop 被唤起
+↓
+Desktop 调用 exchange-ticket
+↓
+后端返回 Desktop session
+```
+
+Ticket 规则：
+
+```txt
+有效期 60 到 120 秒
+只能使用一次
+使用后立即失效
+只能换 Desktop session
+不能直接作为 API token
+需要绑定用户、组织、设备信息、state
+```
+
+### 7.4 Deep Link 处理注意事项
+
+Desktop 需要处理：
+
+```txt
+应用未启动时被 Deep Link 唤起
+应用已启动时收到第二个 Deep Link
+state 不匹配
+ticket 过期
+ticket 已使用
+用户取消授权
+本机未安装 Desktop
+```
+
+Electron Deep Link 在正式环境需要应用被正确打包和安装后才更接近真实系统行为，开发环境和不同系统的处理方式会有差异。Electron 官方文档提供了应用注册为自定义协议处理程序的流程。
+
+## 8. 后端模块设计
+
+`apps/api` 结构：
+
+```txt
+apps/api/src/
+├── index.ts
+├── app.ts
+├── env.ts
+├── modules/
+│   ├── auth/
+│   ├── desktop-auth/
+│   ├── organizations/
+│   ├── members/
+│   ├── invitations/
+│   ├── projects/
+│   ├── releases/
+│   ├── deployments/
+│   ├── uploads/
+│   ├── audit-logs/
+│   └── system/
+├── jobs/
+│   ├── process-upload.job.ts
+│   ├── cleanup-temp.job.ts
+│   ├── cleanup-old-releases.job.ts
+│   └── cleanup-expired-login-tickets.job.ts
+├── services/
+│   ├── release.service.ts
+│   ├── upload.service.ts
+│   ├── publish.service.ts
+│   ├── permission.service.ts
+│   ├── desktop-auth.service.ts
+│   └── audit.service.ts
+└── utils/
+```
+
+## 9. 数据库核心表
+
+第一版核心表：
+
+```txt
+users
+organizations
+members
+invitations
+projects
+releases
+deployments
+upload_tasks
+audit_logs
+sessions
+desktop_devices
+desktop_login_requests
+desktop_login_tickets
+```
+
+### 9.1 sessions
+
+```txt
+sessions
+├── id
+├── user_id
+├── client_type: web | desktop
+├── device_id
+├── refresh_token_hash
+├── expires_at
+├── revoked_at
+├── created_at
+└── updated_at
+```
+
+### 9.2 desktop_devices
+
+```txt
+desktop_devices
+├── id
+├── user_id
+├── device_name
+├── device_fingerprint_hash
+├── last_seen_at
+├── revoked_at
+├── created_at
+└── updated_at
+```
+
+### 9.3 desktop_login_requests
+
+```txt
+desktop_login_requests
+├── id
+├── device_id
+├── state
+├── code_challenge
+├── status
+├── expires_at
+├── authorized_by
+├── authorization_code_hash
+├── authorized_at
+└── created_at
+```
+
+### 9.4 desktop_login_tickets
+
+```txt
+desktop_login_tickets
+├── id
+├── user_id
+├── organization_id
+├── ticket_hash
+├── status
+├── expires_at
+├── used_at
+├── device_id
+└── created_at
+```
+
+## 10. 文件存储结构
+
+```txt
+/srv/zipship/
+├── uploads/
+│   └── raw/
+│       └── project-id/
+│           └── release-id.zip
+│
+├── temp/
+│   └── upload-task-id/
+│
+└── sites/
+    └── project-slug/
+        ├── current -> releases/a8f32c91
+        │
+        └── releases/
+            ├── a8f32c91/
+            │   ├── index.html
+            │   └── assets/
+            │
+            ├── b7d91f20/
+            │   ├── index.html
+            │   └── assets/
+            │
+            └── c19a02ee/
+                ├── index.html
+                └── assets/
+```
+
+发布时只切换软链接：
+
+```txt
+current -> releases/new_hash
+```
+
+不需要复制文件，也不需要 reload Nginx。
+
+## 11. 上传处理流程
+
+```txt
+用户选择 zip / 文件夹
+        ↓
+创建 upload_task
+        ↓
+创建 release，状态 uploading
+        ↓
+上传原始 zip 到 /uploads/raw
+        ↓
+上传完成，状态 processing
+        ↓
+解压到 /temp/upload-task-id
+        ↓
+安全检测
+        ↓
+产物检测
+        ↓
+生成 manifest
+        ↓
+计算 release_hash
+        ↓
+移动到 /sites/:slug/releases/:hash
+        ↓
+release 状态变为 ready
+        ↓
+返回测试地址
+```
+
+需要额外处理：
+
+```txt
+上传中断
+重复上传
+hash 冲突
+同项目并发上传
+用户取消上传
+处理任务失败后重试
+temp 目录清理
+```
+
+## 12. 发布流程
+
+```txt
+用户点击发布
+        ↓
+检查用户权限
+        ↓
+检查 release 状态是否 ready
+        ↓
+获取项目发布锁
+        ↓
+写入 deployment 记录
+        ↓
+切换 current 软链接
+        ↓
+更新 project.current_release_id
+        ↓
+旧 active release 改为 ready / archived
+        ↓
+新 release 改为 active
+        ↓
+写入 audit_log
+        ↓
+释放项目发布锁
+        ↓
+返回正式地址
+```
+
+必须有项目级发布锁，避免两个成员同时发布导致 current 指针错乱。
+
+## 13. 回滚流程
+
+```txt
+用户选择旧版本
+        ↓
+检查用户权限
+        ↓
+检查旧版本是否存在且可用
+        ↓
+获取项目发布锁
+        ↓
+创建 rollback deployment
+        ↓
+切换 current 软链接到旧版本
+        ↓
+更新 project.current_release_id
+        ↓
+写入 audit_log
+        ↓
+释放项目发布锁
+        ↓
+返回正式地址
+```
+
+## 14. Nginx 路由设计
+
+平台路径：
+
+```txt
+/_api/       后端 API
+/_console/   管理后台
+```
+
+用户产物路径：
+
+```txt
+/:projectSlug/              正式版本
+/:projectSlug/:releaseHash/ 测试版本
+```
+
+无尾斜杠自动跳转：
+
+```txt
+/:projectSlug              → /:projectSlug/
+/:projectSlug/:releaseHash → /:projectSlug/:releaseHash/
+```
+
+示例 Nginx：
+
+```nginx
+server {
+    listen 80;
+    server_name dev.yxswy.com;
+
+    client_max_body_size 500m;
+    root /srv/zipship;
+
+    location /_api/ {
+        proxy_pass http://127.0.0.1:3001/;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /_console/ {
+        alias /var/www/zipship-console/;
+        try_files $uri $uri/ /_console/index.html;
+    }
+
+    location ~ ^/(?<project>[a-z0-9][a-z0-9_-]*)$ {
+        return 308 /$project/;
+    }
+
+    location ~ ^/(?<project>[a-z0-9][a-z0-9_-]*)/(?<release>[a-f0-9]{8,64})$ {
+        return 308 /$project/$release/;
+    }
+
+    location ~ ^/(?<project>[a-z0-9][a-z0-9_-]*)/(?<release>[a-f0-9]{8,64})/(?<rest>.*)$ {
+        try_files
+            /sites/$project/releases/$release/$rest
+            /sites/$project/releases/$release/$rest/
+            /sites/$project/releases/$release/index.html
+            =404;
+    }
+
+    location ~ ^/(?<project>[a-z0-9][a-z0-9_-]*)/(?<rest>.*)$ {
+        try_files
+            /sites/$project/current/$rest
+            /sites/$project/current/$rest/
+            /sites/$project/current/index.html
+            =404;
+    }
+}
+```
+
+## 15. API 路由建议
+
+```txt
+Auth
+POST   /_api/auth/register
+POST   /_api/auth/login
+POST   /_api/auth/logout
+GET    /_api/auth/me
+POST   /_api/auth/refresh
+
+Desktop Auth
+POST   /_api/desktop/login-requests
+POST   /_api/desktop/token
+POST   /_api/desktop/tickets
+POST   /_api/desktop/exchange-ticket
+GET    /_api/desktop/devices
+DELETE /_api/desktop/devices/:id
+
+Organizations
+GET    /_api/organizations
+POST   /_api/organizations
+
+Members
+GET    /_api/organizations/:id/members
+POST   /_api/organizations/:id/invitations
+PATCH  /_api/members/:id
+DELETE /_api/members/:id
+
+Projects
+GET    /_api/projects
+POST   /_api/projects
+GET    /_api/projects/:id
+PATCH  /_api/projects/:id
+DELETE /_api/projects/:id
+
+Uploads
+POST   /_api/projects/:id/uploads
+POST   /_api/uploads/:id/complete
+GET    /_api/uploads/:id
+
+Releases
+GET    /_api/projects/:id/releases
+GET    /_api/releases/:id
+POST   /_api/releases/:id/publish
+POST   /_api/releases/:id/rollback
+DELETE /_api/releases/:id
+
+Audit
+GET    /_api/projects/:id/audit-logs
+```
+
+## 16. 之前遗漏但需要纳入设计的点
+
+### 16.1 发布并发
+
+需要项目级发布锁。
+
+否则两个成员同时发布，可能造成：
+
+```txt
+数据库 current_release_id 是 A
+文件系统 current 指向 B
+审计日志记录混乱
+```
+
+### 16.2 任务恢复
+
+上传处理可能失败，需要有任务恢复机制。
+
+```txt
+processing 超时后标记 failed
+failed 可以手动重试
+temp 目录定期清理
+uploading 超时自动取消
+```
+
+### 16.3 release 不可变
+
+Release 一旦生成，不应该再修改内容。
+
+如果需要重新上传，必须创建新的 Release。
+
+### 16.4 active release 不能删除
+
+当前正式版本不能直接删除。
+
+删除前必须检查：
+
+```txt
+是否为 project.current_release_id
+是否存在 deployment 引用
+是否仍被 current 软链接指向
+```
+
+### 16.5 版本保留策略
+
+后续需要支持：
+
+```txt
+保留最近 N 个版本
+保留最近 N 天版本
+active 永不自动删除
+手动锁定某个版本不清理
+```
+
+### 16.6 访问缓存
+
+静态资源可以长期缓存，但 `index.html` 不建议强缓存。
+
+建议：
+
+```txt
+assets/*.js / assets/*.css：长缓存
+index.html：短缓存或 no-cache
+```
+
+### 16.7 Service Worker 风险
+
+如果用户上传了 service worker，可能影响后续版本加载。第一版可以只做风险提示，不自动拦截。
+
+### 16.8 sourcemap 风险
+
+`.map` 文件可能暴露源码。第一版可以提示，后续支持一键删除 sourcemap 后再发布。
+
+## 17. 最终架构结论
+
+ZipShip 的架构原则：
+
+```txt
+1. Bun workspace 管理所有应用和共享包。
+2. Web 和 Desktop 共用同一套 React Console。
+3. Elysia 负责控制面，不负责生产静态访问。
+4. Nginx 负责产物访问、SPA fallback、尾斜杠跳转。
+5. PostgreSQL 存元数据。
+6. 文件系统存产物实体。
+7. Release 是不可变版本。
+8. Deployment 是发布动作。
+9. current 是正式版本指针。
+10. releaseHash 是测试版本入口。
+11. Desktop 登录态和 Web 登录态分离。
+12. 网页授权 Desktop 登录使用一次性票据和 Deep Link。
+13. 产品化对外时，控制面和访问面应分 origin。
+```

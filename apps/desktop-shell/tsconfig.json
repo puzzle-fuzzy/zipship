@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "allowJs": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    "forge.config.ts",
+    "forge.env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.*.config.ts"
+  ]
+}

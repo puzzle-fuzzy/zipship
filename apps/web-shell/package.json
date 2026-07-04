@@ -1,0 +1,21 @@
+{
+  "name": "@zipship/web-shell",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun ../../scripts/kill-port.ts 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@zipship/console-app": "workspace:*",
+    "@zipship/runtime": "workspace:*",
+    "@vitejs/plugin-react": "catalog:",
+    "vite": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "scheduler": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}

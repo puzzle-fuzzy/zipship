@@ -1,0 +1,18 @@
+{
+  "name": "@zipship/api-client",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@elysia/eden": "catalog:"
+  },
+  "devDependencies": {
+    "@zipship/api": "workspace:*",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,762 @@
+# ZipShip 产品设计文档
+
+## 1. 项目定位
+
+ZipShip 是一个产品化的静态产物部署工具，用于部署 Vite 打包产物、静态 HTML、React/Vue 前端构建产物和其他纯静态资源包。
+
+它不是传统意义上的完整 CI/CD 系统，也不是源码构建平台。它的核心目标是：
+
+> 用户上传已经构建好的静态产物，平台负责账号认证、组织协作、项目管理、产物检测、版本管理、测试访问、正式发布、权限控制、审计记录和快速回滚。
+
+ZipShip 可以理解为一个更轻量、更专注于“静态产物发布”的 Jenkins / Netlify / Vercel Pages 私有化工具。第一阶段不做源码构建，不做 GitHub 自动部署，不做复杂流水线，先把“上传产物 → 检测 → 测试地址 → 发布正式 → 回滚”这条链路做稳。
+
+## 2. 产品名称
+
+当前建议名称：
+
+```txt
+ZipShip
+```
+
+含义：
+
+```txt
+Zip  = 上传 zip / 静态产物包
+Ship = 发布上线
+```
+
+仓库名建议：
+
+```txt
+zipship
+```
+
+包名空间建议：
+
+```txt
+@zipship/*
+```
+
+如果后续想换成更稳重的名字，可以考虑：
+
+```txt
+Hatch
+DistDock
+PageNest
+LaunchBox
+SiteDock
+```
+
+但当前最推荐 `ZipShip`，因为它更有记忆点，也更贴合“压缩包上传并发布”的产品动作。
+
+## 3. 核心目标
+
+ZipShip 需要支持：
+
+```txt
+1. 用户注册、登录、退出登录。
+2. 用户可以创建组织空间。
+3. 用户可以创建多个部署项目。
+4. 每个项目可以上传多个产物版本。
+5. 每个产物版本生成独立测试地址。
+6. 每个项目有一个稳定正式地址。
+7. 用户可以把某个测试版本发布为正式版本。
+8. 用户可以快速回滚到旧版本。
+9. 用户可以邀请成员共同上传、检测、发布。
+10. 不同角色拥有不同权限。
+11. 所有上传、发布、回滚、邀请、权限修改都需要审计日志。
+12. Web 端和 Desktop 端共用一套页面。
+13. Desktop 支持账号密码登录。
+14. Desktop 支持网页端授权后调起桌面端登录。
+15. 平台需要对上传产物进行基础检测。
+16. 生产访问由 Nginx 负责，业务控制由 Elysia 负责。
+```
+
+## 4. 产品形态
+
+ZipShip 有两个主要入口：
+
+```txt
+1. Web Console
+2. Desktop Client
+```
+
+Web Console 负责：
+
+```txt
+项目管理
+上传 zip
+版本查看
+检测报告
+正式发布
+回滚
+成员邀请
+权限管理
+审计日志
+```
+
+Desktop Client 负责：
+
+```txt
+账号密码登录
+网页授权登录
+选择本地 dist 文件夹
+本地检查 index.html
+本地压缩 zip
+上传产物
+查看上传进度
+打开测试地址
+发布正式版本
+回滚版本
+```
+
+Web 和 Desktop 不应该写两套页面。它们应该共用同一个 React 控制台应用，只是在底层能力上使用不同 Runtime Adapter。
+
+## 5. 用户与组织模型
+
+ZipShip 是产品化部署工具，所以账号、组织、成员、权限必须从第一版进入设计，不能后期再补。
+
+### 5.1 User 用户
+
+用户是登录主体。
+
+```txt
+User
+├── id
+├── name
+├── email
+├── password_hash
+├── avatar_url
+├── status
+├── last_login_at
+├── created_at
+└── updated_at
+```
+
+第一版可以只支持邮箱 + 密码登录。后续可以加入：
+
+```txt
+GitHub 登录
+Google 登录
+企业 SSO
+LDAP / OIDC
+```
+
+### 5.2 Organization 组织
+
+组织是项目归属单位。
+
+```txt
+Organization
+├── id
+├── name
+├── slug
+├── owner_id
+├── plan
+├── created_at
+└── updated_at
+```
+
+即使第一版主要是个人使用，也建议保留组织模型。个人空间可以被实现成一个默认组织。
+
+### 5.3 Member 成员
+
+成员表示某个用户在某个组织中的身份。
+
+```txt
+Member
+├── id
+├── organization_id
+├── user_id
+├── role
+├── status
+├── joined_at
+└── created_at
+```
+
+角色建议：
+
+```txt
+Owner       组织拥有者
+Admin       管理员
+Developer   开发成员，可以上传产物
+Deployer    发布成员，可以发布和回滚
+Viewer      只读成员
+```
+
+第一版可以先简化为：
+
+```txt
+Owner
+Admin
+Developer
+Viewer
+```
+
+第二阶段再加入 `Deployer`。
+
+### 5.4 Invitation 邀请
+
+邀请系统是产品化协作工具的核心能力。
+
+```txt
+Invitation
+├── id
+├── organization_id
+├── project_id 可为空
+├── email
+├── role
+├── token
+├── invited_by
+├── expires_at
+├── accepted_at
+├── status
+└── created_at
+```
+
+邀请分两种：
+
+```txt
+组织邀请：加入组织后拥有组织级权限
+项目邀请：只加入某个项目协作
+```
+
+第一版建议先实现组织邀请，项目级邀请第二阶段再做。
+
+## 6. 项目模型
+
+Project 是部署单元。
+
+```txt
+Project
+├── id
+├── organization_id
+├── name
+├── slug
+├── description
+├── current_release_id
+├── status
+├── visibility
+├── created_by
+├── created_at
+└── updated_at
+```
+
+示例：
+
+```txt
+项目名：后台管理系统
+slug：admin
+
+正式地址：
+https://dev.yxswy.com/admin/
+
+测试地址：
+https://dev.yxswy.com/admin/a8f32c91/
+```
+
+### 6.1 项目标识规则
+
+```txt
+只允许小写字母、数字、-、_
+必须以小写字母或数字开头
+不能以下划线开头
+不能使用平台保留词
+```
+
+保留词：
+
+```txt
+_api
+_console
+_health
+_assets
+favicon.ico
+robots.txt
+```
+
+`_` 开头路径留给平台自身使用。
+
+## 7. Release 版本模型
+
+每次上传产物都会生成一个 Release。
+
+```txt
+Release
+├── id
+├── project_id
+├── version_number
+├── release_hash
+├── full_hash
+├── status
+├── storage_path
+├── raw_upload_path
+├── file_count
+├── total_size
+├── manifest
+├── detect_result
+├── created_by
+├── created_at
+├── activated_at
+└── archived_at
+```
+
+状态：
+
+```txt
+uploading     上传中
+processing    解压与检测中
+ready         可预览、可发布
+active        当前正式版本
+failed        处理失败
+archived      已归档
+deleted       已删除
+```
+
+`release_hash` 用于测试地址：
+
+```txt
+https://dev.yxswy.com/admin/a8f32c91/
+```
+
+建议由产物内容生成，而不是数据库自增 ID。
+
+生成方式：
+
+```txt
+1. 解压产物。
+2. 扫描所有文件。
+3. 计算每个文件 hash。
+4. 生成 manifest。
+5. 对 manifest 再计算 hash。
+6. 截取前 8 到 12 位作为 release_hash。
+```
+
+## 8. Deployment 发布模型
+
+Release 是“上传出来的版本”。
+
+Deployment 是“把某个版本发布为正式版本的动作”。
+
+```txt
+Deployment
+├── id
+├── project_id
+├── release_id
+├── previous_release_id
+├── action
+├── status
+├── operator_id
+├── message
+├── created_at
+└── finished_at
+```
+
+发布动作：
+
+```txt
+publish      发布新版本
+rollback     回滚旧版本
+promote      将测试版本提升为正式版本
+archive      归档版本
+```
+
+正式发布的本质是：
+
+```txt
+将 /srv/zipship/sites/:projectSlug/current
+指向 /srv/zipship/sites/:projectSlug/releases/:releaseHash
+```
+
+正式版本不是复制文件，而是切换 `current` 指针。
+
+## 9. 访问地址设计
+
+产物访问统一使用一个产物域名。
+
+正式地址：
+
+```txt
+https://dev.yxswy.com/:projectSlug/
+```
+
+测试地址：
+
+```txt
+https://dev.yxswy.com/:projectSlug/:releaseHash/
+```
+
+用户手动输入不带 `/` 时也应该可以访问，但服务端应统一跳转到带 `/` 的地址：
+
+```txt
+/admin       → /admin/
+/admin/hash  → /admin/hash/
+```
+
+原因是静态产物常用相对路径资源。例如：
+
+```html
+<script src="./assets/index.js"></script>
+```
+
+在下面路径中可以正确解析：
+
+```txt
+/admin/
+→ /admin/assets/index.js
+
+/admin/a8f32c91/
+→ /admin/a8f32c91/assets/index.js
+```
+
+如果不补尾部 `/`，相对路径更容易解析错误。
+
+## 10. Vite base 规则
+
+由于 ZipShip 使用路径部署，并且同时存在正式地址和测试地址，所以强烈建议 Vite 项目使用：
+
+```ts
+export default defineConfig({
+  base: './'
+})
+```
+
+如果用户使用：
+
+```ts
+base: '/'
+```
+
+产物可能请求：
+
+```txt
+/assets/index.js
+```
+
+这会导致路径错误。
+
+如果用户使用：
+
+```ts
+base: '/admin/'
+```
+
+正式版可能正常，但测试版可能加载正式版资源。
+
+所以第一版不建议自动重写产物，而是上传后检测 `index.html` 并给出风险提示。
+
+## 11. 产物检测
+
+上传完成后，平台应该对产物做基础检测。
+
+检测项：
+
+```txt
+1. 是否存在 index.html。
+2. 是否存在 assets 目录。
+3. 文件数量是否超限。
+4. 解压后体积是否超限。
+5. 单文件体积是否超限。
+6. 是否存在 ../ 路径逃逸。
+7. 是否存在绝对路径。
+8. 是否存在软链接逃逸。
+9. 是否存在 /assets 根路径引用。
+10. 是否存在 service-worker 相关文件。
+11. 是否存在过大的 sourcemap。
+12. 是否存在不建议公开的 .env / config 文件。
+13. 是否存在 HTML 中引用的本地资源缺失。
+14. 是否存在 release hash 冲突。
+```
+
+检测结果分为：
+
+```txt
+pass       通过
+warning    可发布但有风险
+failed     不允许发布
+```
+
+示例提示：
+
+```txt
+检测到根路径资源 /assets。
+该产物在测试地址 /项目标识/releaseHash/ 下可能无法正常加载。
+建议 Vite 设置 base: './' 后重新打包。
+```
+
+## 12. Desktop 登录需求
+
+Desktop 登录需要支持两种方式：
+
+```txt
+1. 账号密码登录。
+2. 网页端授权后调起桌面端登录。
+```
+
+### 12.1 账号密码登录
+
+流程：
+
+```txt
+用户打开 Desktop
+↓
+输入邮箱和密码
+↓
+Desktop 调用 /_api/auth/login
+↓
+后端校验账号密码
+↓
+返回 desktop session / refresh token
+↓
+Desktop 将登录态保存到系统安全存储
+↓
+进入控制台
+```
+
+注意：
+
+```txt
+不要把长期 token 存在普通本地文件里。
+不要把浏览器 localStorage 的 token 复制给 Desktop。
+Desktop 和 Web 的 session 应该区分 device_id。
+```
+
+### 12.2 网页端授权调起桌面端登录
+
+这是更好的体验。
+
+典型流程：
+
+```txt
+Desktop 打开，点击“使用浏览器登录”
+↓
+Desktop 创建 login_request，包含 device_id、state、code_challenge
+↓
+Desktop 打开系统浏览器访问：
+https://zipship.yxswy.com/desktop/authorize?request_id=xxx
+↓
+用户在网页端登录并确认授权
+↓
+网页端生成一次性 authorization_code
+↓
+网页端通过 Deep Link 调起 Desktop：
+zipship://auth/callback?code=xxx&state=xxx
+↓
+Desktop 接收 Deep Link
+↓
+Desktop 使用 code + code_verifier 调用 /_api/desktop/token
+↓
+后端校验 code、state、PKCE、device_id、过期时间
+↓
+后端返回 Desktop 专用 session
+↓
+Desktop 登录成功
+```
+
+OAuth 原生应用最佳实践建议原生应用通过外部浏览器发起授权，而不是使用嵌入式 WebView；PKCE 用于降低授权码被截获的风险。
+
+Electron 支持把应用注册为某个自定义协议的处理程序，从而处理类似 `zipship://...` 的 Deep Link。
+
+### 12.3 网页端主动调起 Desktop
+
+除了 Desktop 发起浏览器登录，也可以支持网页端主动登录桌面端。
+
+流程：
+
+```txt
+用户已登录 Web Console
+↓
+点击“登录桌面端”
+↓
+后端生成一次性 desktop_login_ticket
+↓
+网页打开：
+zipship://login?ticket=xxx
+↓
+Desktop 被唤起
+↓
+Desktop 使用 ticket 调用 /_api/desktop/exchange-ticket
+↓
+后端校验 ticket 是否一次性、未过期、未使用
+↓
+返回 Desktop session
+```
+
+规则：
+
+```txt
+ticket 有效期建议 60 到 120 秒。
+ticket 只能使用一次。
+ticket 只能换取 Desktop session，不能直接作为 API token。
+ticket 应绑定用户、组织、设备指纹、IP 风险信息。
+ticket 使用后立即失效。
+```
+
+如果用户没有安装 Desktop，网页应显示：
+
+```txt
+未检测到 ZipShip Desktop。
+你可以下载安装客户端，或复制一次性登录码到客户端。
+```
+
+## 13. 权限设计
+
+权限应该从第一版开始存在。
+
+| 操作     | Owner | Admin | Developer | Deployer | Viewer |
+| ------ | ----: | ----: | --------: | -------: | -----: |
+| 查看项目   |     是 |     是 |         是 |        是 |      是 |
+| 新建项目   |     是 |     是 |        可选 |        否 |      否 |
+| 上传版本   |     是 |     是 |         是 |       可选 |      否 |
+| 查看检测结果 |     是 |     是 |         是 |        是 |      是 |
+| 发布正式   |     是 |     是 |         否 |        是 |      否 |
+| 回滚版本   |     是 |     是 |         否 |        是 |      否 |
+| 删除版本   |     是 |     是 |        可选 |        否 |      否 |
+| 邀请成员   |     是 |     是 |         否 |        否 |      否 |
+| 删除项目   |     是 |    可选 |         否 |        否 |      否 |
+| 查看审计日志 |     是 |     是 |        可选 |       可选 |     可选 |
+
+第一版建议：
+
+```txt
+Owner
+Admin
+Developer
+Viewer
+```
+
+第二阶段再加入：
+
+```txt
+Deployer
+```
+
+## 14. 审计日志
+
+产品化部署工具必须有审计日志。
+
+```txt
+AuditLog
+├── id
+├── organization_id
+├── project_id
+├── actor_id
+├── action
+├── target_type
+├── target_id
+├── ip
+├── user_agent
+├── metadata
+└── created_at
+```
+
+需要记录：
+
+```txt
+登录
+退出登录
+Desktop 授权登录
+创建项目
+修改项目
+上传产物
+检测失败
+发布版本
+回滚版本
+删除版本
+邀请成员
+移除成员
+修改权限
+```
+
+## 15. 产品化版本的安全边界
+
+如果只是内部工具，可以先使用：
+
+```txt
+https://dev.yxswy.com/_console/
+https://dev.yxswy.com/_api/
+https://dev.yxswy.com/:projectSlug/
+```
+
+但如果目标是对外产品化，不建议控制台、API、用户上传 HTML 全部同源。路径隔离不是 origin 隔离。
+
+产品化推荐：
+
+```txt
+控制台：
+https://zipship.yxswy.com
+
+API：
+https://api.zipship.yxswy.com
+
+产物：
+https://dev.yxswy.com/:projectSlug/
+```
+
+这样用户上传的 JS 即使运行在 `dev.yxswy.com`，也不会和控制台登录态同源。
+
+如果第一阶段必须共用一个域名，至少要做到：
+
+```txt
+1. 管理后台 token 不放 localStorage。
+2. Cookie 使用 HttpOnly / Secure / SameSite。
+3. API 必须做严格鉴权。
+4. 所有写操作需要 CSRF 防护或 Authorization 校验。
+5. 用户产物不能复用管理后台敏感状态。
+6. 项目 slug 禁止使用 _ 开头。
+```
+
+## 16. 第一阶段 MVP
+
+第一阶段只做核心闭环：
+
+```txt
+账号登录
+默认组织
+项目创建
+上传 zip
+产物解压
+产物检测
+生成 release hash
+测试地址访问
+正式发布
+回滚
+基础权限
+审计日志
+Nginx 静态访问
+```
+
+暂时不做：
+
+```txt
+源码构建
+GitHub 自动部署
+自定义域名
+复杂审批流
+对象存储
+复杂访问统计
+Electron 自动更新
+```
+
+## 17. 总结
+
+ZipShip 应该被设计成：
+
+> 一个产品化、可协作、可审计、可回滚的静态产物部署工具。
+
+核心不是上传文件，而是：
+
+```txt
+账号体系
+组织协作
+权限控制
+产物检测
+版本管理
+测试地址
+正式发布
+快速回滚
+审计追踪
+Desktop 辅助上传
+```
+
+第一版要先保证“上传产物 → 检测 → 测试地址 → 发布正式 → 回滚”的稳定性，然后再逐步扩展 Desktop、团队协作、审批流和对象存储。

@@ -1,0 +1,13 @@
+node_modules
+bun.lockb
+.env
+.env.*
+!.env.example
+dist
+build
+.vite
+out
+coverage
+.DS_Store
+/storage
+/tmp
