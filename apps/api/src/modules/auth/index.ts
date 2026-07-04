@@ -13,7 +13,7 @@ export function authModule(options: AuthModuleOptions) {
     hashPassword: (password) => Bun.password.hash(password),
     verifyPassword: (password, hash) => Bun.password.verify(password, hash),
     createRefreshToken: () => crypto.randomUUID(),
-    hashRefreshToken: (token) => Bun.password.hash(token),
+    hashRefreshToken: hashRefreshToken,
     now: () => new Date(),
   });
 
@@ -65,5 +65,31 @@ export function authModule(options: AuthModuleOptions) {
           401: "Auth.Error",
         },
       },
+    )
+    .get(
+      "/me",
+      async ({ headers, status }) => {
+        const result = await auth.me(headers);
+
+        if (result instanceof AuthServiceError) {
+          return status(401, { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Auth.MeHeaders",
+        response: {
+          200: "Auth.MeSuccess",
+          401: "Auth.Error",
+        },
+      },
     );
+}
+
+async function hashRefreshToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }

@@ -1,5 +1,5 @@
-import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError } from "./model";
-import type { AuthServiceError, LoginBody, LoginSuccess, RegisterBody, RegisterSuccess } from "./model";
+import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
+import type { AuthServiceError, LoginBody, LoginSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
 
 const refreshTokenTtlMs = 1000 * 60 * 60 * 24 * 7;
 
@@ -36,6 +36,21 @@ export interface AuthRepository {
     clientType: "web" | "desktop";
     expiresAt: string;
   }>;
+  findSessionByRefreshTokenHash(
+    refreshTokenHash: string,
+    now: Date,
+  ): Promise<{
+    user: {
+      id: string;
+      name: string;
+      email: string;
+    };
+    session: {
+      id: string;
+      clientType: "web" | "desktop";
+      expiresAt: string;
+    };
+  } | null>;
 }
 
 export interface AuthServiceOptions {
@@ -122,6 +137,23 @@ export class AuthService {
       },
     };
   }
+
+  async me(input: MeHeaders): Promise<MeSuccess | AuthServiceError> {
+    const refreshToken = parseBearerToken(input.authorization);
+
+    if (!refreshToken) {
+      return new UnauthorizedError();
+    }
+
+    const refreshTokenHash = await this.options.hashRefreshToken(refreshToken);
+    const currentSession = await this.options.repository.findSessionByRefreshTokenHash(refreshTokenHash, this.options.now());
+
+    if (!currentSession) {
+      return new UnauthorizedError();
+    }
+
+    return currentSession;
+  }
 }
 
 function normalizeName(name: string): string | null {
@@ -140,4 +172,14 @@ function createDefaultOrganizationSlug(email: string): string {
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/_+/g, "-");
+}
+
+function parseBearerToken(authorization: string | undefined): string | null {
+  if (!authorization) return null;
+
+  const [scheme, token] = authorization.split(" ");
+
+  if (scheme !== "Bearer" || !token) return null;
+
+  return token;
 }

@@ -31,6 +31,9 @@ function createRepository() {
     async createSession() {
       throw new Error("createSession is not used by registration tests");
     },
+    async findSessionByRefreshTokenHash() {
+      return null;
+    },
   };
 }
 

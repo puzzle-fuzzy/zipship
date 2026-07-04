@@ -43,11 +43,29 @@ export const loginSuccessModel = t.Object({
   }),
 });
 
+export const meHeadersModel = t.Object({
+  authorization: t.Optional(t.String()),
+});
+
+export const meSuccessModel = t.Object({
+  user: t.Object({
+    id: t.String(),
+    name: t.String(),
+    email: t.String(),
+  }),
+  session: t.Object({
+    id: t.String(),
+    clientType: t.Union([t.Literal("web"), t.Literal("desktop")]),
+    expiresAt: t.String(),
+  }),
+});
+
 export const authErrorModel = t.Object({
   code: t.Union([
     t.Literal("DUPLICATE_EMAIL"),
     t.Literal("INVALID_CREDENTIALS"),
     t.Literal("INVALID_REGISTRATION_INPUT"),
+    t.Literal("UNAUTHORIZED"),
     t.Literal("VALIDATION_ERROR"),
   ]),
 });
@@ -57,6 +75,8 @@ export const authModels = {
   "Auth.RegisterSuccess": registerSuccessModel,
   "Auth.LoginBody": loginBodyModel,
   "Auth.LoginSuccess": loginSuccessModel,
+  "Auth.MeHeaders": meHeadersModel,
+  "Auth.MeSuccess": meSuccessModel,
   "Auth.Error": authErrorModel,
 };
 
@@ -64,6 +84,8 @@ export type RegisterBody = typeof registerBodyModel.static;
 export type RegisterSuccess = typeof registerSuccessModel.static;
 export type LoginBody = typeof loginBodyModel.static;
 export type LoginSuccess = typeof loginSuccessModel.static;
+export type MeHeaders = typeof meHeadersModel.static;
+export type MeSuccess = typeof meSuccessModel.static;
 export type AuthErrorCode = typeof authErrorModel.static.code;
 
 export class AuthServiceError {
@@ -79,6 +101,12 @@ export class DuplicateEmailError extends AuthServiceError {
 export class InvalidCredentialsError extends AuthServiceError {
   constructor() {
     super("INVALID_CREDENTIALS");
+  }
+}
+
+export class UnauthorizedError extends AuthServiceError {
+  constructor() {
+    super("UNAUTHORIZED");
   }
 }
 

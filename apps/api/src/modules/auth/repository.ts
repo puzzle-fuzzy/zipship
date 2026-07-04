@@ -98,5 +98,30 @@ export function createInMemoryAuthRepository(): AuthRepository {
         expiresAt: session.expiresAt.toISOString(),
       };
     },
+
+    async findSessionByRefreshTokenHash(refreshTokenHash, now) {
+      const session = Array.from(sessions.values()).find(
+        (candidate) => candidate.refreshTokenHash === refreshTokenHash && candidate.expiresAt > now,
+      );
+
+      if (!session) return null;
+
+      const user = Array.from(users.values()).find((candidate) => candidate.id === session.userId);
+
+      if (!user) return null;
+
+      return {
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+        },
+        session: {
+          id: session.id,
+          clientType: session.clientType,
+          expiresAt: session.expiresAt.toISOString(),
+        },
+      };
+    },
   };
 }

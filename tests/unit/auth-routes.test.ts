@@ -74,6 +74,48 @@ describe("auth routes", () => {
     expect(response.data?.session.refreshToken).toBeString();
   });
 
+  test("returns the current user for a bearer refresh token", async () => {
+    const api = treaty(createApp());
+
+    await api._api.auth.register.post({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+    const login = await api._api.auth.login.post({
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+      clientType: "web",
+    });
+
+    const response = await api._api.auth.me.get({
+      headers: {
+        authorization: `Bearer ${login.data?.session.refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toMatchObject({
+      user: {
+        email: "ada@example.com",
+      },
+      session: {
+        clientType: "web",
+      },
+    });
+  });
+
+  test("returns unauthorized for missing current user token", async () => {
+    const api = treaty(createApp());
+
+    const response = await api._api.auth.me.get();
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UNAUTHORIZED",
+    });
+  });
+
   test("returns invalid credentials without revealing whether email exists", async () => {
     const api = treaty(createApp());
 
