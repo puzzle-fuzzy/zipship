@@ -1,14 +1,18 @@
 import { Elysia } from "elysia";
-import { authModule } from "./modules/auth";
+import { authModule, hashRefreshToken } from "./modules/auth";
 import { createInMemoryAuthRepository } from "./modules/auth/repository";
+import { organizationsModule } from "./modules/organizations";
 
 export function createApp() {
+  const repository = createInMemoryAuthRepository();
+
   return new Elysia()
     .get("/_health", () => ({
       status: "ok",
       service: "zipship-api",
     }))
-    .use(authModule({ repository: createInMemoryAuthRepository() }));
+    .use(authModule({ repository }))
+    .use(organizationsModule({ repository, hashRefreshToken }));
 }
 
 export const app = createApp();

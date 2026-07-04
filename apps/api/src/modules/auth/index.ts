@@ -13,7 +13,7 @@ export function authModule(options: AuthModuleOptions) {
     hashPassword: (password) => Bun.password.hash(password),
     verifyPassword: (password, hash) => Bun.password.verify(password, hash),
     createRefreshToken: () => crypto.randomUUID(),
-    hashRefreshToken: hashRefreshToken,
+    hashRefreshToken,
     now: () => new Date(),
   });
 
@@ -87,7 +87,7 @@ export function authModule(options: AuthModuleOptions) {
     );
 }
 
-async function hashRefreshToken(token: string): Promise<string> {
+export async function hashRefreshToken(token: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))

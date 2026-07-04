@@ -1,4 +1,5 @@
 import type { AuthRepository } from "./service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 interface UserRecord {
   id: string;
@@ -30,7 +31,7 @@ interface SessionRecord {
   expiresAt: Date;
 }
 
-export function createInMemoryAuthRepository(): AuthRepository {
+export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
@@ -122,6 +123,24 @@ export function createInMemoryAuthRepository(): AuthRepository {
           expiresAt: session.expiresAt.toISOString(),
         },
       };
+    },
+
+    async listOrganizationsForUser(userId) {
+      return Array.from(members.values())
+        .filter((member) => member.userId === userId && member.status === "active")
+        .map((member) => {
+          const organization = organizations.get(member.organizationId);
+
+          if (!organization) return null;
+
+          return {
+            id: organization.id,
+            name: organization.name,
+            slug: organization.slug,
+            role: member.role,
+          };
+        })
+        .filter((organization): organization is NonNullable<typeof organization> => organization !== null);
     },
   };
 }
