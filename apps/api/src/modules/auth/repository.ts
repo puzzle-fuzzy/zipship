@@ -22,14 +22,27 @@ interface MemberRecord {
   status: "active";
 }
 
+interface SessionRecord {
+  id: string;
+  userId: string;
+  clientType: "web" | "desktop";
+  refreshTokenHash: string;
+  expiresAt: Date;
+}
+
 export function createInMemoryAuthRepository(): AuthRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
+  const sessions = new Map<string, SessionRecord>();
 
   return {
     async emailExists(email) {
       return users.has(email);
+    },
+
+    async findUserByEmail(email) {
+      return users.get(email) ?? null;
     },
 
     async createUserWithDefaultOrganization(input) {
@@ -68,6 +81,21 @@ export function createInMemoryAuthRepository(): AuthRepository {
           id: member.id,
           role: member.role,
         },
+      };
+    },
+
+    async createSession(input) {
+      const session: SessionRecord = {
+        id: crypto.randomUUID(),
+        ...input,
+      };
+
+      sessions.set(session.id, session);
+
+      return {
+        id: session.id,
+        clientType: session.clientType,
+        expiresAt: session.expiresAt.toISOString(),
       };
     },
   };

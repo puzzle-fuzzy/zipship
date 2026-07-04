@@ -11,6 +11,9 @@ function createRepository() {
     async emailExists(email: string) {
       return emails.has(email);
     },
+    async findUserByEmail() {
+      return null;
+    },
     async createUserWithDefaultOrganization(input: {
       user: { name: string; email: string; passwordHash: string };
       organization: { name: string; slug: string };
@@ -25,6 +28,9 @@ function createRepository() {
         member: { id: "member-1", role: input.member.role },
       };
     },
+    async createSession() {
+      throw new Error("createSession is not used by registration tests");
+    },
   };
 }
 
@@ -34,6 +40,10 @@ describe("auth registration", () => {
     const auth = new AuthService({
       repository,
       hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
     });
 
     const result = await auth.register({
@@ -74,6 +84,10 @@ describe("auth registration", () => {
     const auth = new AuthService({
       repository,
       hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
     });
 
     await auth.register({

@@ -46,4 +46,46 @@ describe("auth routes", () => {
       code: "DUPLICATE_EMAIL",
     });
   });
+
+  test("logs in a registered user through Eden Treaty", async () => {
+    const api = treaty(createApp());
+
+    await api._api.auth.register.post({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+
+    const response = await api._api.auth.login.post({
+      email: " ADA@example.com ",
+      password: "correct-horse-battery",
+      clientType: "desktop",
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toMatchObject({
+      user: {
+        email: "ada@example.com",
+      },
+      session: {
+        clientType: "desktop",
+      },
+    });
+    expect(response.data?.session.refreshToken).toBeString();
+  });
+
+  test("returns invalid credentials without revealing whether email exists", async () => {
+    const api = treaty(createApp());
+
+    const response = await api._api.auth.login.post({
+      email: "missing@example.com",
+      password: "wrong-password",
+      clientType: "web",
+    });
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "INVALID_CREDENTIALS",
+    });
+  });
 });
