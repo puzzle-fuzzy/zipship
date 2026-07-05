@@ -48,9 +48,48 @@ export function uploadsModule(options: UploadsModuleOptions) {
     );
 }
 
+export function uploadDetailsModule(options: UploadsModuleOptions) {
+  const uploads = new UploadsService({
+    repository: options.repository,
+    hashRefreshToken: options.hashRefreshToken,
+    now: () => new Date(),
+  });
+
+  return new Elysia({ name: "upload-details", prefix: "/_api/uploads/:uploadTaskId" })
+    .model(uploadModels)
+    .get(
+      "/",
+      async ({ headers, params, status }) => {
+        const result = await uploads.get(headers, params);
+
+        if (result instanceof UploadServiceError) {
+          return status(toDetailStatusCode(result.code), { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Uploads.Headers",
+        params: "Uploads.DetailParams",
+        response: {
+          200: "Uploads.Detail",
+          401: "Uploads.Error",
+          403: "Uploads.Error",
+          404: "Uploads.Error",
+        },
+      },
+    );
+}
+
 function toStatusCode(code: string): 400 | 401 | 403 | 404 {
   if (code === "UNAUTHORIZED") return 401;
   if (code === "FORBIDDEN") return 403;
   if (code === "PROJECT_NOT_FOUND") return 404;
   return 400;
+}
+
+function toDetailStatusCode(code: string): 401 | 403 | 404 {
+  if (code === "UNAUTHORIZED") return 401;
+  if (code === "FORBIDDEN") return 403;
+  return 404;
 }

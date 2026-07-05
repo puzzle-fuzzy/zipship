@@ -47,7 +47,47 @@ async function registerLoginAndCreateProject() {
   };
 }
 
+async function registerLoginCreateProjectAndUploadTask() {
+  const context = await registerLoginAndCreateProject();
+  const created = await context.api._api.projects({ projectId: context.project.id }).uploads.post(
+    {
+      originalFilename: "dist.zip",
+      size: 1024,
+    },
+    {
+      headers: {
+        authorization: `Bearer ${context.refreshToken}`,
+      },
+    },
+  );
+  const uploadTask = created.data?.uploadTask;
+
+  if (!uploadTask) {
+    throw new Error("Upload task creation unexpectedly returned no task");
+  }
+
+  return {
+    ...context,
+    uploadTask,
+  };
+}
+
 describe("uploads routes", () => {
+  test("returns an upload task detail by id", async () => {
+    const { api, refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask();
+
+    const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).get({
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({
+      uploadTask,
+    });
+  });
+
   test("creates a pending upload task for a project", async () => {
     const { api, refreshToken, project } = await registerLoginAndCreateProject();
 
@@ -92,6 +132,32 @@ describe("uploads routes", () => {
     expect(response.status).toBe(401);
     expect((response.error?.value as unknown)).toEqual({
       code: "UNAUTHORIZED",
+    });
+  });
+
+  test("returns unauthorized for upload task detail without a bearer token", async () => {
+    const api = treaty(createApp());
+
+    const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).get();
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  test("returns not found for an unknown upload task id", async () => {
+    const { api, refreshToken } = await registerLoginAndCreateProject();
+
+    const response = await api._api.uploads({ uploadTaskId: "missing-upload-task" }).get({
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(404);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UPLOAD_TASK_NOT_FOUND",
     });
   });
 

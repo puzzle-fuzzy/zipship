@@ -283,6 +283,12 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return toUploadTask(uploadTask);
     },
 
+    async findUploadTaskById(uploadTaskId) {
+      const uploadTask = uploadTasks.get(uploadTaskId);
+
+      return uploadTask ? toUploadTask(uploadTask) : null;
+    },
+
     async createAuditLog(input) {
       const auditLog: AuditLogRecord = {
         id: crypto.randomUUID(),
