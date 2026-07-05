@@ -19,6 +19,8 @@
 - 明确这是 API/开发阶段的内部预览地址。
 - 可以在后续 Nginx 阶段映射为正式测试地址 `/:slug/:hash/`，但本阶段不要求 Nginx。
 
+因为 URL 中只有 `projectSlug`，本阶段需要把项目 slug 从组织内唯一收紧为全局唯一。否则不同组织可以创建相同 slug，公开预览地址会无法确定唯一项目。数据库 schema、in-memory repository 和项目创建测试都需要同步这个约束。
+
 ## 后端模块
 
 新增 Elysia feature module：
