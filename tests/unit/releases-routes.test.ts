@@ -123,6 +123,7 @@ describe("releases routes", () => {
       expect(release.fullHash).toEqual(expect.any(String));
       expect(release.fullHash).toHaveLength(64);
       expect(release.status).toBe("ready");
+      expect(release.previewUrl).toBe(`/_sites/${project.slug}/${release.releaseHash}/`);
       expect(release.storagePath).toContain(storageRoot);
       expect(release.storagePath).toContain(project.id);
       expect(existsSync(release.storagePath)).toBe(true);

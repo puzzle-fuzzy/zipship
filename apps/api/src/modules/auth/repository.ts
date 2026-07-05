@@ -475,6 +475,7 @@ function toRelease(record: ReleaseRecord): Release {
     projectId: record.projectId,
     versionNumber: record.versionNumber,
     releaseHash: record.releaseHash,
+    previewUrl: null,
     fullHash: record.fullHash,
     status: record.status,
     storagePath: record.storagePath,

@@ -66,8 +66,16 @@ export class ReleasesService {
     if (!membership) return new ReleaseForbiddenError();
     if (!this.permissions.can(membership.role, "view_project")) return new ReleaseForbiddenError();
 
+    const releases = await this.options.repository.listReleasesForProject(project.id);
+
     return {
-      releases: await this.options.repository.listReleasesForProject(project.id),
+      releases: releases.map((release) => ({
+        ...release,
+        previewUrl:
+          release.status === "ready" && release.archivedAt === null
+            ? `/_sites/${project.slug}/${release.releaseHash}/`
+            : null,
+      })),
     };
   }
 

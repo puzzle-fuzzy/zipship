@@ -13,6 +13,7 @@ export const releaseModel = t.Object({
   projectId: t.String(),
   versionNumber: t.Number(),
   releaseHash: t.String(),
+  previewUrl: t.Nullable(t.String()),
   fullHash: t.String(),
   status: t.Union([
     t.Literal("uploading"),
