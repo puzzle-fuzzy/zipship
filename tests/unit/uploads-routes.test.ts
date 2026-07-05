@@ -1,6 +1,6 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
@@ -257,7 +257,7 @@ describe("uploads routes", () => {
 
       expect(response.status).toBe(409);
       expect((response.error?.value as unknown)).toEqual({
-        code: "RAW_UPLOAD_REQUIRED",
+        code: "UPLOAD_TASK_NOT_UPLOADING",
       });
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
@@ -477,6 +477,45 @@ describe("uploads routes", () => {
       expect(firstRelease).toBeDefined();
       expect(firstRelease?.status).toBe("failed");
       expect((firstRelease?.detectResult as { level: string }).level).toBe("failed");
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects complete when an uploaded raw zip is missing without moving to processing", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const created = await api._api.projects({ projectId: project.id }).uploads.post(
+        { originalFilename: "dist.zip", size: 1024 },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const uploadTask = created.data?.uploadTask;
+      if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+      const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/valid-vite-relative-base.zip")).arrayBuffer();
+      const raw = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        { file: new File([bytes], "dist.zip", { type: "application/zip" }) },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const rawPath = raw.data?.uploadTask.rawUploadPath;
+      if (!rawPath) throw new Error("Raw upload unexpectedly returned no path");
+      unlinkSync(rawPath);
+
+      const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+
+      expect(response.status).toBe(409);
+      expect((response.error?.value as unknown)).toEqual({ code: "RAW_UPLOAD_REQUIRED" });
+
+      const detail = await api._api.uploads({ uploadTaskId: uploadTask.id }).get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      expect(detail.status).toBe(200);
+      expect(detail.data?.uploadTask.status).toBe("uploading");
+      expect(detail.data?.uploadTask.releaseId).toBeNull();
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }

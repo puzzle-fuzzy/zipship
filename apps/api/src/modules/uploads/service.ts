@@ -1,3 +1,4 @@
+import { existsSync } from "fs";
 import {
   InvalidUploadInputError,
   RawUploadRequiredError,
@@ -6,6 +7,7 @@ import {
   UploadServiceError,
   UploadTaskNotFoundError,
   UploadTaskNotPendingError,
+  UploadTaskNotUploadingError,
   UploadUnauthorizedError,
 } from "./model";
 import type {
@@ -217,7 +219,9 @@ export class UploadsService {
     const uploadTask = await this.options.repository.findUploadTaskById(params.uploadTaskId);
 
     if (!uploadTask) return new UploadTaskNotFoundError();
-    if (uploadTask.status !== "uploading") return new RawUploadRequiredError();
+    if (uploadTask.status === "pending") return new RawUploadRequiredError();
+    if (uploadTask.status !== "uploading") return new UploadTaskNotUploadingError();
+    if (!existsSync(uploadTask.rawUploadPath)) return new RawUploadRequiredError();
 
     const project = await this.options.repository.findProjectById(uploadTask.projectId);
 
