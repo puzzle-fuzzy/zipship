@@ -5,6 +5,8 @@ import type { OrganizationsRepository } from "../organizations/service";
 import type { MemberRole } from "../permissions/model";
 import type { Project } from "../projects/model";
 import type { ProjectsRepository } from "../projects/service";
+import type { Release } from "../releases/model";
+import type { ReleasesRepository } from "../releases/service";
 import type { UploadTask } from "../uploads/model";
 import type { UploadsRepository } from "../uploads/service";
 
@@ -103,6 +105,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
   OrganizationsRepository &
   AuditRepository &
   ProjectsRepository &
+  ReleasesRepository &
   UploadsRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
@@ -281,6 +284,13 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return project ? toProject(project) : null;
     },
 
+    async listReleasesForProject(projectId) {
+      return Array.from(releases.values())
+        .filter((release) => release.projectId === projectId)
+        .sort((left, right) => right.versionNumber - left.versionNumber)
+        .map(toRelease);
+    },
+
     async createUploadTask(input) {
       const id = crypto.randomUUID();
       const uploadTask: UploadTaskRecord = {
@@ -399,6 +409,27 @@ function toProject(record: ProjectRecord): Project {
     createdBy: record.createdBy,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function toRelease(record: ReleaseRecord): Release {
+  return {
+    id: record.id,
+    projectId: record.projectId,
+    versionNumber: record.versionNumber,
+    releaseHash: record.releaseHash,
+    fullHash: record.fullHash,
+    status: record.status,
+    storagePath: record.storagePath,
+    rawUploadPath: record.rawUploadPath,
+    fileCount: record.fileCount,
+    totalSize: record.totalSize,
+    manifest: record.manifest,
+    detectResult: record.detectResult,
+    createdBy: record.createdBy,
+    createdAt: record.createdAt.toISOString(),
+    activatedAt: record.activatedAt?.toISOString() ?? null,
+    archivedAt: record.archivedAt?.toISOString() ?? null,
   };
 }
 

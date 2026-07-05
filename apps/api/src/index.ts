@@ -4,6 +4,7 @@ import { authModule, hashRefreshToken } from "./modules/auth";
 import { createInMemoryAuthRepository } from "./modules/auth/repository";
 import { organizationsModule } from "./modules/organizations";
 import { projectDetailsModule, projectsModule } from "./modules/projects";
+import { releasesModule } from "./modules/releases";
 import { uploadDetailsModule, uploadsModule } from "./modules/uploads";
 
 export function createApp() {
@@ -18,6 +19,7 @@ export function createApp() {
     .use(organizationsModule({ repository, hashRefreshToken }))
     .use(projectsModule({ repository, hashRefreshToken }))
     .use(projectDetailsModule({ repository, hashRefreshToken }))
+    .use(releasesModule({ repository, hashRefreshToken }))
     .use(uploadsModule({ repository, hashRefreshToken }))
     .use(uploadDetailsModule({ repository, hashRefreshToken }));
 }
