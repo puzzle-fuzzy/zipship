@@ -16,11 +16,14 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
 
   beforeAll(async () => {
     await mkdir(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "assets"), { recursive: true });
+    await mkdir(join(sitesRoot, "admin", "releases", "a8f32c91", "assets"), { recursive: true });
     await mkdir(join(sitesRoot, "admin", "current", "assets"), { recursive: true });
     await mkdir(consoleRoot, { recursive: true });
 
     writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "index.html"), "release index");
     writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "assets", "index.js"), "release asset");
+    writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91", "index.html"), "short hash release");
+    writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91", "assets", "index.js"), "short hash asset");
     writeFileSync(join(sitesRoot, "admin", "current", "index.html"), "current index");
     writeFileSync(join(sitesRoot, "admin", "current", "assets", "index.js"), "current asset");
     writeFileSync(join(consoleRoot, "index.html"), "console app");
@@ -68,6 +71,17 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
     await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/assets/index.js`, "release asset", "immutable");
     await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/settings`, "release index", "no-cache");
     await expectText(`http://127.0.0.1:${port}/admin/not-a-hash/settings`, "current index", "no-cache");
+  });
+
+  test("handles variable-length release hashes (8-64 chars)", async () => {
+    // 8-char hash should redirect and serve correctly
+    const redirect = await fetch(`http://127.0.0.1:${port}/admin/a8f32c91`, { redirect: "manual" });
+    expect(redirect.status).toBe(308);
+    expect(redirect.headers.get("location")).toBe("/admin/a8f32c91/");
+
+    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91/`, "short hash release");
+    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91/assets/index.js`, "short hash asset", "immutable");
+    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91/settings`, "short hash release", "no-cache");
   });
 
   test("serves console and keeps unknown sites or hashes as 404", async () => {
