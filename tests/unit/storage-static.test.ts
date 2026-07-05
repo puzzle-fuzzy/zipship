@@ -1,8 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, lstatSync, mkdtempSync, readlinkSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "fs";
+import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { contentTypeForPath, resolveStaticAssetPath } from "../../packages/storage/src/index";
+import {
+  contentTypeForPath,
+  createCurrentReleaseLinkPath,
+  createProjectSitePath,
+  createReleaseStoragePath,
+  createStoragePaths,
+  ensureReleaseArtifactReady,
+  resolveStaticAssetPath,
+  switchCurrentReleaseLink,
+  ReleaseArtifactNotFoundError,
+} from "../../packages/storage/src/index";
 
 function createTempRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-storage-static-"));
@@ -77,5 +88,67 @@ describe("contentTypeForPath", () => {
     expect(contentTypeForPath("data.json")).toBe("application/json; charset=utf-8");
     expect(contentTypeForPath("image.png")).toBe("image/png");
     expect(contentTypeForPath("unknown.bin")).toBe("application/octet-stream");
+  });
+});
+
+function createTempStorageRoot() {
+  return mkdtempSync(join(tmpdir(), "zipship-storage-access-"));
+}
+
+describe("slug-based site storage paths", () => {
+  test("creates project site, release, and current paths from project slug", () => {
+    const paths = createStoragePaths("/srv/zipship");
+
+    expect(createProjectSitePath(paths, "admin")).toBe("/srv/zipship/sites/admin");
+    expect(createReleaseStoragePath(paths, { projectSlug: "admin", releaseHash: "a8f32c91abcd" })).toBe(
+      "/srv/zipship/sites/admin/releases/a8f32c91abcd",
+    );
+    expect(createCurrentReleaseLinkPath(paths, "admin")).toBe("/srv/zipship/sites/admin/current");
+  });
+
+  test("verifies a release artifact directory with index.html", async () => {
+    const root = createTempStorageRoot();
+    try {
+      const artifact = join(root, "sites", "admin", "releases", "a8f32c91abcd");
+      await mkdir(artifact, { recursive: true });
+      writeFileSync(join(artifact, "index.html"), "<html></html>");
+
+      await expect(ensureReleaseArtifactReady(artifact)).resolves.toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects missing artifact directory or missing index.html", async () => {
+    const root = createTempStorageRoot();
+    try {
+      const artifact = join(root, "sites", "admin", "releases", "a8f32c91abcd");
+      await expect(ensureReleaseArtifactReady(artifact)).rejects.toBeInstanceOf(ReleaseArtifactNotFoundError);
+
+      await mkdir(artifact, { recursive: true });
+      await expect(ensureReleaseArtifactReady(artifact)).rejects.toBeInstanceOf(ReleaseArtifactNotFoundError);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("switches current to a relative release symlink and replaces old links", async () => {
+    const root = createTempStorageRoot();
+    try {
+      const paths = createStoragePaths(root);
+      const projectSitePath = createProjectSitePath(paths, "admin");
+      await mkdir(join(projectSitePath, "releases", "a8f32c91abcd"), { recursive: true });
+      await mkdir(join(projectSitePath, "releases", "b7d91f20cafe"), { recursive: true });
+
+      await switchCurrentReleaseLink({ projectSitePath, releaseHash: "a8f32c91abcd" });
+      expect(lstatSync(createCurrentReleaseLinkPath(paths, "admin")).isSymbolicLink()).toBe(true);
+      expect(readlinkSync(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/a8f32c91abcd");
+
+      await switchCurrentReleaseLink({ projectSitePath, releaseHash: "b7d91f20cafe" });
+      expect(readlinkSync(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/b7d91f20cafe");
+      expect(existsSync(join(projectSitePath, "current.tmp"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

@@ -58,7 +58,7 @@ export class ReleaseProcessingService {
       });
 
       const releaseStoragePath = createReleaseStoragePath(this.options.storagePaths, {
-        projectId: uploadTask.projectId,
+        projectSlug: uploadTask.projectId,
         releaseHash: result.manifest.releaseHash,
       });
       const totalSize = result.manifest.files.reduce((sum, file) => sum + file.size, 0);

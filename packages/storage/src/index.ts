@@ -1,4 +1,4 @@
-import { cp, mkdir, realpath, rm, stat } from "fs/promises";
+import { cp, mkdir, realpath, rm, rename, stat, symlink, unlink } from "fs/promises";
 import { dirname, extname, join, resolve, sep } from "path";
 
 export interface StoragePaths {
@@ -30,14 +30,63 @@ export function createUploadWorkDir(paths: StoragePaths, uploadTaskId: string): 
   return join(paths.tempRoot, uploadTaskId);
 }
 
+export class ReleaseArtifactNotFoundError extends Error {
+  constructor(message = "Release artifact not found") {
+    super(message);
+    this.name = "ReleaseArtifactNotFoundError";
+  }
+}
+
+export class CurrentReleaseLinkError extends Error {
+  constructor(message = "Failed to update current release link") {
+    super(message);
+    this.name = "CurrentReleaseLinkError";
+  }
+}
+
+export function createProjectSitePath(paths: StoragePaths, projectSlug: string): string {
+  return join(paths.sitesRoot, projectSlug);
+}
+
 export function createReleaseStoragePath(
   paths: StoragePaths,
   input: {
-    projectId: string;
+    projectSlug: string;
     releaseHash: string;
   },
 ): string {
-  return join(paths.sitesRoot, input.projectId, "releases", input.releaseHash);
+  return join(createProjectSitePath(paths, input.projectSlug), "releases", input.releaseHash);
+}
+
+export function createCurrentReleaseLinkPath(paths: StoragePaths, projectSlug: string): string {
+  return join(createProjectSitePath(paths, projectSlug), "current");
+}
+
+export async function ensureReleaseArtifactReady(storagePath: string): Promise<void> {
+  const artifact = await statFile(storagePath);
+  if (artifact !== "directory") throw new ReleaseArtifactNotFoundError();
+
+  const index = await statFile(join(storagePath, "index.html"));
+  if (index !== "file") throw new ReleaseArtifactNotFoundError();
+}
+
+export async function switchCurrentReleaseLink(input: {
+  projectSitePath: string;
+  releaseHash: string;
+}): Promise<void> {
+  const currentPath = join(input.projectSitePath, "current");
+  const tempPath = join(input.projectSitePath, "current.tmp");
+
+  try {
+    await mkdir(input.projectSitePath, { recursive: true });
+    await rm(tempPath, { force: true, recursive: false });
+    await symlink(join("releases", input.releaseHash), tempPath);
+    await unlink(currentPath).catch(() => {});
+    await rename(tempPath, currentPath);
+  } catch (error) {
+    await rm(tempPath, { force: true, recursive: false }).catch(() => {});
+    throw new CurrentReleaseLinkError(error instanceof Error ? error.message : undefined);
+  }
 }
 
 export async function writeFileToPath(file: File, absolutePath: string): Promise<{ size: number }> {
