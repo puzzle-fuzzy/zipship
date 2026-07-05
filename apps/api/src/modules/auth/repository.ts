@@ -502,6 +502,23 @@ export function createInMemoryAuthRepository(): AuthRepository &
       });
     },
 
+    async setMemberRoleForTest(input) {
+      const member = Array.from(members.values()).find(
+        (candidate) => candidate.organizationId === input.organizationId && candidate.userId === input.userId,
+      );
+      if (!member) throw new Error("Member not found");
+      member.role = input.role;
+      members.set(member.id, member);
+    },
+
+    async setReleaseStateForTest(input) {
+      const release = releases.get(input.releaseId);
+      if (!release) throw new Error("Release not found");
+      release.status = input.status;
+      release.archivedAt = input.archived ? new Date("2026-07-05T00:00:00.000Z") : null;
+      releases.set(release.id, release);
+    },
+
     async listAuditLogsForTest() {
       return Array.from(auditLogs.values())
         .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())

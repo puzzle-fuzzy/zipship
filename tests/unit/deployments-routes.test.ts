@@ -137,4 +137,137 @@ describe("deployments routes", () => {
       rmSync(storageRoot, { recursive: true, force: true });
     }
   });
+
+  test("rejects publish without a bearer token", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const release = await createReadyRelease(api, project.id, refreshToken);
+
+      const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post({
+        message: null,
+      });
+
+      expect(response.status).toBe(401);
+      expect((response.error?.value as unknown)).toEqual({ code: "UNAUTHORIZED" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects publish for developer and viewer roles", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const api = treaty(app);
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const release = await createReadyRelease(api, project.id, refreshToken);
+
+      await app.handle(
+        new Request("http://localhost/_api/__test/memberRole", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: project.createdBy, organizationId: project.organizationId, role: "developer" }),
+        }),
+      );
+      const developerResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(developerResponse.status).toBe(403);
+      expect((developerResponse.error?.value as unknown)).toEqual({ code: "FORBIDDEN" });
+
+      await app.handle(
+        new Request("http://localhost/_api/__test/memberRole", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: project.createdBy, organizationId: project.organizationId, role: "viewer" }),
+        }),
+      );
+      const viewerResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(viewerResponse.status).toBe(403);
+      expect((viewerResponse.error?.value as unknown)).toEqual({ code: "FORBIDDEN" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects publish for unknown project, unknown release, and release from another project", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const first = await registerLoginAndCreateProject(api);
+      const second = await registerLoginAndCreateProject(api);
+      const otherRelease = await createReadyRelease(api, second.project.id, second.refreshToken);
+
+      const unknownProject = await api._api.projects({ projectId: "missing-project" }).releases({ releaseId: otherRelease.id }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${first.refreshToken}` } },
+      );
+      expect(unknownProject.status).toBe(404);
+      expect((unknownProject.error?.value as unknown)).toEqual({ code: "PROJECT_NOT_FOUND" });
+
+      const unknownRelease = await api._api.projects({ projectId: first.project.id }).releases({ releaseId: "missing-release" }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${first.refreshToken}` } },
+      );
+      expect(unknownRelease.status).toBe(404);
+      expect((unknownRelease.error?.value as unknown)).toEqual({ code: "RELEASE_NOT_FOUND" });
+
+      const wrongProject = await api._api.projects({ projectId: first.project.id }).releases({ releaseId: otherRelease.id }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${first.refreshToken}` } },
+      );
+      expect(wrongProject.status).toBe(404);
+      expect((wrongProject.error?.value as unknown)).toEqual({ code: "RELEASE_NOT_FOUND" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects publish for releases that are not ready or are archived", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const api = treaty(app);
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const release = await createReadyRelease(api, project.id, refreshToken);
+
+      for (const statusValue of ["uploading", "processing", "failed", "archived", "deleted"] as const) {
+        await app.handle(
+          new Request("http://localhost/_api/__test/releaseState", {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ releaseId: release.id, status: statusValue, archived: false }),
+          }),
+        );
+        const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+          { message: null },
+          { headers: { authorization: `Bearer ${refreshToken}` } },
+        );
+        expect(response.status).toBe(409);
+        expect((response.error?.value as unknown)).toEqual({ code: "RELEASE_NOT_READY" });
+      }
+
+      await app.handle(
+        new Request("http://localhost/_api/__test/releaseState", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ releaseId: release.id, status: "ready", archived: true }),
+        }),
+      );
+      const archivedResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(archivedResponse.status).toBe(409);
+      expect((archivedResponse.error?.value as unknown)).toEqual({ code: "RELEASE_NOT_READY" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
 });

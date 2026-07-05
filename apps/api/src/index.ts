@@ -28,6 +28,30 @@ export function createApp(options: CreateAppOptions = {}) {
     api.get("/_api/__test/auditLogs", async () => ({
       auditLogs: await repository.listAuditLogsForTest(),
     }));
+    api.put("/_api/__test/memberRole", async ({ body }) => {
+      if ("setMemberRoleForTest" in repository) {
+        await repository.setMemberRoleForTest(
+          body as {
+            organizationId: string;
+            userId: string;
+            role: "owner" | "admin" | "developer" | "deployer" | "viewer";
+          },
+        );
+      }
+      return { ok: true };
+    });
+    api.put("/_api/__test/releaseState", async ({ body }) => {
+      if ("setReleaseStateForTest" in repository) {
+        await repository.setReleaseStateForTest(
+          body as {
+            releaseId: string;
+            status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted";
+            archived: boolean;
+          },
+        );
+      }
+      return { ok: true };
+    });
   }
 
   return api

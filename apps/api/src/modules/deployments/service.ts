@@ -67,6 +67,16 @@ export interface DeploymentsRepository extends AuditRepository {
     now: Date;
   }): Promise<DeploymentMutationResult>;
   listAuditLogsForTest(): Promise<AuditLog[]>;
+  setMemberRoleForTest(input: {
+    organizationId: string;
+    userId: string;
+    role: MemberRole;
+  }): Promise<void>;
+  setReleaseStateForTest(input: {
+    releaseId: string;
+    status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted";
+    archived: boolean;
+  }): Promise<void>;
 }
 
 export interface DeploymentsServiceOptions {
