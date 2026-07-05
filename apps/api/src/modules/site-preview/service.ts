@@ -5,7 +5,7 @@ import type { SitePreviewParams, SitePreviewResult } from "./model";
 
 export interface SitePreviewRepository {
   findProjectBySlug(slug: string): Promise<Project | null>;
-  findReadyReleaseByProjectIdAndHash(input: {
+  findPreviewableReleaseByProjectIdAndHash(input: {
     projectId: string;
     releaseHash: string;
   }): Promise<Release | null>;
@@ -23,7 +23,7 @@ export class SitePreviewService {
 
     if (!project) return { kind: "not-found" };
 
-    const release = await this.options.repository.findReadyReleaseByProjectIdAndHash({
+    const release = await this.options.repository.findPreviewableReleaseByProjectIdAndHash({
       projectId: project.id,
       releaseHash: params.releaseHash,
     });

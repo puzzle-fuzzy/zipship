@@ -270,4 +270,44 @@ describe("deployments routes", () => {
       rmSync(storageRoot, { recursive: true, force: true });
     }
   });
+
+  test("publishing a second release moves the previous active release back to ready", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const firstRelease = await createReadyRelease(api, project.id, refreshToken);
+      const secondRelease = await createReadyRelease(api, project.id, refreshToken);
+
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: secondRelease.id }).publish.post(
+        { message: "Ship v2" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.data?.deployment.previousReleaseId).toBe(firstRelease.id);
+      expect(response.data?.release).toMatchObject({
+        id: secondRelease.id,
+        status: "active",
+      });
+      expect(response.data?.previousRelease).toMatchObject({
+        id: firstRelease.id,
+        status: "ready",
+      });
+
+      const releases = await api._api.projects({ projectId: project.id }).releases.get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      const firstAfter = releases.data?.releases.find((candidate) => candidate.id === firstRelease.id);
+      const secondAfter = releases.data?.releases.find((candidate) => candidate.id === secondRelease.id);
+      expect(firstAfter?.status).toBe("ready");
+      expect(secondAfter?.status).toBe("active");
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
 });

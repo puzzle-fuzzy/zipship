@@ -316,12 +316,12 @@ export function createInMemoryAuthRepository(): AuthRepository &
         .map(toRelease);
     },
 
-    async findReadyReleaseByProjectIdAndHash(input) {
+    async findPreviewableReleaseByProjectIdAndHash(input) {
       const release = Array.from(releases.values()).find(
         (candidate) =>
           candidate.projectId === input.projectId &&
           candidate.releaseHash === input.releaseHash &&
-          candidate.status === "ready" &&
+          (candidate.status === "ready" || candidate.status === "active") &&
           candidate.archivedAt === null,
       );
 

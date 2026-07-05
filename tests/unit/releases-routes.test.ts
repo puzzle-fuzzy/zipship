@@ -196,4 +196,29 @@ describe("releases routes", () => {
       code: "PROJECT_NOT_FOUND",
     });
   });
+
+  test("returns previewUrl for active releases", async () => {
+    const { api, storageRoot, refreshToken, project, uploadTask } = await createCompletedUpload();
+    try {
+      const releasesBeforePublish = await api._api.projects({ projectId: project.id }).releases.get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      const release = releasesBeforePublish.data?.releases[0];
+      if (!release) throw new Error("Expected ready release before publish");
+
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const releasesAfterPublish = await api._api.projects({ projectId: project.id }).releases.get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      const activeRelease = releasesAfterPublish.data?.releases.find((candidate) => candidate.id === uploadTask.releaseId);
+      expect(activeRelease?.status).toBe("active");
+      expect(activeRelease?.previewUrl).toBe(`/_sites/${project.slug}/${release.releaseHash}/`);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -72,7 +72,7 @@ export class ReleasesService {
       releases: releases.map((release) => ({
         ...release,
         previewUrl:
-          release.status === "ready" && release.archivedAt === null
+          isPreviewableRelease(release)
             ? `/_sites/${project.slug}/${release.releaseHash}/`
             : null,
       })),
@@ -93,6 +93,10 @@ export class ReleasesService {
 
     return currentSession;
   }
+}
+
+function isPreviewableRelease(release: Release): boolean {
+  return (release.status === "ready" || release.status === "active") && release.archivedAt === null;
 }
 
 function parseBearerToken(authorization: string | undefined): string | null {
