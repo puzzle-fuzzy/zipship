@@ -39,6 +39,11 @@ export function normalizeZipEntryPath(entryName: string): string {
     // If decoding fails, use the original normalized string
   }
 
+  // Re-check for NUL byte after decoding (e.g., %00 decodes to \x00)
+  if (NUL_BYTE.test(normalized)) {
+    throw new DeployCoreError(DEPLOY_CORE_ERROR_CODES.ZIP_ENTRY_NUL_BYTE, { entryName });
+  }
+
   // Reject absolute Unix paths
   if (normalized.startsWith("/")) {
     throw new DeployCoreError(DEPLOY_CORE_ERROR_CODES.ZIP_ENTRY_ABSOLUTE_PATH, { entryName, normalized });

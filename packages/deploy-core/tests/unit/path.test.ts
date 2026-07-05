@@ -62,5 +62,13 @@ describe("normalizeZipEntryPath", () => {
     test("rejects //server/share paths", () => {
       expect(() => normalizeZipEntryPath("//server/share/file.txt")).toThrow();
     });
+
+    test("rejects abc\\..\\evil.txt traversal", () => {
+      expect(() => normalizeZipEntryPath("abc\\..\\evil.txt")).toThrow();
+    });
+
+    test("rejects percent-encoded NUL byte", () => {
+      expect(() => normalizeZipEntryPath("file%00name.txt")).toThrow();
+    });
   });
 });
