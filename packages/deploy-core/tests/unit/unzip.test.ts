@@ -96,6 +96,32 @@ describe("safeExtractZip", () => {
     }
   });
 
+  test("rejects total uncompressed size over limit", async () => {
+    const dir = runDir("over-limit");
+    const zipPath = join(FIXTURES_DIR, "over-limit-size.zip");
+    if (!existsSync(zipPath)) return;
+    try {
+      await safeExtractZip(zipPath, dir);
+      expect.unreachable("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(DeployCoreError);
+      expect((e as DeployCoreError).code).toBe("ZIP_TOTAL_SIZE_TOO_LARGE");
+    }
+  });
+
+  test("rejects duplicate normalized paths", async () => {
+    const dir = runDir("dup-path");
+    const zipPath = join(FIXTURES_DIR, "duplicate-path.zip");
+    if (!existsSync(zipPath)) return;
+    try {
+      await safeExtractZip(zipPath, dir);
+      expect.unreachable("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(DeployCoreError);
+      expect((e as DeployCoreError).code).toBe("ZIP_ENTRY_DUPLICATE_PATH");
+    }
+  });
+
   test("handles empty zip", async () => {
     const dir = runDir("empty");
     await safeExtractZip(join(FIXTURES_DIR, "empty.zip"), dir);
