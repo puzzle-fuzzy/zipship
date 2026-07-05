@@ -70,5 +70,9 @@ describe("normalizeZipEntryPath", () => {
     test("rejects percent-encoded NUL byte", () => {
       expect(() => normalizeZipEntryPath("file%00name.txt")).toThrow();
     });
+
+    test("rejects percent-encoded backslash traversal", () => {
+      expect(() => normalizeZipEntryPath("..%5c..%5cevil.txt")).toThrow();
+    });
   });
 });

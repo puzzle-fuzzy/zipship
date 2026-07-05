@@ -44,6 +44,9 @@ export function normalizeZipEntryPath(entryName: string): string {
     throw new DeployCoreError(DEPLOY_CORE_ERROR_CODES.ZIP_ENTRY_NUL_BYTE, { entryName });
   }
 
+  // Normalize backslashes again after decoding (e.g., %5c decodes to \)
+  normalized = normalized.replace(/\\/g, "/");
+
   // Reject absolute Unix paths
   if (normalized.startsWith("/")) {
     throw new DeployCoreError(DEPLOY_CORE_ERROR_CODES.ZIP_ENTRY_ABSOLUTE_PATH, { entryName, normalized });
