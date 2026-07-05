@@ -1,6 +1,6 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
@@ -384,13 +384,34 @@ describe("uploads routes", () => {
 
       const firstRelease = releases.data?.releases[0];
       expect(firstRelease).toBeDefined();
-      expect(firstRelease?.status).toBe("ready");
-      expect(firstRelease?.releaseHash).toEqual(expect.any(String));
-      expect(firstRelease?.fullHash).toEqual(expect.any(String));
-      expect(firstRelease?.fileCount).toEqual(expect.any(Number));
-      expect(firstRelease?.totalSize).toEqual(expect.any(Number));
-      expect((firstRelease?.detectResult as { level: string }).level).toBe("pass");
-      expect(firstRelease?.releaseHash).toHaveLength(12);
+      if (!firstRelease) throw new Error("Expected a release after completing upload");
+
+      expect(firstRelease.status).toBe("ready");
+      expect(firstRelease.releaseHash).toEqual(expect.any(String));
+      expect(firstRelease.releaseHash).toHaveLength(12);
+      expect(firstRelease.fullHash).toEqual(expect.any(String));
+      expect(firstRelease.fullHash).toHaveLength(64);
+      expect(firstRelease.fileCount).toBeGreaterThan(0);
+      expect(firstRelease.totalSize).toBeGreaterThan(0);
+      expect(firstRelease.storagePath).toContain(storageRoot);
+      expect(firstRelease.storagePath).toContain(project.id);
+      expect(existsSync(firstRelease.storagePath)).toBe(true);
+      expect(existsSync(join(firstRelease.storagePath, "index.html"))).toBe(true);
+      expect(readFileSync(join(firstRelease.storagePath, "index.html"), "utf8")).toContain("./assets/index.js");
+
+      const manifest = firstRelease.manifest as {
+        version: number;
+        hashAlgorithm: string;
+        files: Array<{ path: string; hash: string; size: number }>;
+        hash: string;
+        releaseHash: string;
+      };
+      expect(manifest.version).toBe(1);
+      expect(manifest.hashAlgorithm).toBe("sha256");
+      expect(manifest.releaseHash).toBe(firstRelease.releaseHash);
+      expect(manifest.hash).toBe(firstRelease.fullHash);
+      expect(manifest.files.some((file) => file.path === "index.html")).toBe(true);
+      expect(manifest.files.length).toBe(firstRelease.fileCount);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }

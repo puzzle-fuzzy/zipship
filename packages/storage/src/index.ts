@@ -1,4 +1,4 @@
-import { mkdir } from "fs/promises";
+import { cp, mkdir, rm } from "fs/promises";
 import { dirname, join } from "path";
 
 export interface StoragePaths {
@@ -47,4 +47,14 @@ export async function writeFileToPath(file: File, absolutePath: string): Promise
   return {
     size: file.size,
   };
+}
+
+export async function copyDirectoryContents(sourceDir: string, destinationDir: string): Promise<void> {
+  await rm(destinationDir, { recursive: true, force: true });
+  await mkdir(dirname(destinationDir), { recursive: true });
+  await cp(sourceDir, destinationDir, {
+    recursive: true,
+    force: true,
+    errorOnExist: false,
+  });
 }

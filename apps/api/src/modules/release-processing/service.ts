@@ -2,7 +2,7 @@ import { mkdir, rm } from "fs/promises";
 import { existsSync } from "fs";
 import { processRelease, DeployCoreError } from "@zipship/deploy-core";
 import type { StoragePaths } from "@zipship/storage";
-import { createReleaseStoragePath, createUploadWorkDir } from "@zipship/storage";
+import { copyDirectoryContents, createReleaseStoragePath, createUploadWorkDir } from "@zipship/storage";
 import { ReleaseProcessingError } from "./model";
 import type { ReleaseProcessingResult } from "./model";
 import type { UploadTask } from "../uploads/model";
@@ -76,6 +76,8 @@ export class ReleaseProcessingService {
           releaseId: uploadTask.releaseId,
         });
       }
+
+      await copyDirectoryContents(result.rootDir, releaseStoragePath);
 
       await this.options.repository.completeProcessedRelease({
         uploadTaskId: uploadTask.id,

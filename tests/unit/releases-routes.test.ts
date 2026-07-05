@@ -1,6 +1,6 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
@@ -116,23 +116,41 @@ describe("releases routes", () => {
       expect(response.data?.releases).toHaveLength(1);
       const release = response.data?.releases[0];
 
-      expect(release?.releaseHash).toEqual(expect.any(String));
-      expect(release?.releaseHash).toHaveLength(12);
-      expect(release?.createdAt).toBeDefined();
-      expect(release?.id).toBe(uploadTask.releaseId!);
-      expect(release?.projectId).toBe(project.id);
-      expect(release?.versionNumber).toBe(1);
-      expect(release?.fullHash).toEqual(expect.any(String));
-      expect(release?.status).toBe("ready");
-      expect(release?.storagePath).toEqual(expect.stringContaining(project.id));
-      expect(release?.rawUploadPath).toBe(uploadTask.rawUploadPath);
-      expect(release?.fileCount).toEqual(expect.any(Number));
-      expect(release?.totalSize).toEqual(expect.any(Number));
-      expect(release?.manifest).toEqual(expect.any(Object));
-      expect(release?.detectResult).toEqual(expect.any(Object));
-      expect(release?.createdBy).toBe(project.createdBy);
-      expect(release?.activatedAt).toBeNull();
-      expect(release?.archivedAt).toBeNull();
+      expect(release).toBeDefined();
+      if (!release) throw new Error("Expected release list to contain the completed upload");
+
+      expect(release.releaseHash).toEqual(expect.any(String));
+      expect(release.releaseHash).toHaveLength(12);
+      expect(release.fullHash).toEqual(expect.any(String));
+      expect(release.fullHash).toHaveLength(64);
+      expect(release.status).toBe("ready");
+      expect(release.storagePath).toContain(storageRoot);
+      expect(release.storagePath).toContain(project.id);
+      expect(existsSync(release.storagePath)).toBe(true);
+      expect(existsSync(join(release.storagePath, "index.html"))).toBe(true);
+      expect(release.fileCount).toBeGreaterThan(0);
+      expect(release.totalSize).toBeGreaterThan(0);
+      expect((release.detectResult as { level: string }).level).toBe("pass");
+      expect(release.createdAt).toBeDefined();
+      expect(release.id).toBe(uploadTask.releaseId!);
+      expect(release.projectId).toBe(project.id);
+      expect(release.versionNumber).toBe(1);
+      expect(release.rawUploadPath).toBe(uploadTask.rawUploadPath);
+      expect(release.createdBy).toBe(project.createdBy);
+      expect(release.activatedAt).toBeNull();
+      expect(release.archivedAt).toBeNull();
+
+      const manifest = release.manifest as {
+        version: number;
+        hashAlgorithm: string;
+        files: Array<{ path: string; hash: string; size: number }>;
+        hash: string;
+        releaseHash: string;
+      };
+      expect(manifest.version).toBe(1);
+      expect(manifest.hashAlgorithm).toBe("sha256");
+      expect(manifest.files.length).toBe(release.fileCount);
+      expect(manifest.releaseHash).toBe(release.releaseHash);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
