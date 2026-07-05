@@ -1,5 +1,5 @@
-import { cp, mkdir, rm } from "fs/promises";
-import { dirname, join } from "path";
+import { cp, mkdir, rm, stat } from "fs/promises";
+import { dirname, extname, join, resolve, sep } from "path";
 
 export interface StoragePaths {
   uploadsRoot: string;
@@ -57,4 +57,112 @@ export async function copyDirectoryContents(sourceDir: string, destinationDir: s
     force: true,
     errorOnExist: false,
   });
+}
+
+export type StaticAssetResolution =
+  | {
+      kind: "file";
+      absolutePath: string;
+    }
+  | {
+      kind: "not-found";
+    };
+
+export async function resolveStaticAssetPath(input: {
+  rootDir: string;
+  requestPath: string;
+}): Promise<StaticAssetResolution> {
+  const root = resolve(input.rootDir);
+  const decodedPath = safeDecodePath(input.requestPath);
+
+  if (decodedPath === null || isDangerousStaticPath(decodedPath)) {
+    return { kind: "not-found" };
+  }
+
+  const cleanPath = decodedPath.replace(/^\/+/, "");
+  const candidate = resolve(root, cleanPath || "index.html");
+
+  if (!isPathInside(root, candidate)) {
+    return { kind: "not-found" };
+  }
+
+  const filePath = await resolveFileOrFallback(root, candidate);
+
+  if (!filePath) return { kind: "not-found" };
+
+  return {
+    kind: "file",
+    absolutePath: filePath,
+  };
+}
+
+export function contentTypeForPath(absolutePath: string): string {
+  switch (extname(absolutePath).toLowerCase()) {
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function safeDecodePath(requestPath: string): string | null {
+  try {
+    return decodeURIComponent(requestPath);
+  } catch {
+    return null;
+  }
+}
+
+function isDangerousStaticPath(requestPath: string): boolean {
+  if (requestPath.includes("\0")) return true;
+  if (requestPath.includes("\\")) return true;
+  if (requestPath.startsWith("/")) return true;
+  if (/^[a-zA-Z]:/.test(requestPath)) return true;
+
+  return requestPath.split("/").some((part) => part === "..");
+}
+
+function isPathInside(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(root.endsWith(sep) ? root : root + sep);
+}
+
+async function resolveFileOrFallback(root: string, candidate: string): Promise<string | null> {
+  const candidateFile = await statFile(candidate);
+
+  if (candidateFile === "file") return candidate;
+  if (candidateFile === "directory") {
+    const indexPath = resolve(candidate, "index.html");
+    return (await statFile(indexPath)) === "file" && isPathInside(root, indexPath) ? indexPath : null;
+  }
+
+  const fallback = resolve(root, "index.html");
+  return (await statFile(fallback)) === "file" ? fallback : null;
+}
+
+async function statFile(absolutePath: string): Promise<"file" | "directory" | "missing"> {
+  try {
+    const result = await stat(absolutePath);
+    if (result.isFile()) return "file";
+    if (result.isDirectory()) return "directory";
+    return "missing";
+  } catch {
+    return "missing";
+  }
 }
