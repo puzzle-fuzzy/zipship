@@ -589,8 +589,18 @@ describe("uploads routes", () => {
 
       const firstRelease = releases.data?.releases[0];
       expect(firstRelease).toBeDefined();
-      expect(firstRelease?.status).toBe("failed");
-      expect((firstRelease?.detectResult as { level: string }).level).toBe("failed");
+      if (!firstRelease) throw new Error("Expected failed release to be listed");
+      expect(firstRelease.status).toBe("failed");
+
+      const detectResult = firstRelease.detectResult as {
+        level: string;
+        items: Array<{ level: string; code: string; details?: Record<string, unknown> }>;
+      };
+      expect(detectResult.level).toBe("failed");
+      expect(detectResult.items.some((item) => item.code === "ENV_FILE_DETECTED")).toBe(true);
+      expect(firstRelease.fileCount).toBe(0);
+      // totalSize is the original zip size when detection fails
+      // (deploy-core doesn't process files for failed detections)
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
