@@ -88,7 +88,7 @@ interface ReleaseRecord {
   versionNumber: number;
   releaseHash: string;
   fullHash: string;
-  status: "processing";
+  status: "processing" | "ready" | "failed";
   storagePath: string;
   rawUploadPath: string;
   fileCount: number;
@@ -365,6 +365,50 @@ export function createInMemoryAuthRepository(): AuthRepository &
       uploadTask.status = "uploading";
       uploadTask.rawUploadPath = input.rawUploadPath;
       uploadTask.size = input.size;
+      uploadTasks.set(uploadTask.id, uploadTask);
+
+      return toUploadTask(uploadTask);
+    },
+
+    async completeProcessedRelease(input) {
+      const uploadTask = uploadTasks.get(input.uploadTaskId);
+      const release = releases.get(input.releaseId);
+
+      if (!uploadTask) throw new Error("Upload task not found");
+      if (!release) throw new Error("Release not found");
+
+      release.status = "ready";
+      release.releaseHash = input.releaseHash;
+      release.fullHash = input.fullHash;
+      release.storagePath = input.storagePath;
+      release.fileCount = input.fileCount;
+      release.totalSize = input.totalSize;
+      release.manifest = input.manifest;
+      release.detectResult = input.detectResult;
+      releases.set(release.id, release);
+
+      uploadTask.status = "completed";
+      uploadTask.errorMessage = null;
+      uploadTask.finishedAt = input.finishedAt;
+      uploadTasks.set(uploadTask.id, uploadTask);
+
+      return toUploadTask(uploadTask);
+    },
+
+    async failProcessedRelease(input) {
+      const uploadTask = uploadTasks.get(input.uploadTaskId);
+      const release = releases.get(input.releaseId);
+
+      if (!uploadTask) throw new Error("Upload task not found");
+      if (!release) throw new Error("Release not found");
+
+      release.status = "failed";
+      release.detectResult = input.detectResult;
+      releases.set(release.id, release);
+
+      uploadTask.status = "failed";
+      uploadTask.errorMessage = input.errorCode;
+      uploadTask.finishedAt = input.finishedAt;
       uploadTasks.set(uploadTask.id, uploadTask);
 
       return toUploadTask(uploadTask);

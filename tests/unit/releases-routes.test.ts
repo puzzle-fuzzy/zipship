@@ -1,9 +1,15 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
 
-async function registerLoginAndCreateProject() {
-  const api = treaty(createApp());
+function createTempStorageRoot() {
+  return mkdtempSync(join(tmpdir(), "zipship-api-release-"));
+}
+
+async function registerLoginAndCreateProject(api = treaty(createApp())) {
 
   await api._api.auth.register.post({
     name: "Ada Lovelace",
@@ -48,8 +54,10 @@ async function registerLoginAndCreateProject() {
 }
 
 async function createCompletedUpload() {
-  const context = await registerLoginAndCreateProject();
-  const created = await context.api._api.projects({ projectId: context.project.id }).uploads.post(
+  const storageRoot = createTempStorageRoot();
+  const api = treaty(createApp({ storageRoot }));
+  const context = await registerLoginAndCreateProject(api);
+  const created = await api._api.projects({ projectId: context.project.id }).uploads.post(
     {
       originalFilename: "dist.zip",
       size: 1024,
@@ -63,10 +71,17 @@ async function createCompletedUpload() {
   const uploadTask = created.data?.uploadTask;
 
   if (!uploadTask) {
+    rmSync(storageRoot, { recursive: true, force: true });
     throw new Error("Upload task creation unexpectedly returned no task");
   }
 
-  const completed = await context.api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+  const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/valid-vite-relative-base.zip")).arrayBuffer();
+  await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+    { file: new File([bytes], "dist.zip", { type: "application/zip" }) },
+    { headers: { authorization: `Bearer ${context.refreshToken}` } },
+  );
+
+  const completed = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
     headers: {
       authorization: `Bearer ${context.refreshToken}`,
     },
@@ -74,48 +89,53 @@ async function createCompletedUpload() {
   const completedTask = completed.data?.uploadTask;
 
   if (!completedTask?.releaseId) {
+    rmSync(storageRoot, { recursive: true, force: true });
     throw new Error("Upload task completion unexpectedly returned no release id");
   }
 
   return {
-    ...context,
+    api,
+    storageRoot,
+    refreshToken: context.refreshToken,
+    project: context.project,
     uploadTask: completedTask,
   };
 }
 
 describe("releases routes", () => {
   test("lists project releases created by completed upload tasks", async () => {
-    const { api, refreshToken, project, uploadTask } = await createCompletedUpload();
+    const { api, storageRoot, refreshToken, project, uploadTask } = await createCompletedUpload();
+    try {
+      const response = await api._api.projects({ projectId: project.id }).releases.get({
+        headers: {
+          authorization: `Bearer ${refreshToken}`,
+        },
+      });
 
-    const response = await api._api.projects({ projectId: project.id }).releases.get({
-      headers: {
-        authorization: `Bearer ${refreshToken}`,
-      },
-    });
+      expect(response.status).toBe(200);
+      expect(response.data?.releases).toHaveLength(1);
+      const release = response.data?.releases[0];
 
-    expect(response.status).toBe(200);
-    expect(response.data?.releases).toHaveLength(1);
-    const release = response.data?.releases[0];
-
-    expect(release?.releaseHash).toEqual(expect.any(String));
-    expect(release?.releaseHash).toHaveLength(32);
-    expect(release?.createdAt).toBeDefined();
-    expect(release).toMatchObject({
-      id: uploadTask.releaseId,
-      projectId: project.id,
-      versionNumber: 1,
-      fullHash: `pending:${uploadTask.id}`,
-      status: "processing",
-      storagePath: expect.stringContaining(project.id),
-      rawUploadPath: uploadTask.rawUploadPath,
-      fileCount: 0,
-      totalSize: 1024,
-      manifest: {},
-      detectResult: {},
-      createdBy: project.createdBy,
-      activatedAt: null,
-      archivedAt: null,
-    });
+      expect(release?.releaseHash).toEqual(expect.any(String));
+      expect(release?.releaseHash).toHaveLength(12);
+      expect(release?.createdAt).toBeDefined();
+      expect(release?.id).toBe(uploadTask.releaseId!);
+      expect(release?.projectId).toBe(project.id);
+      expect(release?.versionNumber).toBe(1);
+      expect(release?.fullHash).toEqual(expect.any(String));
+      expect(release?.status).toBe("ready");
+      expect(release?.storagePath).toEqual(expect.stringContaining(project.id));
+      expect(release?.rawUploadPath).toBe(uploadTask.rawUploadPath);
+      expect(release?.fileCount).toEqual(expect.any(Number));
+      expect(release?.totalSize).toEqual(expect.any(Number));
+      expect(release?.manifest).toEqual(expect.any(Object));
+      expect(release?.detectResult).toEqual(expect.any(Object));
+      expect(release?.createdBy).toBe(project.createdBy);
+      expect(release?.activatedAt).toBeNull();
+      expect(release?.archivedAt).toBeNull();
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
   });
 
   test("returns an empty list before a project has releases", async () => {

@@ -3,6 +3,8 @@ import { uploadModels, UploadServiceError } from "./model";
 import { UploadsService } from "./service";
 import type { UploadsRepository } from "./service";
 import type { StoragePaths } from "@zipship/storage";
+import { ReleaseProcessingError } from "../release-processing/model";
+import { ReleaseProcessingService } from "../release-processing/service";
 
 export interface UploadsModuleOptions {
   repository: UploadsRepository;
@@ -59,6 +61,12 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
     now: () => new Date(),
   });
 
+  const releaseProcessing = new ReleaseProcessingService({
+    repository: options.repository,
+    storagePaths: options.storagePaths,
+    now: () => new Date(),
+  });
+
   return new Elysia({ name: "upload-details", prefix: "/_api/uploads/:uploadTaskId" })
     .model(uploadModels)
     .get(
@@ -111,13 +119,30 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
     .post(
       "/complete",
       async ({ headers, params, status }) => {
+        // Step 1: Mark as processing
         const result = await uploads.complete(headers, params);
 
         if (result instanceof UploadServiceError) {
           return status(toCompleteStatusCode(result.code), { code: result.code });
         }
 
-        return result;
+        // Step 2: Process the release (extract, detect, manifest)
+        const processingResult = await releaseProcessing.processUploadTask(result.uploadTask.id);
+
+        // RAW_UPLOAD_REQUIRED is the only case that's an HTTP error
+        if (processingResult instanceof ReleaseProcessingError && processingResult.code === "RAW_UPLOAD_REQUIRED") {
+          return status(409, { code: "RAW_UPLOAD_REQUIRED" as const });
+        }
+
+        // All other processing results (success, DETECT_FAILED, DEPLOY_CORE_FAILED)
+        // are returned as 200 with the refreshed upload task
+        const refreshed = await uploads.get(headers, params);
+
+        if (refreshed instanceof UploadServiceError) {
+          return status(toCompleteStatusCode(refreshed.code), { code: refreshed.code });
+        }
+
+        return refreshed;
       },
       {
         headers: "Uploads.Headers",
@@ -151,6 +176,7 @@ function toCompleteStatusCode(code: string): 401 | 403 | 404 | 409 {
   if (code === "FORBIDDEN") return 403;
   if (code === "UPLOAD_TASK_NOT_PENDING") return 409;
   if (code === "UPLOAD_TASK_NOT_UPLOADING") return 409;
+  if (code === "RAW_UPLOAD_REQUIRED") return 409;
   return 404;
 }
 

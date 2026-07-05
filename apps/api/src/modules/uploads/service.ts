@@ -1,5 +1,6 @@
 import {
   InvalidUploadInputError,
+  RawUploadRequiredError,
   UploadForbiddenError,
   UploadProjectNotFoundError,
   UploadServiceError,
@@ -64,6 +65,25 @@ export interface UploadsRepository {
     uploadTaskId: string;
     rawUploadPath: string;
     size: number;
+  }): Promise<UploadTask>;
+  completeProcessedRelease(input: {
+    uploadTaskId: string;
+    releaseId: string;
+    releaseHash: string;
+    fullHash: string;
+    storagePath: string;
+    fileCount: number;
+    totalSize: number;
+    manifest: Record<string, unknown>;
+    detectResult: Record<string, unknown>;
+    finishedAt: Date;
+  }): Promise<UploadTask>;
+  failProcessedRelease(input: {
+    uploadTaskId: string;
+    releaseId: string;
+    errorCode: string;
+    detectResult: Record<string, unknown>;
+    finishedAt: Date;
   }): Promise<UploadTask>;
 }
 
@@ -197,7 +217,7 @@ export class UploadsService {
     const uploadTask = await this.options.repository.findUploadTaskById(params.uploadTaskId);
 
     if (!uploadTask) return new UploadTaskNotFoundError();
-    if (uploadTask.status !== "pending" && uploadTask.status !== "uploading") return new UploadTaskNotPendingError();
+    if (uploadTask.status !== "uploading") return new RawUploadRequiredError();
 
     const project = await this.options.repository.findProjectById(uploadTask.projectId);
 
