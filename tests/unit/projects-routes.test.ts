@@ -30,6 +30,40 @@ async function registerLoginAndGetOrganization() {
 }
 
 describe("projects routes", () => {
+  test("returns a project detail by id", async () => {
+    const { api, refreshToken, organizationId } = await registerLoginAndGetOrganization();
+    const created = await api._api.organizations({ organizationId }).projects.post(
+      {
+        name: "Marketing Site",
+        slug: "marketing-site",
+        description: "Launch pages",
+      },
+      {
+        headers: {
+          authorization: `Bearer ${refreshToken}`,
+        },
+      },
+    );
+    expect(created.data?.project).toBeDefined();
+    const projectId = created.data?.project.id ?? "";
+    const project = created.data?.project;
+
+    if (!project) {
+      throw new Error("Project creation unexpectedly returned no project");
+    }
+
+    const response = await api._api.projects({ projectId }).get({
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual({
+      project,
+    });
+  });
+
   test("creates and lists projects for the current organization", async () => {
     const { api, refreshToken, organizationId } = await registerLoginAndGetOrganization();
 
@@ -90,6 +124,32 @@ describe("projects routes", () => {
     expect(response.status).toBe(401);
     expect((response.error?.value as unknown)).toEqual({
       code: "UNAUTHORIZED",
+    });
+  });
+
+  test("returns unauthorized for project detail without a bearer token", async () => {
+    const api = treaty(createApp());
+
+    const response = await api._api.projects({ projectId: "project-1" }).get();
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  test("returns not found for an unknown project id", async () => {
+    const { api, refreshToken } = await registerLoginAndGetOrganization();
+
+    const response = await api._api.projects({ projectId: "missing-project" }).get({
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(404);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "PROJECT_NOT_FOUND",
     });
   });
 

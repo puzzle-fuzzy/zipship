@@ -69,6 +69,39 @@ export function projectsModule(options: ProjectsModuleOptions) {
     );
 }
 
+export function projectDetailsModule(options: ProjectsModuleOptions) {
+  const projects = new ProjectsService({
+    repository: options.repository,
+    hashRefreshToken: options.hashRefreshToken,
+    now: () => new Date(),
+  });
+
+  return new Elysia({ name: "project-details", prefix: "/_api/projects/:projectId" })
+    .model(projectModels)
+    .get(
+      "/",
+      async ({ headers, params, status }) => {
+        const result = await projects.get(headers, params);
+
+        if (result instanceof ProjectServiceError) {
+          return status(toDetailStatusCode(result.code), { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Projects.Headers",
+        params: "Projects.DetailParams",
+        response: {
+          200: "Projects.Detail",
+          401: "Projects.Error",
+          403: "Projects.Error",
+          404: "Projects.Error",
+        },
+      },
+    );
+}
+
 function toStatusCode(code: string): 400 | 401 | 403 | 409 {
   if (code === "UNAUTHORIZED") return 401;
   if (code === "FORBIDDEN") return 403;
@@ -78,5 +111,11 @@ function toStatusCode(code: string): 400 | 401 | 403 | 409 {
 
 function toListStatusCode(code: string): 401 | 403 {
   if (code === "UNAUTHORIZED") return 401;
+  return 403;
+}
+
+function toDetailStatusCode(code: string): 401 | 403 | 404 {
+  if (code === "UNAUTHORIZED") return 401;
+  if (code === "PROJECT_NOT_FOUND") return 404;
   return 403;
 }

@@ -233,6 +233,12 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
       return Array.from(projects.values()).filter((project) => project.organizationId === organizationId).map(toProject);
     },
 
+    async findProjectById(projectId) {
+      const project = projects.get(projectId);
+
+      return project ? toProject(project) : null;
+    },
+
     async createAuditLog(input) {
       const auditLog: AuditLogRecord = {
         id: crypto.randomUUID(),

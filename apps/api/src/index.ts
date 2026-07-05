@@ -3,7 +3,7 @@ import { config } from "@zipship/config";
 import { authModule, hashRefreshToken } from "./modules/auth";
 import { createInMemoryAuthRepository } from "./modules/auth/repository";
 import { organizationsModule } from "./modules/organizations";
-import { projectsModule } from "./modules/projects";
+import { projectDetailsModule, projectsModule } from "./modules/projects";
 
 export function createApp() {
   const repository = createInMemoryAuthRepository();
@@ -15,7 +15,8 @@ export function createApp() {
     }))
     .use(authModule({ repository }))
     .use(organizationsModule({ repository, hashRefreshToken }))
-    .use(projectsModule({ repository, hashRefreshToken }));
+    .use(projectsModule({ repository, hashRefreshToken }))
+    .use(projectDetailsModule({ repository, hashRefreshToken }));
 }
 
 export const app = createApp();

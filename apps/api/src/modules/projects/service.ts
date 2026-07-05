@@ -3,6 +3,7 @@ import {
   DuplicateProjectSlugError,
   InvalidProjectInputError,
   ProjectForbiddenError,
+  ProjectNotFoundError,
   ProjectServiceError,
   ProjectUnauthorizedError,
 } from "./model";
@@ -10,6 +11,8 @@ import type {
   CreateProjectBody,
   CreateProjectSuccess,
   Project,
+  ProjectDetail,
+  ProjectDetailParams,
   ProjectHeaders,
   ProjectList,
   ProjectParams,
@@ -52,6 +55,7 @@ export interface ProjectsRepository {
     now: Date;
   }): Promise<Project>;
   listProjectsForOrganization(organizationId: string): Promise<Project[]>;
+  findProjectById(projectId: string): Promise<Project | null>;
 }
 
 export interface ProjectsServiceOptions {
@@ -126,6 +130,28 @@ export class ProjectsService {
 
     return {
       projects: await this.options.repository.listProjectsForOrganization(params.organizationId),
+    };
+  }
+
+  async get(headers: ProjectHeaders, params: ProjectDetailParams): Promise<ProjectDetail | ProjectServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+
+    if (currentUser instanceof ProjectServiceError) return currentUser;
+
+    const project = await this.options.repository.findProjectById(params.projectId);
+
+    if (!project) return new ProjectNotFoundError();
+
+    const membership = await this.options.repository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+
+    if (!membership) return new ProjectForbiddenError();
+    if (!this.permissions.can(membership.role, "view_project")) return new ProjectForbiddenError();
+
+    return {
+      project,
     };
   }
 
