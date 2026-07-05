@@ -6,9 +6,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test tests"
+  },
+  "dependencies": {
+    "yauzl": "catalog:"
   },
   "devDependencies": {
+    "@types/yauzl": "catalog:",
     "typescript": "catalog:"
   }
 }
