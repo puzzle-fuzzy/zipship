@@ -10,7 +10,13 @@ export const organizationListModel = t.Object({
       id: t.String(),
       name: t.String(),
       slug: t.String(),
-      role: t.Literal("owner"),
+      role: t.Union([
+        t.Literal("owner"),
+        t.Literal("admin"),
+        t.Literal("developer"),
+        t.Literal("deployer"),
+        t.Literal("viewer"),
+      ]),
     }),
   ),
 });

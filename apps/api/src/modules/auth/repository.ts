@@ -2,6 +2,9 @@ import type { AuthRepository } from "./service";
 import type { AuditLog } from "../audit/model";
 import type { AuditRepository } from "../audit/service";
 import type { OrganizationsRepository } from "../organizations/service";
+import type { MemberRole } from "../permissions/model";
+import type { Project } from "../projects/model";
+import type { ProjectsRepository } from "../projects/service";
 
 interface UserRecord {
   id: string;
@@ -21,7 +24,7 @@ interface MemberRecord {
   id: string;
   organizationId: string;
   userId: string;
-  role: "owner";
+  role: MemberRole;
   status: "active";
 }
 
@@ -47,12 +50,26 @@ interface AuditLogRecord {
   createdAt: Date;
 }
 
-export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository & AuditRepository {
+interface ProjectRecord {
+  id: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: "active";
+  visibility: "private";
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository & AuditRepository & ProjectsRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
   const sessions = new Map<string, SessionRecord>();
   const auditLogs = new Map<string, AuditLogRecord>();
+  const projects = new Map<string, ProjectRecord>();
 
   return {
     async emailExists(email) {
@@ -97,7 +114,7 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
         },
         member: {
           id: member.id,
-          role: member.role,
+          role: input.member.role,
         },
       };
     },
@@ -174,6 +191,48 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
         .filter((organization): organization is NonNullable<typeof organization> => organization !== null);
     },
 
+    async findMembership(input) {
+      const member = Array.from(members.values()).find(
+        (candidate) =>
+          candidate.organizationId === input.organizationId && candidate.userId === input.userId && candidate.status === "active",
+      );
+
+      if (!member) return null;
+
+      return {
+        role: member.role,
+      };
+    },
+
+    async projectSlugExists(input) {
+      return Array.from(projects.values()).some(
+        (project) => project.organizationId === input.organizationId && project.slug === input.slug,
+      );
+    },
+
+    async createProject(input) {
+      const project: ProjectRecord = {
+        id: crypto.randomUUID(),
+        organizationId: input.organizationId,
+        name: input.name,
+        slug: input.slug,
+        description: input.description,
+        status: "active",
+        visibility: "private",
+        createdBy: input.createdBy,
+        createdAt: input.now,
+        updatedAt: input.now,
+      };
+
+      projects.set(project.id, project);
+
+      return toProject(project);
+    },
+
+    async listProjectsForOrganization(organizationId) {
+      return Array.from(projects.values()).filter((project) => project.organizationId === organizationId).map(toProject);
+    },
+
     async createAuditLog(input) {
       const auditLog: AuditLogRecord = {
         id: crypto.randomUUID(),
@@ -184,6 +243,21 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
 
       return toAuditLog(auditLog);
     },
+  };
+}
+
+function toProject(record: ProjectRecord): Project {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    name: record.name,
+    slug: record.slug,
+    description: record.description,
+    status: record.status,
+    visibility: record.visibility,
+    createdBy: record.createdBy,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
   };
 }
 
