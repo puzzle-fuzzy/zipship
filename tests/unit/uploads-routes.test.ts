@@ -577,6 +577,7 @@ describe("uploads routes", () => {
 
       expect(completed.status).toBe(200);
       const completedData = completed.data?.uploadTask;
+      if (!completedData) throw new Error("Upload completion unexpectedly returned no task");
       expect(completedData?.status).toBe("failed");
 
       // The error message should indicate detection failure
