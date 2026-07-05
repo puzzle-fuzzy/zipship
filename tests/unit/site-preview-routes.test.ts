@@ -85,6 +85,39 @@ async function createReadyRelease(storageRoot: string) {
   };
 }
 
+async function createFailedRelease(storageRoot: string) {
+  const app = createApp({ storageRoot });
+  const api = treaty(app);
+  const { refreshToken, project } = await registerLoginAndCreateProject(api);
+  const created = await api._api.projects({ projectId: project.id }).uploads.post(
+    { originalFilename: "dist.zip", size: 1024 },
+    { headers: { authorization: `Bearer ${refreshToken}` } },
+  );
+  const uploadTask = created.data?.uploadTask;
+  if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+  const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/dot-env.zip")).arrayBuffer();
+  await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+    { file: new File([bytes], "dist.zip", { type: "application/zip" }) },
+    { headers: { authorization: `Bearer ${refreshToken}` } },
+  );
+  await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+    headers: { authorization: `Bearer ${refreshToken}` },
+  });
+
+  const releases = await api._api.projects({ projectId: project.id }).releases.get({
+    headers: { authorization: `Bearer ${refreshToken}` },
+  });
+  const release = releases.data?.releases[0];
+  if (!release) throw new Error("Release listing unexpectedly returned no release");
+
+  return {
+    app,
+    project,
+    release,
+  };
+}
+
 describe("site preview routes", () => {
   test("rejects path traversal outside a ready release storage root", async () => {
     const storageRoot = createTempStorageRoot();
@@ -142,6 +175,75 @@ describe("site preview routes", () => {
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toContain("text/html");
       expect(await response.text()).toContain("./assets/index.js");
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 404 for an unknown project slug", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const { app, release } = await createReadyRelease(storageRoot);
+
+      const response = await app.handle(new Request(`http://localhost/_sites/missing-site/${release.releaseHash}/`));
+
+      expect(response.status).toBe(404);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 404 for an unknown release hash", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const { app, project } = await createReadyRelease(storageRoot);
+
+      const response = await app.handle(new Request(`http://localhost/_sites/${project.slug}/missinghash123/`));
+
+      expect(response.status).toBe(404);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("returns 404 for a failed release preview", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const { app, project, release } = await createFailedRelease(storageRoot);
+
+      const response = await app.handle(new Request(`http://localhost/_sites/${project.slug}/${release.releaseHash}/`));
+
+      expect(response.status).toBe(404);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects encoded traversal paths", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const { app, project, release } = await createReadyRelease(storageRoot);
+
+      const response = await app.handle(
+        new Request(`http://localhost/_sites/${project.slug}/${release.releaseHash}/%2e%2e/secret.txt`),
+      );
+
+      expect(response.status).toBe(404);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects backslash traversal paths", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const { app, project, release } = await createReadyRelease(storageRoot);
+
+      const response = await app.handle(
+        new Request(`http://localhost/_sites/${project.slug}/${release.releaseHash}/..%5Csecret.txt`),
+      );
+
+      expect(response.status).toBe(404);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
