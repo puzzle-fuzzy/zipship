@@ -45,6 +45,29 @@ export function deploymentsModule(options: DeploymentsModuleOptions) {
         },
       },
     )
+    .post(
+      "/releases/:releaseId/rollback",
+      async ({ headers, params, body, status }) => {
+        const result = await deployments.rollback(headers, params, body);
+        if (result instanceof DeploymentServiceError) {
+          return status(toStatusCode(result.code), { code: result.code });
+        }
+        return result;
+      },
+      {
+        headers: "Deployments.Headers",
+        params: "Deployments.ReleaseParams",
+        body: "Deployments.Body",
+        response: {
+          200: "Deployments.Result",
+          400: "Deployments.Error",
+          401: "Deployments.Error",
+          403: "Deployments.Error",
+          404: "Deployments.Error",
+          409: "Deployments.Error",
+        },
+      },
+    )
     .get(
       "/deployments",
       async ({ headers, params, status }) => {

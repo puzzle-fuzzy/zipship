@@ -310,4 +310,155 @@ describe("deployments routes", () => {
       rmSync(storageRoot, { recursive: true, force: true });
     }
   });
+
+
+  test("rolls back to a previous ready release and records deployment and audit", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const firstRelease = await createReadyRelease(api, project.id, refreshToken);
+      const secondRelease = await createReadyRelease(api, project.id, refreshToken);
+
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: secondRelease.id }).publish.post(
+        { message: "Ship v2" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).rollback.post(
+        { message: "Back to v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.data?.deployment).toMatchObject({
+        projectId: project.id,
+        releaseId: firstRelease.id,
+        previousReleaseId: secondRelease.id,
+        action: "rollback",
+        status: "success",
+        message: "Back to v1",
+      });
+      expect(response.data?.project.currentReleaseId).toBe(firstRelease.id);
+      expect(response.data?.release).toMatchObject({ id: firstRelease.id, status: "active" });
+      expect(response.data?.previousRelease).toMatchObject({ id: secondRelease.id, status: "ready" });
+
+      const auditResponse = await api._api.__test.auditLogs.get();
+      expect(auditResponse.data?.auditLogs).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            projectId: project.id,
+            action: "release.rolled_back",
+            targetType: "release",
+            targetId: firstRelease.id,
+            metadata: expect.objectContaining({
+              releaseId: firstRelease.id,
+              previousReleaseId: secondRelease.id,
+              message: "Back to v1",
+            }),
+          }),
+        ]),
+      );
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects rollback without permission, to current release, and to non-ready releases", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const api = treaty(app);
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const firstRelease = await createReadyRelease(api, project.id, refreshToken);
+      const secondRelease = await createReadyRelease(api, project.id, refreshToken);
+
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const currentResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).rollback.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(currentResponse.status).toBe(409);
+      expect((currentResponse.error?.value as unknown)).toEqual({ code: "RELEASE_ALREADY_ACTIVE" });
+
+      await app.handle(
+        new Request("http://localhost/_api/__test/memberRole", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: project.createdBy, organizationId: project.organizationId, role: "developer" }),
+        }),
+      );
+      const forbiddenResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: secondRelease.id }).rollback.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(forbiddenResponse.status).toBe(403);
+      expect((forbiddenResponse.error?.value as unknown)).toEqual({ code: "FORBIDDEN" });
+
+      await app.handle(
+        new Request("http://localhost/_api/__test/memberRole", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ userId: project.createdBy, organizationId: project.organizationId, role: "owner" }),
+        }),
+      );
+      await app.handle(
+        new Request("http://localhost/_api/__test/releaseState", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ releaseId: secondRelease.id, status: "failed", archived: false }),
+        }),
+      );
+      const failedResponse = await api._api.projects({ projectId: project.id }).releases({ releaseId: secondRelease.id }).rollback.post(
+        { message: null },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      expect(failedResponse.status).toBe(409);
+      expect((failedResponse.error?.value as unknown)).toEqual({ code: "RELEASE_NOT_ROLLBACKABLE" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("lists deployments newest first for project viewers", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const firstRelease = await createReadyRelease(api, project.id, refreshToken);
+      const secondRelease = await createReadyRelease(api, project.id, refreshToken);
+
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: secondRelease.id }).publish.post(
+        { message: "Ship v2" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      await api._api.projects({ projectId: project.id }).releases({ releaseId: firstRelease.id }).rollback.post(
+        { message: "Back to v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const response = await api._api.projects({ projectId: project.id }).deployments.get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.data?.deployments.map((deployment) => deployment.action)).toEqual(["rollback", "publish", "publish"]);
+      expect(response.data?.deployments[0]?.releaseId).toBe(firstRelease.id);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
 });

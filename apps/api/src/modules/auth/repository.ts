@@ -470,7 +470,11 @@ export function createInMemoryAuthRepository(): AuthRepository &
     async listDeploymentsForProject(projectId) {
       return Array.from(deployments.values())
         .filter((deployment) => deployment.projectId === projectId)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+        .sort((left, right) => {
+          const timeDifference = right.createdAt.getTime() - left.createdAt.getTime();
+          if (timeDifference !== 0) return timeDifference;
+          return Array.from(deployments.keys()).indexOf(right.id) - Array.from(deployments.keys()).indexOf(left.id);
+        })
         .map(toDeployment);
     },
 

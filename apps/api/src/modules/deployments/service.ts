@@ -7,8 +7,10 @@ import type { Release } from "../releases/model";
 import {
   DeploymentForbiddenError,
   DeploymentProjectNotFoundError,
+  DeploymentReleaseAlreadyActiveError,
   DeploymentReleaseNotFoundError,
   DeploymentReleaseNotReadyError,
+  DeploymentReleaseNotRollbackableError,
   DeploymentServiceError,
   DeploymentUnauthorizedError,
 } from "./model";
@@ -171,6 +173,57 @@ export class DeploymentsService {
     return {
       deployments: await this.options.repository.listDeploymentsForProject(project.id),
     };
+  }
+
+  async rollback(
+    headers: DeploymentHeaders,
+    params: DeploymentReleaseParams,
+    body: DeploymentBody,
+  ): Promise<DeploymentResult | DeploymentServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+    if (currentUser instanceof DeploymentServiceError) return currentUser;
+
+    const project = await this.options.repository.findProjectById(params.projectId);
+    if (!project) return new DeploymentProjectNotFoundError();
+
+    const membership = await this.options.repository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+    if (!membership) return new DeploymentForbiddenError();
+    if (!this.permissions.can(membership.role, "rollback_release")) return new DeploymentForbiddenError();
+
+    const release = await this.options.repository.findReleaseById(params.releaseId);
+    if (!release || release.projectId !== project.id) return new DeploymentReleaseNotFoundError();
+    if (release.id === project.currentReleaseId) return new DeploymentReleaseAlreadyActiveError();
+    if (release.status !== "ready" || release.archivedAt !== null) return new DeploymentReleaseNotRollbackableError();
+
+    const result = await this.options.repository.rollbackRelease({
+      projectId: project.id,
+      releaseId: release.id,
+      operatorId: currentUser.user.id,
+      message: normalizeMessage(body.message),
+      now: this.options.now(),
+    });
+
+    await this.audit.record({
+      organizationId: project.organizationId,
+      projectId: project.id,
+      actorId: currentUser.user.id,
+      action: "release.rolled_back",
+      targetType: "release",
+      targetId: release.id,
+      metadata: {
+        releaseId: release.id,
+        previousReleaseId: result.deployment.previousReleaseId,
+        deploymentId: result.deployment.id,
+        message: result.deployment.message,
+      },
+      ipAddress: null,
+      userAgent: null,
+    });
+
+    return result;
   }
 
   private async requireCurrentUser(headers: DeploymentHeaders) {
