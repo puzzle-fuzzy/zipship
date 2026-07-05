@@ -26,7 +26,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   if (options.exposeTestRoutes) {
     api.get("/_api/__test/auditLogs", async () => ({
-      auditLogs: await (repository as any).listAuditLogsForTest(),
+      auditLogs: await repository.listAuditLogsForTest(),
     }));
   }
 

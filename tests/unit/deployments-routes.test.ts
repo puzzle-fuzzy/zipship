@@ -101,7 +101,7 @@ describe("deployments routes", () => {
         status: "active",
         previewUrl: `/_sites/${project.slug}/${release.releaseHash}/`,
       });
-      expect(response.data?.release.activatedAt).toBeTruthy();
+      expect(response.data?.release.activatedAt).toEqual(expect.any(Date));
       expect(response.data?.previousRelease).toBeNull();
 
       const deployments = await api._api.projects({ projectId: project.id }).deployments.get({
