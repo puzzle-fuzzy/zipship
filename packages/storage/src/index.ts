@@ -1,4 +1,4 @@
-import { cp, mkdir, rm, stat } from "fs/promises";
+import { cp, mkdir, realpath, rm, stat } from "fs/promises";
 import { dirname, extname, join, resolve, sep } from "path";
 
 export interface StoragePaths {
@@ -73,6 +73,14 @@ export async function resolveStaticAssetPath(input: {
   requestPath: string;
 }): Promise<StaticAssetResolution> {
   const root = resolve(input.rootDir);
+
+  let resolvedRoot: string;
+  try {
+    resolvedRoot = await realpath(root);
+  } catch {
+    return { kind: "not-found" };
+  }
+
   const decodedPath = safeDecodePath(input.requestPath);
 
   if (decodedPath === null || isDangerousStaticPath(decodedPath)) {
@@ -80,13 +88,21 @@ export async function resolveStaticAssetPath(input: {
   }
 
   const cleanPath = decodedPath.replace(/^\/+/, "");
-  const candidate = resolve(root, cleanPath || "index.html");
+  const candidate = resolve(resolvedRoot, cleanPath || "index.html");
 
-  if (!isPathInside(root, candidate)) {
+  let resolvedCandidate: string;
+  try {
+    resolvedCandidate = await realpath(candidate);
+  } catch {
+    // Path does not exist — no symlink to traverse; stay with resolved path
+    resolvedCandidate = candidate;
+  }
+
+  if (!isPathInside(resolvedRoot, resolvedCandidate)) {
     return { kind: "not-found" };
   }
 
-  const filePath = await resolveFileOrFallback(root, candidate);
+  const filePath = await resolveFileOrFallback(resolvedRoot, resolvedCandidate);
 
   if (!filePath) return { kind: "not-found" };
 
@@ -124,7 +140,13 @@ export function contentTypeForPath(absolutePath: string): string {
 
 function safeDecodePath(requestPath: string): string | null {
   try {
-    return decodeURIComponent(requestPath);
+    let prev = requestPath;
+    for (let i = 0; i < 5; i++) {
+      const decoded = decodeURIComponent(prev);
+      if (decoded === prev) break;
+      prev = decoded;
+    }
+    return prev;
   } catch {
     return null;
   }

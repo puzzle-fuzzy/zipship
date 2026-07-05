@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { contentTypeForPath, resolveStaticAssetPath } from "../../packages/storage/src/index";
@@ -16,6 +16,7 @@ describe("resolveStaticAssetPath", () => {
       writeFileSync(join(root, "index.html"), "<script src=\"./assets/index.js\"></script>");
       writeFileSync(join(root, "assets/index.js"), "console.log('zipship')");
 
+      const resolvedRoot = realpathSync(root);
       const resolved = await resolveStaticAssetPath({
         rootDir: root,
         requestPath: "assets/index.js",
@@ -23,7 +24,7 @@ describe("resolveStaticAssetPath", () => {
 
       expect(resolved).toEqual({
         kind: "file",
-        absolutePath: join(root, "assets/index.js"),
+        absolutePath: join(resolvedRoot, "assets/index.js"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -35,6 +36,7 @@ describe("resolveStaticAssetPath", () => {
     try {
       writeFileSync(join(root, "index.html"), "<main>app</main>");
 
+      const resolvedRoot = realpathSync(root);
       const resolved = await resolveStaticAssetPath({
         rootDir: root,
         requestPath: "dashboard/settings",
@@ -42,7 +44,7 @@ describe("resolveStaticAssetPath", () => {
 
       expect(resolved).toEqual({
         kind: "file",
-        absolutePath: join(root, "index.html"),
+        absolutePath: join(resolvedRoot, "index.html"),
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
