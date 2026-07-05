@@ -9,6 +9,7 @@ import type { Release } from "../releases/model";
 import type { ReleasesRepository } from "../releases/service";
 import type { UploadTask } from "../uploads/model";
 import type { UploadsRepository } from "../uploads/service";
+import type { SitePreviewRepository } from "../site-preview/service";
 
 interface UserRecord {
   id: string;
@@ -106,7 +107,8 @@ export function createInMemoryAuthRepository(): AuthRepository &
   AuditRepository &
   ProjectsRepository &
   ReleasesRepository &
-  UploadsRepository {
+  UploadsRepository &
+  SitePreviewRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
@@ -282,11 +284,29 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return project ? toProject(project) : null;
     },
 
+    async findProjectBySlug(slug) {
+      const project = Array.from(projects.values()).find((candidate) => candidate.slug === slug);
+
+      return project ? toProject(project) : null;
+    },
+
     async listReleasesForProject(projectId) {
       return Array.from(releases.values())
         .filter((release) => release.projectId === projectId)
         .sort((left, right) => right.versionNumber - left.versionNumber)
         .map(toRelease);
+    },
+
+    async findReadyReleaseByProjectIdAndHash(input) {
+      const release = Array.from(releases.values()).find(
+        (candidate) =>
+          candidate.projectId === input.projectId &&
+          candidate.releaseHash === input.releaseHash &&
+          candidate.status === "ready" &&
+          candidate.archivedAt === null,
+      );
+
+      return release ? toRelease(release) : null;
     },
 
     async createUploadTask(input) {

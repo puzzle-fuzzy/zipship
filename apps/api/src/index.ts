@@ -7,6 +7,7 @@ import { organizationsModule } from "./modules/organizations";
 import { projectDetailsModule, projectsModule } from "./modules/projects";
 import { releasesModule } from "./modules/releases";
 import { uploadDetailsModule, uploadsModule } from "./modules/uploads";
+import { sitePreviewModule } from "./modules/site-preview";
 
 export interface CreateAppOptions {
   storageRoot?: string;
@@ -27,7 +28,8 @@ export function createApp(options: CreateAppOptions = {}) {
     .use(projectDetailsModule({ repository, hashRefreshToken }))
     .use(releasesModule({ repository, hashRefreshToken }))
     .use(uploadsModule({ repository, hashRefreshToken, storagePaths }))
-    .use(uploadDetailsModule({ repository, hashRefreshToken, storagePaths }));
+    .use(uploadDetailsModule({ repository, hashRefreshToken, storagePaths }))
+    .use(sitePreviewModule({ repository }));
 }
 
 export const app = createApp();
