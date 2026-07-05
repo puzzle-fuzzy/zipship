@@ -69,7 +69,7 @@ interface UploadTaskRecord {
   id: string;
   projectId: string;
   releaseId: string | null;
-  status: "pending";
+  status: "pending" | "processing";
   rawUploadPath: string;
   originalFilename: string;
   size: number;
@@ -287,6 +287,20 @@ export function createInMemoryAuthRepository(): AuthRepository &
       const uploadTask = uploadTasks.get(uploadTaskId);
 
       return uploadTask ? toUploadTask(uploadTask) : null;
+    },
+
+    async markUploadTaskProcessing(input) {
+      const uploadTask = uploadTasks.get(input.uploadTaskId);
+
+      if (!uploadTask) {
+        throw new Error("Upload task not found");
+      }
+
+      uploadTask.status = "processing";
+      uploadTask.startedAt = input.now;
+      uploadTasks.set(uploadTask.id, uploadTask);
+
+      return toUploadTask(uploadTask);
     },
 
     async createAuditLog(input) {

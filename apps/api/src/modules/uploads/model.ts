@@ -21,7 +21,7 @@ export const uploadTaskModel = t.Object({
   id: t.String(),
   projectId: t.String(),
   releaseId: t.Nullable(t.String()),
-  status: t.Literal("pending"),
+  status: t.Union([t.Literal("pending"), t.Literal("processing")]),
   rawUploadPath: t.String(),
   originalFilename: t.String(),
   size: t.Number(),
@@ -46,6 +46,7 @@ export const uploadErrorModel = t.Object({
     t.Literal("FORBIDDEN"),
     t.Literal("PROJECT_NOT_FOUND"),
     t.Literal("UPLOAD_TASK_NOT_FOUND"),
+    t.Literal("UPLOAD_TASK_NOT_PENDING"),
     t.Literal("INVALID_UPLOAD_INPUT"),
     t.Literal("VALIDATION_ERROR"),
   ]),
@@ -95,6 +96,12 @@ export class UploadProjectNotFoundError extends UploadServiceError {
 export class UploadTaskNotFoundError extends UploadServiceError {
   constructor() {
     super("UPLOAD_TASK_NOT_FOUND");
+  }
+}
+
+export class UploadTaskNotPendingError extends UploadServiceError {
+  constructor() {
+    super("UPLOAD_TASK_NOT_PENDING");
   }
 }
 

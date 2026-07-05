@@ -73,6 +73,32 @@ async function registerLoginCreateProjectAndUploadTask() {
 }
 
 describe("uploads routes", () => {
+  test("marks a pending upload task as processing when completed", async () => {
+    const { api, refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask();
+
+    const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data).toMatchObject({
+      uploadTask: {
+        id: uploadTask.id,
+        projectId: uploadTask.projectId,
+        status: "processing",
+        rawUploadPath: uploadTask.rawUploadPath,
+        originalFilename: "dist.zip",
+        size: 1024,
+        errorMessage: null,
+        createdBy: uploadTask.createdBy,
+        finishedAt: null,
+      },
+    });
+    expect(response.data?.uploadTask.startedAt).toBeInstanceOf(Date);
+  });
+
   test("returns an upload task detail by id", async () => {
     const { api, refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask();
 
@@ -146,6 +172,17 @@ describe("uploads routes", () => {
     });
   });
 
+  test("returns unauthorized when completing an upload task without a bearer token", async () => {
+    const api = treaty(createApp());
+
+    const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).complete.post(null);
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UNAUTHORIZED",
+    });
+  });
+
   test("returns not found for an unknown upload task id", async () => {
     const { api, refreshToken } = await registerLoginAndCreateProject();
 
@@ -158,6 +195,41 @@ describe("uploads routes", () => {
     expect(response.status).toBe(404);
     expect((response.error?.value as unknown)).toEqual({
       code: "UPLOAD_TASK_NOT_FOUND",
+    });
+  });
+
+  test("returns not found when completing an unknown upload task id", async () => {
+    const { api, refreshToken } = await registerLoginAndCreateProject();
+
+    const response = await api._api.uploads({ uploadTaskId: "missing-upload-task" }).complete.post(null, {
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(404);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UPLOAD_TASK_NOT_FOUND",
+    });
+  });
+
+  test("rejects completing an upload task that is not pending", async () => {
+    const { api, refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask();
+
+    await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+    const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+      headers: {
+        authorization: `Bearer ${refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(409);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UPLOAD_TASK_NOT_PENDING",
     });
   });
 

@@ -4,6 +4,7 @@ import {
   UploadProjectNotFoundError,
   UploadServiceError,
   UploadTaskNotFoundError,
+  UploadTaskNotPendingError,
   UploadUnauthorizedError,
 } from "./model";
 import type {
@@ -50,6 +51,10 @@ export interface UploadsRepository {
     now: Date;
   }): Promise<UploadTask>;
   findUploadTaskById(uploadTaskId: string): Promise<UploadTask | null>;
+  markUploadTaskProcessing(input: {
+    uploadTaskId: string;
+    now: Date;
+  }): Promise<UploadTask>;
 }
 
 export interface UploadsServiceOptions {
@@ -127,6 +132,36 @@ export class UploadsService {
 
     return {
       uploadTask,
+    };
+  }
+
+  async complete(headers: UploadHeaders, params: UploadDetailParams): Promise<UploadTaskDetail | UploadServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+
+    if (currentUser instanceof UploadServiceError) return currentUser;
+
+    const uploadTask = await this.options.repository.findUploadTaskById(params.uploadTaskId);
+
+    if (!uploadTask) return new UploadTaskNotFoundError();
+    if (uploadTask.status !== "pending") return new UploadTaskNotPendingError();
+
+    const project = await this.options.repository.findProjectById(uploadTask.projectId);
+
+    if (!project) return new UploadProjectNotFoundError();
+
+    const membership = await this.options.repository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+
+    if (!membership) return new UploadForbiddenError();
+    if (!this.permissions.can(membership.role, "upload_release")) return new UploadForbiddenError();
+
+    return {
+      uploadTask: await this.options.repository.markUploadTaskProcessing({
+        uploadTaskId: uploadTask.id,
+        now: this.options.now(),
+      }),
     };
   }
 

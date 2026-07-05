@@ -78,6 +78,29 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
           404: "Uploads.Error",
         },
       },
+    )
+    .post(
+      "/complete",
+      async ({ headers, params, status }) => {
+        const result = await uploads.complete(headers, params);
+
+        if (result instanceof UploadServiceError) {
+          return status(toCompleteStatusCode(result.code), { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Uploads.Headers",
+        params: "Uploads.DetailParams",
+        response: {
+          200: "Uploads.Detail",
+          401: "Uploads.Error",
+          403: "Uploads.Error",
+          404: "Uploads.Error",
+          409: "Uploads.Error",
+        },
+      },
     );
 }
 
@@ -91,5 +114,12 @@ function toStatusCode(code: string): 400 | 401 | 403 | 404 {
 function toDetailStatusCode(code: string): 401 | 403 | 404 {
   if (code === "UNAUTHORIZED") return 401;
   if (code === "FORBIDDEN") return 403;
+  return 404;
+}
+
+function toCompleteStatusCode(code: string): 401 | 403 | 404 | 409 {
+  if (code === "UNAUTHORIZED") return 401;
+  if (code === "FORBIDDEN") return 403;
+  if (code === "UPLOAD_TASK_NOT_PENDING") return 409;
   return 404;
 }
