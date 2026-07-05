@@ -347,7 +347,7 @@ describe("deployments routes", () => {
       expect(response.data?.release).toMatchObject({ id: firstRelease.id, status: "active" });
       expect(response.data?.previousRelease).toMatchObject({ id: secondRelease.id, status: "ready" });
 
-      const auditResponse = await api._api.__test.auditLogs.get();
+      const auditResponse = await (api._api as any).__test.auditLogs.get();
       expect(auditResponse.data?.auditLogs).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
