@@ -417,6 +417,120 @@ describe("uploads routes", () => {
     }
   });
 
+  test("returns unauthorized when uploading raw zip without a bearer token", async () => {
+    const api = treaty(createApp());
+    const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).raw.put({
+      file: new File(["zip"], "dist.zip", { type: "application/zip" }),
+    });
+
+    expect(response.status).toBe(401);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UNAUTHORIZED",
+    });
+  });
+
+  test("returns not found when uploading raw zip for an unknown upload task", async () => {
+    const { api, refreshToken } = await registerLoginAndCreateProject();
+
+    const response = await api._api.uploads({ uploadTaskId: "missing-upload-task" }).raw.put(
+      { file: new File(["zip"], "dist.zip", { type: "application/zip" }) },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(404);
+    expect((response.error?.value as unknown)).toEqual({
+      code: "UPLOAD_TASK_NOT_FOUND",
+    });
+  });
+
+  test("writes raw zip bytes to the configured storage root", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const created = await api._api.projects({ projectId: project.id }).uploads.post(
+        { originalFilename: "dist.zip", size: 1024 },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const uploadTask = created.data?.uploadTask;
+      if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+      const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/valid-vite-relative-base.zip")).arrayBuffer();
+      const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        { file: new File([bytes], "ignored-client-name.zip", { type: "application/zip" }) },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const rawPath = response.data?.uploadTask.rawUploadPath;
+      expect(response.status).toBe(200);
+      expect(rawPath).toContain(storageRoot);
+      expect(rawPath).toContain(project.id);
+      expect(rawPath).toContain(uploadTask.id);
+      expect(rawPath?.endsWith("/dist.zip")).toBe(true);
+      expect(existsSync(rawPath ?? "")).toBe(true);
+      expect(Bun.file(rawPath ?? "").size).toBe(bytes.byteLength);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects raw upload after an upload task is completed", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const created = await api._api.projects({ projectId: project.id }).uploads.post(
+        { originalFilename: "dist.zip", size: 1024 },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const uploadTask = created.data?.uploadTask;
+      if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+      const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/valid-vite-relative-base.zip")).arrayBuffer();
+      await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        { file: new File([bytes], "dist.zip", { type: "application/zip" }) },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+
+      const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        { file: new File([bytes], "dist.zip", { type: "application/zip" }) },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      expect(response.status).toBe(409);
+      expect((response.error?.value as unknown)).toEqual({
+        code: "UPLOAD_TASK_NOT_PENDING",
+      });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("returns stable validation error for malformed raw upload bodies", async () => {
+    const direct = createApp();
+    const directApi = treaty(direct);
+    const { refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask(directApi);
+
+    const response = await direct.handle(
+      new Request(`http://localhost/_api/uploads/${uploadTask.id}/raw`, {
+        method: "PUT",
+        headers: {
+          authorization: `Bearer ${refreshToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      code: "VALIDATION_ERROR",
+    });
+  });
+
   test("rejects completing before raw zip upload exists", async () => {
     const storageRoot = createTempStorageRoot();
     try {

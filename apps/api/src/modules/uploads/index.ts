@@ -69,6 +69,11 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
 
   return new Elysia({ name: "upload-details", prefix: "/_api/uploads/:uploadTaskId" })
     .model(uploadModels)
+    .onError(({ code, status }) => {
+      if (code === "VALIDATION") {
+        return status(400, { code: "VALIDATION_ERROR" as const });
+      }
+    })
     .get(
       "/",
       async ({ headers, params, status }) => {
