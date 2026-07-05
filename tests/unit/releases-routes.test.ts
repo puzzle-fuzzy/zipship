@@ -10,7 +10,6 @@ function createTempStorageRoot() {
 }
 
 async function registerLoginAndCreateProject(api = treaty(createApp())) {
-
   await api._api.auth.register.post({
     name: "Ada Lovelace",
     email: "ada@example.com",

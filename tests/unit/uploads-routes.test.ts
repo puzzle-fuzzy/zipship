@@ -10,7 +10,6 @@ function createTempStorageRoot() {
 }
 
 async function registerLoginAndCreateProject(api = treaty(createApp())) {
-
   await api._api.auth.register.post({
     name: "Ada Lovelace",
     email: "ada@example.com",
@@ -599,8 +598,7 @@ describe("uploads routes", () => {
       expect(detectResult.level).toBe("failed");
       expect(detectResult.items.some((item) => item.code === "ENV_FILE_DETECTED")).toBe(true);
       expect(firstRelease.fileCount).toBe(0);
-      // totalSize is the original zip size when detection fails
-      // (deploy-core doesn't process files for failed detections)
+      expect(firstRelease.totalSize).toBe(completedData?.size);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
