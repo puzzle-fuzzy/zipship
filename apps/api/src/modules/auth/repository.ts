@@ -5,6 +5,8 @@ import type { OrganizationsRepository } from "../organizations/service";
 import type { MemberRole } from "../permissions/model";
 import type { Project } from "../projects/model";
 import type { ProjectsRepository } from "../projects/service";
+import type { UploadTask } from "../uploads/model";
+import type { UploadsRepository } from "../uploads/service";
 
 interface UserRecord {
   id: string;
@@ -63,13 +65,33 @@ interface ProjectRecord {
   updatedAt: Date;
 }
 
-export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRepository & AuditRepository & ProjectsRepository {
+interface UploadTaskRecord {
+  id: string;
+  projectId: string;
+  releaseId: string | null;
+  status: "pending";
+  rawUploadPath: string;
+  originalFilename: string;
+  size: number;
+  errorMessage: string | null;
+  createdBy: string;
+  createdAt: Date;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+}
+
+export function createInMemoryAuthRepository(): AuthRepository &
+  OrganizationsRepository &
+  AuditRepository &
+  ProjectsRepository &
+  UploadsRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
   const sessions = new Map<string, SessionRecord>();
   const auditLogs = new Map<string, AuditLogRecord>();
   const projects = new Map<string, ProjectRecord>();
+  const uploadTasks = new Map<string, UploadTaskRecord>();
 
   return {
     async emailExists(email) {
@@ -239,6 +261,28 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
       return project ? toProject(project) : null;
     },
 
+    async createUploadTask(input) {
+      const id = crypto.randomUUID();
+      const uploadTask: UploadTaskRecord = {
+        id,
+        projectId: input.projectId,
+        releaseId: null,
+        status: "pending",
+        rawUploadPath: `uploads/raw/${input.projectId}/${id}/${input.originalFilename}`,
+        originalFilename: input.originalFilename,
+        size: input.size,
+        errorMessage: null,
+        createdBy: input.createdBy,
+        createdAt: input.now,
+        startedAt: null,
+        finishedAt: null,
+      };
+
+      uploadTasks.set(uploadTask.id, uploadTask);
+
+      return toUploadTask(uploadTask);
+    },
+
     async createAuditLog(input) {
       const auditLog: AuditLogRecord = {
         id: crypto.randomUUID(),
@@ -249,6 +293,23 @@ export function createInMemoryAuthRepository(): AuthRepository & OrganizationsRe
 
       return toAuditLog(auditLog);
     },
+  };
+}
+
+function toUploadTask(record: UploadTaskRecord): UploadTask {
+  return {
+    id: record.id,
+    projectId: record.projectId,
+    releaseId: record.releaseId,
+    status: record.status,
+    rawUploadPath: record.rawUploadPath,
+    originalFilename: record.originalFilename,
+    size: record.size,
+    errorMessage: record.errorMessage,
+    createdBy: record.createdBy,
+    createdAt: record.createdAt.toISOString(),
+    startedAt: record.startedAt?.toISOString() ?? null,
+    finishedAt: record.finishedAt?.toISOString() ?? null,
   };
 }
 
