@@ -53,6 +53,8 @@ export interface UploadsRepository {
   findUploadTaskById(uploadTaskId: string): Promise<UploadTask | null>;
   markUploadTaskProcessing(input: {
     uploadTaskId: string;
+    projectId: string;
+    createdBy: string;
     now: Date;
   }): Promise<UploadTask>;
 }
@@ -160,6 +162,8 @@ export class UploadsService {
     return {
       uploadTask: await this.options.repository.markUploadTaskProcessing({
         uploadTaskId: uploadTask.id,
+        projectId: project.id,
+        createdBy: currentUser.user.id,
         now: this.options.now(),
       }),
     };

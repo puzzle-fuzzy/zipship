@@ -87,6 +87,7 @@ describe("uploads routes", () => {
       uploadTask: {
         id: uploadTask.id,
         projectId: uploadTask.projectId,
+        releaseId: expect.any(String),
         status: "processing",
         rawUploadPath: uploadTask.rawUploadPath,
         originalFilename: "dist.zip",

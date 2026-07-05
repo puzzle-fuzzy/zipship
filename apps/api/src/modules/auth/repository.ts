@@ -80,6 +80,25 @@ interface UploadTaskRecord {
   finishedAt: Date | null;
 }
 
+interface ReleaseRecord {
+  id: string;
+  projectId: string;
+  versionNumber: number;
+  releaseHash: string;
+  fullHash: string;
+  status: "processing";
+  storagePath: string;
+  rawUploadPath: string;
+  fileCount: number;
+  totalSize: number;
+  manifest: Record<string, unknown>;
+  detectResult: Record<string, unknown>;
+  createdBy: string;
+  createdAt: Date;
+  activatedAt: Date | null;
+  archivedAt: Date | null;
+}
+
 export function createInMemoryAuthRepository(): AuthRepository &
   OrganizationsRepository &
   AuditRepository &
@@ -92,6 +111,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
   const auditLogs = new Map<string, AuditLogRecord>();
   const projects = new Map<string, ProjectRecord>();
   const uploadTasks = new Map<string, UploadTaskRecord>();
+  const releases = new Map<string, ReleaseRecord>();
 
   return {
     async emailExists(email) {
@@ -296,6 +316,28 @@ export function createInMemoryAuthRepository(): AuthRepository &
         throw new Error("Upload task not found");
       }
 
+      const release: ReleaseRecord = {
+        id: crypto.randomUUID(),
+        projectId: input.projectId,
+        versionNumber: nextReleaseVersion(input.projectId, releases),
+        releaseHash: createPendingReleaseHash(input.uploadTaskId),
+        fullHash: `pending:${input.uploadTaskId}`,
+        status: "processing",
+        storagePath: `sites/${input.projectId}/releases/pending-${input.uploadTaskId}`,
+        rawUploadPath: uploadTask.rawUploadPath,
+        fileCount: 0,
+        totalSize: uploadTask.size,
+        manifest: {},
+        detectResult: {},
+        createdBy: input.createdBy,
+        createdAt: input.now,
+        activatedAt: null,
+        archivedAt: null,
+      };
+
+      releases.set(release.id, release);
+
+      uploadTask.releaseId = release.id;
       uploadTask.status = "processing";
       uploadTask.startedAt = input.now;
       uploadTasks.set(uploadTask.id, uploadTask);
@@ -314,6 +356,18 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return toAuditLog(auditLog);
     },
   };
+}
+
+function nextReleaseVersion(projectId: string, releases: Map<string, ReleaseRecord>): number {
+  const versions = Array.from(releases.values())
+    .filter((release) => release.projectId === projectId)
+    .map((release) => release.versionNumber);
+
+  return versions.length > 0 ? Math.max(...versions) + 1 : 1;
+}
+
+function createPendingReleaseHash(uploadTaskId: string): string {
+  return uploadTaskId.replace(/-/g, "").slice(0, 32).padEnd(32, "0");
 }
 
 function toUploadTask(record: UploadTaskRecord): UploadTask {
