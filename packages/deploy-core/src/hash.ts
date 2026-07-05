@@ -11,7 +11,7 @@ export async function hashFile(absPath: string): Promise<string> {
     const hash = createHash("sha256");
     const stream = createReadStream(absPath);
 
-    stream.on("data", (chunk: Buffer) => {
+    stream.on("data", (chunk) => {
       hash.update(chunk);
     });
 

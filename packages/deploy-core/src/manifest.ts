@@ -3,6 +3,8 @@
 import type { FileEntry, Manifest, ManifestEntry } from "./types";
 import { hashFile } from "./hash";
 
+const HASH_CONCURRENCY = 16;
+
 /**
  * Build a content-addressed manifest from extracted files.
  *
@@ -13,14 +15,7 @@ import { hashFile } from "./hash";
  * 4. Derive releaseHash (first 12 characters)
  */
 export async function buildManifest(files: FileEntry[]): Promise<Manifest> {
-  // Hash all files in parallel
-  const manifestEntries: ManifestEntry[] = await Promise.all(
-    files.map(async (file) => ({
-      path: file.path,
-      hash: await hashFile(file.absPath),
-      size: file.size,
-    })),
-  );
+  const manifestEntries = await hashManifestEntries(files);
 
   // Stable sort by path
   manifestEntries.sort((a, b) => a.path.localeCompare(b.path));
@@ -36,4 +31,25 @@ export async function buildManifest(files: FileEntry[]): Promise<Manifest> {
 async function hashJsonString(json: string): Promise<string> {
   const { createHash } = await import("crypto");
   return createHash("sha256").update(json, "utf-8").digest("hex");
+}
+
+async function hashManifestEntries(files: FileEntry[]): Promise<ManifestEntry[]> {
+  const entries: ManifestEntry[] = [];
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < files.length) {
+      const file = files[nextIndex];
+      nextIndex += 1;
+      entries.push({
+        path: file.path,
+        hash: await hashFile(file.absPath),
+        size: file.size,
+      });
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(HASH_CONCURRENCY, files.length) }, () => worker()));
+
+  return entries;
 }

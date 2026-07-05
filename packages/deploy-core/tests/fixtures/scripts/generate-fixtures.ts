@@ -358,22 +358,6 @@ const FIXTURES: FixtureSpec[] = [
 
 // Special fixtures that need manual binary construction
 function createSpecialFixtures() {
-  // too-many-files: 10001 empty files
-  const tooManyDir = join(TMP_DIR, "too-many");
-  rmSync(tooManyDir, { recursive: true, force: true });
-  mkdirSync(tooManyDir, { recursive: true });
-  writeFileSync(join(tooManyDir, "index.html"), "<h1>too many</h1>");
-  for (let i = 0; i < 10001; i++) {
-    writeFileSync(join(tooManyDir, `file${i}.js`), "");
-  }
-  const result = spawnSync(["zip", "-r", join(FIXTURES_DIR, "too-many-files.zip"), "."], {
-    cwd: tooManyDir,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (result.exitCode === 0) console.log("  ✓ too-many-files.zip (10002 files)");
-  rmSync(tooManyDir, { recursive: true, force: true });
-
   // large-file: single file > 100MB (create a sparse-like file using dd or truncate)
   const largeDir = join(TMP_DIR, "large");
   mkdirSync(largeDir, { recursive: true });

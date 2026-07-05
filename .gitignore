@@ -9,5 +9,8 @@ build
 out
 coverage
 .DS_Store
+.codegraph/
+.superpowers/
+packages/*/tests/.tmp-*/
 /storage
 /tmp

@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { safeExtractZip } from "../../src/unzip";
@@ -10,6 +10,10 @@ const TMP_DIR = join(import.meta.dir, "../.tmp-unzip-test");
 beforeAll(() => {
   rmSync(TMP_DIR, { recursive: true, force: true });
   mkdirSync(TMP_DIR, { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(TMP_DIR, { recursive: true, force: true });
 });
 
 describe("safeExtractZip", () => {
@@ -72,10 +76,9 @@ describe("safeExtractZip", () => {
 
   test("rejects too many files", async () => {
     const dir = runDir("too-many");
-    const zipPath = join(FIXTURES_DIR, "too-many-files.zip");
-    if (!existsSync(zipPath)) return;
+    const zipPath = join(FIXTURES_DIR, "valid-vite-relative-base.zip");
     try {
-      await safeExtractZip(zipPath, dir);
+      await safeExtractZip(zipPath, dir, { maxFiles: 2 });
       expect.unreachable("Should have thrown");
     } catch (e) {
       expect(e).toBeInstanceOf(DeployCoreError);

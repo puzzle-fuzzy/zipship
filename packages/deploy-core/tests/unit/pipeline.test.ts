@@ -1,6 +1,6 @@
 // packages/deploy-core/tests/unit/pipeline.test.ts
 
-import { describe, expect, test, beforeAll } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { processRelease } from "../../src/index";
@@ -12,6 +12,10 @@ const TMP_DIR = join(import.meta.dir, "../.tmp-pipeline-test");
 beforeAll(() => {
   rmSync(TMP_DIR, { recursive: true, force: true });
   mkdirSync(TMP_DIR, { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(TMP_DIR, { recursive: true, force: true });
 });
 
 async function runDir(name: string): Promise<string> {
