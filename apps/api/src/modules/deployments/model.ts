@@ -53,6 +53,8 @@ export const deploymentErrorModel = t.Object({
     t.Literal("RELEASE_NOT_ROLLBACKABLE"),
     t.Literal("RELEASE_ALREADY_ACTIVE"),
     t.Literal("VALIDATION_ERROR"),
+    t.Literal("RELEASE_ARTIFACT_NOT_FOUND"),
+    t.Literal("FILESYSTEM_UPDATE_FAILED"),
   ]),
 });
 
@@ -118,5 +120,17 @@ export class DeploymentReleaseNotRollbackableError extends DeploymentServiceErro
 export class DeploymentReleaseAlreadyActiveError extends DeploymentServiceError {
   constructor() {
     super("RELEASE_ALREADY_ACTIVE");
+  }
+}
+
+export class DeploymentReleaseArtifactNotFoundError extends DeploymentServiceError {
+  constructor() {
+    super("RELEASE_ARTIFACT_NOT_FOUND");
+  }
+}
+
+export class DeploymentFilesystemUpdateError extends DeploymentServiceError {
+  constructor() {
+    super("FILESYSTEM_UPDATE_FAILED");
   }
 }

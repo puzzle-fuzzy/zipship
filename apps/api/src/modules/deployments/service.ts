@@ -1,3 +1,4 @@
+import { CurrentReleaseLinkError, ReleaseArtifactNotFoundError } from "@zipship/storage";
 import { AuditService } from "../audit/service";
 import type { AuditRepository } from "../audit/service";
 import type { MemberRole } from "../permissions/model";
@@ -5,9 +6,11 @@ import { PermissionService } from "../permissions/service";
 import type { Project } from "../projects/model";
 import type { Release } from "../releases/model";
 import {
+  DeploymentFilesystemUpdateError,
   DeploymentForbiddenError,
   DeploymentProjectNotFoundError,
   DeploymentReleaseAlreadyActiveError,
+  DeploymentReleaseArtifactNotFoundError,
   DeploymentReleaseNotFoundError,
   DeploymentReleaseNotReadyError,
   DeploymentReleaseNotRollbackableError,
@@ -44,6 +47,15 @@ export interface DeploymentMutationResult {
   previousRelease: Release | null;
 }
 
+export interface DeploymentStorage {
+  createProjectSitePath(projectSlug: string): string;
+  ensureReleaseArtifactReady(storagePath: string): Promise<void>;
+  switchCurrentReleaseLink(input: {
+    projectSitePath: string;
+    releaseHash: string;
+  }): Promise<void>;
+}
+
 export interface DeploymentsRepository extends AuditRepository {
   findSessionByRefreshTokenHash(refreshTokenHash: string, now: Date): Promise<CurrentSession | null>;
   findProjectById(projectId: string): Promise<Project | null>;
@@ -75,6 +87,7 @@ export interface DeploymentsServiceOptions {
   now: () => Date;
   permissions?: PermissionService;
   audit?: AuditService;
+  storage: DeploymentStorage;
 }
 
 export class DeploymentsService {
@@ -112,6 +125,9 @@ export class DeploymentsService {
     const release = await this.options.repository.findReleaseById(params.releaseId);
     if (!release || release.projectId !== project.id) return new DeploymentReleaseNotFoundError();
     if (release.status !== "ready" || release.archivedAt !== null) return new DeploymentReleaseNotReadyError();
+
+    const storageReady = await this.prepareCurrentLink(project, release);
+    if (storageReady instanceof DeploymentServiceError) return storageReady;
 
     const result = await this.options.repository.publishRelease({
       projectId: project.id,
@@ -186,6 +202,9 @@ export class DeploymentsService {
     if (release.id === project.currentReleaseId) return new DeploymentReleaseAlreadyActiveError();
     if (release.status !== "ready" || release.archivedAt !== null) return new DeploymentReleaseNotRollbackableError();
 
+    const storageReady = await this.prepareCurrentLink(project, release);
+    if (storageReady instanceof DeploymentServiceError) return storageReady;
+
     const result = await this.options.repository.rollbackRelease({
       projectId: project.id,
       releaseId: release.id,
@@ -225,6 +244,19 @@ export class DeploymentsService {
     if (!currentSession) return new DeploymentUnauthorizedError();
 
     return currentSession;
+  }
+  private async prepareCurrentLink(project: Project, release: Release): Promise<void | DeploymentServiceError> {
+    try {
+      await this.options.storage.ensureReleaseArtifactReady(release.storagePath);
+      await this.options.storage.switchCurrentReleaseLink({
+        projectSitePath: this.options.storage.createProjectSitePath(project.slug),
+        releaseHash: release.releaseHash,
+      });
+    } catch (error) {
+      if (error instanceof ReleaseArtifactNotFoundError) return new DeploymentReleaseArtifactNotFoundError();
+      if (error instanceof CurrentReleaseLinkError) return new DeploymentFilesystemUpdateError();
+      return new DeploymentFilesystemUpdateError();
+    }
   }
 }
 

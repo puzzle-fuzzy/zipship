@@ -1,11 +1,12 @@
 import { Elysia } from "elysia";
 import { deploymentModels, DeploymentServiceError } from "./model";
 import { DeploymentsService } from "./service";
-import type { DeploymentsRepository } from "./service";
+import type { DeploymentStorage, DeploymentsRepository } from "./service";
 
 export interface DeploymentsModuleOptions {
   repository: DeploymentsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
+  storage: DeploymentStorage;
 }
 
 export function deploymentsModule(options: DeploymentsModuleOptions) {
@@ -13,6 +14,7 @@ export function deploymentsModule(options: DeploymentsModuleOptions) {
     repository: options.repository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
+    storage: options.storage,
   });
 
   return new Elysia({ name: "deployments", prefix: "/_api/projects/:projectId" })

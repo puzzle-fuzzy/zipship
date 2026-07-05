@@ -1,6 +1,11 @@
 import { Elysia } from "elysia";
 import { config } from "@zipship/config";
-import { createStoragePaths } from "@zipship/storage";
+import {
+  createProjectSitePath,
+  createStoragePaths,
+  ensureReleaseArtifactReady,
+  switchCurrentReleaseLink,
+} from "@zipship/storage";
 import { authModule, hashRefreshToken } from "./modules/auth";
 import { createInMemoryAuthRepository } from "./modules/auth/repository";
 import { deploymentsModule } from "./modules/deployments";
@@ -23,6 +28,12 @@ export function createApp(options: CreateAppOptions = {}) {
     status: "ok",
     service: "zipship-api",
   }));
+
+  const deploymentStorage = {
+    createProjectSitePath: (projectSlug: string) => createProjectSitePath(storagePaths, projectSlug),
+    ensureReleaseArtifactReady,
+    switchCurrentReleaseLink,
+  };
 
   if (options.exposeTestRoutes) {
     api.get("/_api/__test/auditLogs", async () => ({
@@ -60,7 +71,7 @@ export function createApp(options: CreateAppOptions = {}) {
     .use(projectsModule({ repository, hashRefreshToken }))
     .use(projectDetailsModule({ repository, hashRefreshToken }))
     .use(releasesModule({ repository, hashRefreshToken }))
-    .use(deploymentsModule({ repository, hashRefreshToken }))
+    .use(deploymentsModule({ repository, hashRefreshToken, storage: deploymentStorage }))
     .use(uploadsModule({ repository, hashRefreshToken, storagePaths }))
     .use(uploadDetailsModule({ repository, hashRefreshToken, storagePaths }))
     .use(sitePreviewModule({ repository }));

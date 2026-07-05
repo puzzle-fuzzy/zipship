@@ -1,6 +1,7 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readlinkSync, rmSync } from "fs";
+import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
@@ -151,6 +152,10 @@ describe("deployments routes", () => {
           }),
         ]),
       );
+
+      const currentPath = join(storageRoot, "sites", project.slug, "current");
+      expect(existsSync(currentPath)).toBe(true);
+      expect(readlinkSync(currentPath)).toBe(`releases/${release.releaseHash}`);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
@@ -382,6 +387,9 @@ describe("deployments routes", () => {
           }),
         ]),
       );
+
+      const currentPath = join(storageRoot, "sites", project.slug, "current");
+      expect(readlinkSync(currentPath)).toBe(`releases/${firstRelease.releaseHash}`);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
@@ -475,6 +483,59 @@ describe("deployments routes", () => {
       expect(response.status).toBe(200);
       expect(response.data?.deployments.map((deployment) => deployment.action)).toEqual(["rollback", "publish", "publish"]);
       expect(response.data?.deployments[0]?.releaseId).toBe(firstRelease.id);
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects publish when artifact index.html is missing without changing current release", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const release = await createReadyRelease(api, project.id, refreshToken);
+
+      rmSync(join(release.storagePath, "index.html"));
+
+      const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: "Ship broken artifact" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      expect(response.status).toBe(409);
+      expect((response.error?.value as unknown)).toEqual({ code: "RELEASE_ARTIFACT_NOT_FOUND" });
+
+      const detail = await api._api.projects({ projectId: project.id }).get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      expect(detail.data?.project.currentReleaseId).toBeNull();
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects publish when current symlink cannot be updated without changing current release", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const release = await createReadyRelease(api, project.id, refreshToken);
+
+      const currentPath = join(storageRoot, "sites", project.slug, "current");
+      await mkdir(currentPath, { recursive: true });
+
+      const response = await api._api.projects({ projectId: project.id }).releases({ releaseId: release.id }).publish.post(
+        { message: "Ship v1" },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      expect(response.status).toBe(409);
+      expect((response.error?.value as unknown)).toEqual({ code: "FILESYSTEM_UPDATE_FAILED" });
+
+      const detail = await api._api.projects({ projectId: project.id }).get({
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+      expect(detail.data?.project.currentReleaseId).toBeNull();
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
