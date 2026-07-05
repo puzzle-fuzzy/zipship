@@ -770,12 +770,12 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
 
   test("serves current and release files with SPA fallback", async () => {
     await expectText(`http://127.0.0.1:${port}/admin/`, "current index");
-    await expectText(`http://127.0.0.1:${port}/admin/assets/index.js`, "current asset");
-    await expectText(`http://127.0.0.1:${port}/admin/settings`, "current index");
+    await expectText(`http://127.0.0.1:${port}/admin/assets/index.js`, "current asset", "immutable");
+    await expectText(`http://127.0.0.1:${port}/admin/settings`, "current index", "no-cache");
     await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/`, "release index");
-    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/assets/index.js`, "release asset");
-    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/settings`, "release index");
-    await expectText(`http://127.0.0.1:${port}/admin/not-a-hash/settings`, "current index");
+    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/assets/index.js`, "release asset", "immutable");
+    await expectText(`http://127.0.0.1:${port}/admin/a8f32c91abcd/settings`, "release index", "no-cache");
+    await expectText(`http://127.0.0.1:${port}/admin/not-a-hash/settings`, "current index", "no-cache");
   });
 
   test("serves console and keeps unknown sites or hashes as 404", async () => {
@@ -786,10 +786,13 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
   });
 });
 
-async function expectText(url: string, expected: string) {
+async function expectText(url: string, expected: string, expectedCache?: string) {
   const response = await fetch(url);
   expect(response.status).toBe(200);
   expect(await response.text()).toContain(expected);
+  if (expectedCache) {
+    expect(response.headers.get("cache-control")).toContain(expectedCache);
+  }
 }
 
 async function commandSucceeds(command: string[]): Promise<boolean> {
@@ -857,27 +860,42 @@ http {
       return 308 /$1/;
     }
 
-    location ~ ^/([a-z0-9][a-z0-9_-]*)/([a-f0-9]{12})/(.*)$ {
-      alias __ZIPSHIP_SITES_ROOT__/$1/releases/$2/$3;
-      try_files $uri $uri/ /$1/$2/index.html;
-      add_header Cache-Control "public, max-age=31536000, immutable";
-    }
-
     location ~ ^/([a-z0-9][a-z0-9_-]*)/([a-f0-9]{12})/$ {
-      alias __ZIPSHIP_SITES_ROOT__/$1/releases/$2/;
-      try_files index.html =404;
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$1/releases/$2/index.html =404;
       add_header Cache-Control "no-cache";
     }
 
-    location ~ ^/([a-z0-9][a-z0-9_-]*)/(.*)$ {
-      alias __ZIPSHIP_SITES_ROOT__/$1/current/$2;
-      try_files $uri $uri/ /$1/index.html;
+    location ~ ^/([a-z0-9][a-z0-9_-]*)/([a-f0-9]{12})/(.+)$ {
+      set $zipship_slug $1;
+      set $zipship_release_hash $2;
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$1/releases/$2/$3 @zipship_release_spa;
       add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
     location ~ ^/([a-z0-9][a-z0-9_-]*)/$ {
-      alias __ZIPSHIP_SITES_ROOT__/$1/current/;
-      try_files index.html =404;
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$1/current/index.html =404;
+      add_header Cache-Control "no-cache";
+    }
+
+    location ~ ^/([a-z0-9][a-z0-9_-]*)/(.+)$ {
+      set $zipship_slug $1;
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$1/current/$2 @zipship_current_spa;
+      add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location @zipship_release_spa {
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$zipship_slug/releases/$zipship_release_hash/index.html =404;
+      add_header Cache-Control "no-cache";
+    }
+
+    location @zipship_current_spa {
+      root __ZIPSHIP_SITES_ROOT__;
+      try_files /$zipship_slug/current/index.html =404;
       add_header Cache-Control "no-cache";
     }
   }

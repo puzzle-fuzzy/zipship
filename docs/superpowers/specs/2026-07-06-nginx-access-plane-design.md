@@ -116,6 +116,75 @@ storageRoot/sites/:projectSlug/current -> releases/:releaseHash
 
 回滚流程同理，只是 action 为 `rollback`。
 
+### Nginx 配置方案
+
+采用 `root` + `try_files` 显式路径方案，避免 `alias` 在 regex location 下的路径组合陷阱。核心原则：
+
+- 所有 regex location 使用 `root {sitesRoot}`，不单独设置 `alias`
+- `try_files` 中写完整的 root 相对路径（如 `/$1/releases/$2/$3`）
+- 根路径（`/$`）、真实文件命中、SPA fallback 分开处理，以便设置正确的 Cache-Control
+- 文件路径用 `(.+)$` 匹配（至少一个字符），避免误配到目录路径
+- 文件路径 location 只负责真实文件命中并设置 immutable；fallback 到 named location 后返回 `index.html` 并设置 no-cache
+
+**Nginx 模板位置**：`infra/nginx/zipship.conf`
+
+模板变量：
+
+| 变量 | 含义 |
+|---|---|
+| `__ZIPSHIP_LISTEN_PORT__` | 监听端口 |
+| `__ZIPSHIP_SITES_ROOT__` | 站点根目录 |
+| `__ZIPSHIP_CONSOLE_ROOT__` | Console App 构建产物目录 |
+| `__ZIPSHIP_API_UPSTREAM__` | Elysia API 上游地址（测试用 `http://127.0.0.1:9`） |
+| `__ZIPSHIP_NGINX_PID__` | PID 文件路径 |
+
+**路由优先级与实现**：
+
+按 Nginx 匹配优先级排列：
+
+```
+1. ^~ /_api/         proxy_pass → Elysia       控制面
+2. ^~ /_sites/       proxy_pass → Elysia       内部预览
+3. ^~ /_console/     alias + try_files         管理后台
+4. ~ /slug/(hash)$   308 → /slug/hash/         尾斜杠跳转（hash）
+5. ~ /slug$          308 → /slug/              尾斜杠跳转（slug）
+6. ~ /slug/hash/$    root + try_files index    指定版本首页，no-cache
+7. ~ /slug/hash/(.+) root + try_files file     指定版本真实文件，immutable；缺失时 @release_spa
+8. ~ /slug/$         root + try_files index    当前版本首页，no-cache
+9. ~ /slug/(.+)      root + try_files file     当前版本真实文件，immutable；缺失时 @current_spa
+10. @release_spa     root + try_files index    指定版本 SPA fallback，no-cache
+11. @current_spa     root + try_files index    当前版本 SPA fallback，no-cache
+```
+
+示例（正式版本）：
+
+```nginx
+location ~ ^/([a-z0-9][a-z0-9_-]*)/$ {
+    root __ZIPSHIP_SITES_ROOT__;
+    try_files /$1/current/index.html =404;
+    add_header Cache-Control "no-cache";
+}
+
+location ~ ^/([a-z0-9][a-z0-9_-]*)/(.+)$ {
+    set $zipship_slug $1;
+    root __ZIPSHIP_SITES_ROOT__;
+    try_files /$1/current/$2 @zipship_current_spa;
+    add_header Cache-Control "public, max-age=31536000, immutable";
+}
+
+location @zipship_current_spa {
+    root __ZIPSHIP_SITES_ROOT__;
+    try_files /$zipship_slug/current/index.html =404;
+    add_header Cache-Control "no-cache";
+}
+```
+
+说明：
+- 用 `(.+)$` 而非 `(.*)$`：`.+` 要求至少一个字符，确保目录路径（如 `/:slug/`）不会被文件路径 location 误配
+- named location 不能直接依赖 regex 捕获组，所以进入 fallback 前先用 `set` 保存 `$zipship_slug` / `$zipship_release_hash`
+- 文件命中和 SPA fallback 必须分开设置缓存头，避免 `/admin/settings` 这类 HTML fallback 继承 asset 的 `immutable`
+- 根路径（`/$`）与文件路径（`/(.+)`）分离为不同 location，分别适合设置 `no-cache` 和 `immutable`
+
 ### 一致性取舍
 
 数据库状态和文件系统软链接不是同一个事务。
@@ -176,6 +245,7 @@ FILESYSTEM_UPDATE_FAILED
 
 ```ts
 export interface DeploymentStorage {
+  createProjectSitePath(projectSlug: string): string;
   ensureReleaseArtifactReady(storagePath: string): Promise<void>;
   switchCurrentReleaseLink(input: {
     projectSitePath: string;
@@ -200,87 +270,74 @@ repository 不直接操作文件系统，避免数据层混入访问面细节。
 
 ## Nginx Routing
 
-Nginx 访问面路由：
+采用 `root` + `try_files` 方案，所有 regex location 使用 `root __ZIPSHIP_SITES_ROOT__` 并在 `try_files` 中写完整的 root 相对路径。真实文件命中和 SPA fallback 分离，避免 HTML fallback 被错误地打上长期 immutable 缓存。
+
+**平台保留前缀**（`^~` 前缀优先于所有 regex）：
+
+| 前缀 | 处理方式 | 说明 |
+|---|---|---|
+| `/_api/` | `proxy_pass` ← Elysia | 控制面 API |
+| `/_sites/` | `proxy_pass` ← Elysia | 内部预览（保留现有功能） |
+| `/_console/` | `alias` + `try_files` SPA fallback | 管理后台 |
+
+**尾斜杠跳转**：
+
+| 匹配 | 响应 |
+|---|---|
+| `/:slug/:hash`（hash 匹配 `[a-f0-9]{12}`） | `308 → /:slug/:hash/` |
+| `/:slug` | `308 → /:slug/` |
+
+**指定版本（hash 路径）**：
+
+| Location | Cache-Control | try_files |
+|---|---|---|
+| `~ ^/:slug/:hash/$` | `no-cache` | `/$slug/releases/$hash/index.html =404` |
+| `~ ^/:slug/:hash/(.+)$` | `immutable, 1y` | `/$slug/releases/$hash/$path @zipship_release_spa` |
+| `@zipship_release_spa` | `no-cache` | `/$slug/releases/$hash/index.html =404` |
+
+hash 必须匹配 `[a-f0-9]{12}`（releaseHash 当前固定 12 位 lowercase hex）。不匹配此模式的第二段不会命中 hash 路由，会回退到当前版本。
+
+**当前版本（非 hash 路径）**：
+
+| Location | Cache-Control | try_files |
+|---|---|---|
+| `~ ^/:slug/$` | `no-cache` | `/$slug/current/index.html =404` |
+| `~ ^/:slug/(.+)$` | `immutable, 1y` | `/$slug/current/$path @zipship_current_spa` |
+| `@zipship_current_spa` | `no-cache` | `/$slug/current/index.html =404` |
+
+**文件路径匹配细节**：
+
+- 文件路径使用 `(.+)$`（至少一个字符），避免匹配到目录路径（如 `/:slug/`）
+- `try_files` 中第一个参数优先查文件，不匹配时跳到 named location 返回 `index.html` 实现 SPA
+- named location 使用 `set` 保存的 `$zipship_slug` / `$zipship_release_hash`，不直接依赖 regex 捕获组
+- 真实文件返回 `immutable`；SPA fallback 返回 `no-cache`
+- 内部预览 `/_sites/` 继续保留，通过 proxy_pass 到 Elysia 的 site-preview 模块
+
+**完整路由示例**：
+
+| 请求 | 命中 location | 文件映射 | 结果 |
+|---|---|---|---|
+| `/admin/` | `~ ^/:slug/$` | `sites/admin/current/index.html` | 当前版本首页 |
+| `/admin/settings` | `~ ^/:slug/(.+)$` | 先查文件，无 → fallback `index.html` | SPA fallback |
+| `/admin/a8f32c91abcd/` | `~ ^/:slug/:hash/$` | `sites/admin/releases/a8f32c91abcd/index.html` | 指定版本首页 |
+| `/admin/a8f32c91abcd/settings` | `~ ^/:slug/:hash/(.+)$` | 先查文件，无 → fallback `index.html` | 指定版本 SPA |
+| `/admin/a8f32c91abcd/assets/app.js` | `~ ^/:slug/:hash/(.+)$` | `sites/admin/releases/a8f32c91abcd/assets/app.js` | 直接文件 |
+| `/admin/not-a-hash/settings` | `~ ^/:slug/(.+)$` | `not-a-hash` 不匹配 `[a-f0-9]{12}` → 使用 current | current SPA |
+| `/admin` | `~ ^/:slug$` | 308 redirect | `→ /admin/` |
+| `/unknown/` | `~ ^/:slug/$` | `current/index.html` 不存在 → 404 | 404 |
+| `/admin/deadbeef0000/` | `~ ^/:slug/:hash/$` | `index.html` 不存在 → 404 | 404 |
+
+**实现方式**：`infra/nginx/zipship.conf` 以模板形式保存，测试运行时生成临时 Nginx config 并替换以下变量：
 
 ```txt
-/:slug/                     -> sites/:slug/current/index.html
-/:slug/assets/index.js      -> sites/:slug/current/assets/index.js
-/:slug/settings             -> sites/:slug/current/index.html
-
-/:slug/:releaseHash/                -> sites/:slug/releases/:releaseHash/index.html
-/:slug/:releaseHash/assets/index.js -> sites/:slug/releases/:releaseHash/assets/index.js
-/:slug/:releaseHash/settings        -> sites/:slug/releases/:releaseHash/index.html
+__ZIPSHIP_LISTEN_PORT__
+__ZIPSHIP_SITES_ROOT__
+__ZIPSHIP_API_UPSTREAM__
+__ZIPSHIP_CONSOLE_ROOT__
+__ZIPSHIP_NGINX_PID__
 ```
 
-平台保留前缀：
-
-```txt
-/_api/      -> Elysia API upstream
-/_console/  -> Console app
-/_sites/    -> 内部预览，可以继续 proxy 到 Elysia 或保留开发期使用
-```
-
-release hash 第一版固定按当前 manifest 的 12 位 lowercase hex：
-
-```txt
-[a-f0-9]{12}
-```
-
-因此 Nginx 判断第二段是否为 release hash：
-
-```txt
-/admin/a8f32c91abcd/settings -> release SPA fallback
-/admin/settings              -> current SPA fallback
-```
-
-路由优先级：
-
-```txt
-1. /_api/
-2. /_console/
-3. /_sites/
-4. /:slug/:hash/，hash 必须匹配 [a-f0-9]{12}
-5. /:slug/
-```
-
-无尾斜杠跳转：
-
-```txt
-/admin              -> 308 /admin/
-/admin/a8f32c91abcd -> 308 /admin/a8f32c91abcd/
-```
-
-静态文件策略：
-
-```txt
-先找真实文件
-再找目录
-最后 fallback index.html
-```
-
-缓存策略第一版保持简单：
-
-```txt
-HTML: no-cache
-assets: public, max-age=31536000, immutable
-其他: 默认
-```
-
-Nginx 配置文件：
-
-```txt
-infra/nginx/zipship.conf
-```
-
-该配置以模板形式保存，测试运行时生成临时 Nginx config 并替换以下值：
-
-```txt
-ZIPSHIP_SITES_ROOT
-ZIPSHIP_API_UPSTREAM
-ZIPSHIP_CONSOLE_ROOT
-```
-
-实现时不引入新模板依赖；使用 Bun/TypeScript 读取模板字符串并替换 root/upstream，模板标记替换逻辑放在 Nginx 测试 helper 中。
+不引入新模板依赖；使用 Bun 原生 `Bun.file().text()` + `String.replaceAll()` 替换。
 
 ## 测试策略
 
@@ -346,10 +403,13 @@ nginx -v
 - `/admin/` 返回 current `index.html`。
 - `/admin/assets/index.js` 返回 current asset。
 - `/admin/settings` fallback current `index.html`。
+- `/admin/settings` 返回 `Cache-Control: no-cache`，不能继承 asset 的 immutable 缓存。
 - `/admin/a8f32c91abcd` 返回 308，Location 为 `/admin/a8f32c91abcd/`。
 - `/admin/a8f32c91abcd/` 返回 release `index.html`。
 - `/admin/a8f32c91abcd/assets/index.js` 返回 release asset。
 - `/admin/a8f32c91abcd/settings` fallback release `index.html`。
+- `/admin/a8f32c91abcd/settings` 返回 `Cache-Control: no-cache`。
+- `/admin/assets/index.js` 和 `/admin/a8f32c91abcd/assets/index.js` 返回长期 immutable 缓存。
 - `/admin/not-a-hash/settings` fallback current `index.html`。
 - 未知 slug 返回 404。
 - 未知 hash 返回 404。
