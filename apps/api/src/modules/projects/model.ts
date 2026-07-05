@@ -24,6 +24,7 @@ export const projectModel = t.Object({
   name: t.String(),
   slug: t.String(),
   description: t.Nullable(t.String()),
+  currentReleaseId: t.Nullable(t.String()),
   status: t.Literal("active"),
   visibility: t.Literal("private"),
   createdBy: t.String(),

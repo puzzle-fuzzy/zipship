@@ -10,6 +10,8 @@ import type { ReleasesRepository } from "../releases/service";
 import type { UploadTask } from "../uploads/model";
 import type { UploadsRepository } from "../uploads/service";
 import type { SitePreviewRepository } from "../site-preview/service";
+import type { Deployment } from "../deployments/model";
+import type { DeploymentsRepository } from "../deployments/service";
 
 interface UserRecord {
   id: string;
@@ -61,6 +63,7 @@ interface ProjectRecord {
   name: string;
   slug: string;
   description: string | null;
+  currentReleaseId: string | null;
   status: "active";
   visibility: "private";
   createdBy: string;
@@ -89,7 +92,7 @@ interface ReleaseRecord {
   versionNumber: number;
   releaseHash: string;
   fullHash: string;
-  status: "processing" | "ready" | "failed";
+  status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted";
   storagePath: string;
   rawUploadPath: string;
   fileCount: number;
@@ -102,13 +105,27 @@ interface ReleaseRecord {
   archivedAt: Date | null;
 }
 
+interface DeploymentRecord {
+  id: string;
+  projectId: string;
+  releaseId: string;
+  previousReleaseId: string | null;
+  action: "publish" | "rollback";
+  status: "success";
+  operatorId: string;
+  message: string | null;
+  createdAt: Date;
+  finishedAt: Date | null;
+}
+
 export function createInMemoryAuthRepository(): AuthRepository &
   OrganizationsRepository &
   AuditRepository &
   ProjectsRepository &
   ReleasesRepository &
   UploadsRepository &
-  SitePreviewRepository {
+  SitePreviewRepository &
+  DeploymentsRepository {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
@@ -117,6 +134,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
   const projects = new Map<string, ProjectRecord>();
   const uploadTasks = new Map<string, UploadTaskRecord>();
   const releases = new Map<string, ReleaseRecord>();
+  const deployments = new Map<string, DeploymentRecord>();
 
   return {
     async emailExists(email) {
@@ -262,6 +280,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
         name: input.name,
         slug: input.slug,
         description: input.description,
+        currentReleaseId: null,
         status: "active",
         visibility: "private",
         createdBy: input.createdBy,
@@ -442,7 +461,60 @@ export function createInMemoryAuthRepository(): AuthRepository &
 
       return toAuditLog(auditLog);
     },
-  };
+
+    async findReleaseById(releaseId) {
+      const release = releases.get(releaseId);
+      return release ? toRelease(release) : null;
+    },
+
+    async listDeploymentsForProject(projectId) {
+      return Array.from(deployments.values())
+        .filter((deployment) => deployment.projectId === projectId)
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+        .map(toDeployment);
+    },
+
+    async publishRelease(input) {
+      return mutateCurrentRelease({
+        projects,
+        releases,
+        deployments,
+        projectId: input.projectId,
+        releaseId: input.releaseId,
+        operatorId: input.operatorId,
+        message: input.message,
+        action: "publish",
+        now: input.now,
+      });
+    },
+
+    async rollbackRelease(input) {
+      return mutateCurrentRelease({
+        projects,
+        releases,
+        deployments,
+        projectId: input.projectId,
+        releaseId: input.releaseId,
+        operatorId: input.operatorId,
+        message: input.message,
+        action: "rollback",
+        now: input.now,
+      });
+    },
+
+    async listAuditLogsForTest() {
+      return Array.from(auditLogs.values())
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+        .map(toAuditLog);
+    },
+  } as AuthRepository &
+    OrganizationsRepository &
+    AuditRepository &
+    ProjectsRepository &
+    ReleasesRepository &
+    UploadsRepository &
+    SitePreviewRepository &
+    DeploymentsRepository;
 }
 
 function nextReleaseVersion(projectId: string, releases: Map<string, ReleaseRecord>): number {
@@ -455,6 +527,62 @@ function nextReleaseVersion(projectId: string, releases: Map<string, ReleaseReco
 
 function createPendingReleaseHash(uploadTaskId: string): string {
   return uploadTaskId.replace(/-/g, "").slice(0, 32).padEnd(32, "0");
+}
+
+function mutateCurrentRelease(input: {
+  projects: Map<string, ProjectRecord>;
+  releases: Map<string, ReleaseRecord>;
+  deployments: Map<string, DeploymentRecord>;
+  projectId: string;
+  releaseId: string;
+  operatorId: string;
+  message: string | null;
+  action: "publish" | "rollback";
+  now: Date;
+}) {
+  const project = input.projects.get(input.projectId);
+  const release = input.releases.get(input.releaseId);
+  if (!project) throw new Error("Project not found");
+  if (!release) throw new Error("Release not found");
+
+  const previousReleaseId = project.currentReleaseId;
+  const previousRelease = previousReleaseId ? input.releases.get(previousReleaseId) ?? null : null;
+
+  if (previousRelease && previousRelease.id !== release.id && previousRelease.status === "active") {
+    previousRelease.status = "ready";
+    input.releases.set(previousRelease.id, previousRelease);
+  }
+
+  release.status = "active";
+  release.activatedAt = input.now;
+  input.releases.set(release.id, release);
+
+  project.currentReleaseId = release.id;
+  project.updatedAt = input.now;
+  input.projects.set(project.id, project);
+
+  const deployment: DeploymentRecord = {
+    id: crypto.randomUUID(),
+    projectId: project.id,
+    releaseId: release.id,
+    previousReleaseId,
+    action: input.action,
+    status: "success",
+    operatorId: input.operatorId,
+    message: input.message,
+    createdAt: input.now,
+    finishedAt: input.now,
+  };
+  input.deployments.set(deployment.id, deployment);
+
+  return {
+    deployment: toDeployment(deployment),
+    project: toProject(project),
+    release: { ...toRelease(release), previewUrl: `/_sites/${project.slug}/${release.releaseHash}/` },
+    previousRelease: previousRelease
+      ? { ...toRelease(previousRelease), previewUrl: `/_sites/${project.slug}/${previousRelease.releaseHash}/` }
+      : null,
+  };
 }
 
 function toUploadTask(record: UploadTaskRecord): UploadTask {
@@ -474,6 +602,21 @@ function toUploadTask(record: UploadTaskRecord): UploadTask {
   };
 }
 
+function toDeployment(record: DeploymentRecord): Deployment {
+  return {
+    id: record.id,
+    projectId: record.projectId,
+    releaseId: record.releaseId,
+    previousReleaseId: record.previousReleaseId,
+    action: record.action,
+    status: record.status,
+    operatorId: record.operatorId,
+    message: record.message,
+    createdAt: record.createdAt.toISOString(),
+    finishedAt: record.finishedAt?.toISOString() ?? null,
+  };
+}
+
 function toProject(record: ProjectRecord): Project {
   return {
     id: record.id,
@@ -481,6 +624,7 @@ function toProject(record: ProjectRecord): Project {
     name: record.name,
     slug: record.slug,
     description: record.description,
+    currentReleaseId: record.currentReleaseId,
     status: record.status,
     visibility: record.visibility,
     createdBy: record.createdBy,
