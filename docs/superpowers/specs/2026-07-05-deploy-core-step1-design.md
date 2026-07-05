@@ -197,6 +197,7 @@ export interface ReleaseLimits {
   maxSingleFileSize: number
   maxTotalUncompressedSize: number
   maxIndexHtmlAnalyzeSize: number
+  maxCssAnalyzeSize: number
 }
 ```
 
@@ -208,6 +209,7 @@ export const DEFAULT_RELEASE_LIMITS: ReleaseLimits = {
   maxSingleFileSize: 100 * 1024 * 1024,
   maxTotalUncompressedSize: 512 * 1024 * 1024,
   maxIndexHtmlAnalyzeSize: 512 * 1024,
+  maxCssAnalyzeSize: 1 * 1024 * 1024,
 }
 ```
 
@@ -249,7 +251,7 @@ hash：文件内容 SHA-256，manifest 阶段生成
 
 ```ts
 export interface DetectItem {
-  level: 'info' | 'pass' | 'warning' | 'failed'
+  level: 'info' | 'warning' | 'failed'
   code: string
   details?: Record<string, unknown>
 }
@@ -294,6 +296,8 @@ export interface ManifestEntry {
 
 ```ts
 export interface Manifest {
+  version: number
+  hashAlgorithm: string
   files: ManifestEntry[]
   hash: string
   releaseHash: string
@@ -303,7 +307,9 @@ export interface Manifest {
 说明：
 
 ```txt
-hash：完整 manifest hash
+version：manifest 格式版本号，第一版为 1
+hashAlgorithm：使用的哈希算法，固定 "sha256"
+hash：完整 manifest hash（对 JSON 序列化的内容做 hash）
 releaseHash：默认取完整 hash 前 12 位
 ```
 
@@ -358,7 +364,6 @@ ZIP_TOO_MANY_FILES
 ZIP_SINGLE_FILE_TOO_LARGE
 ZIP_TOTAL_SIZE_TOO_LARGE
 ZIP_EXTRACT_FAILED
-ROOT_DIR_NOT_FOUND
 MANIFEST_HASH_FAILED
 ```
 
@@ -384,31 +389,32 @@ export function normalizeZipEntryPath(entryName: string): string
 7. 拒绝任何 .. 片段
 8. 去掉开头的 ./
 9. 合并重复 /
-10. 统一 Unicode normalization
-11. 最终只返回安全的相对路径
+10. 统一 Unicode normalization（NFC）
+11. 不转换大小写（Unix 文件系统大小写敏感，保留原样）
+12. 最终只返回安全的相对路径
 ```
 
 必须拒绝：
 
 ```txt
-../evil.txt
-..\evil.txt
-assets/../../evil.txt
-/etc/passwd
-C:\Windows\system.ini
-C:/Windows/system.ini
-//server/share/file.txt
-abc\..\evil.txt
-file\0name.txt
+`../evil.txt`
+`..\evil.txt`
+`assets/../../evil.txt`
+`/etc/passwd`
+`C:\Windows\system.ini`
+`C:/Windows/system.ini`
+`//server/share/file.txt`
+`abc\..\evil.txt`
+`file\0name.txt`
 ```
 
 允许：
 
 ```txt
-index.html
-assets/index.js
-assets/css/style.css
-./assets/index.js
+`index.html`
+`assets/index.js`
+`assets/css/style.css`
+`./assets/index.js`
 ```
 
 ## 10. 解压设计
@@ -433,8 +439,9 @@ export async function safeExtractZip(
 5. 根据 entry.uncompressedSize 做快速预判
 6. 解压 stream 时继续统计真实字节数
 7. 超过限制立即中断并抛错
-8. 解压到 workDir
-9. 返回 FileEntry[]
+8. 写入文件前确保父目录存在（mkdir parents）
+9. 写入完毕后再读取下一个 entry
+10. 返回 FileEntry[]
 ```
 
 ### 10.2 限制策略
@@ -480,6 +487,17 @@ assets/
 
 只创建目录，不进入文件清单。
 
+### 10.5 文件权限策略
+
+解压写入的文件统一设置权限：
+
+```txt
+普通文件：0o644（rw-r--r--）
+目录：    0o755（rwxr-xr-x）
+```
+
+不继承 zip entry 中存储的 Unix 权限位（防止 zip 中存储的 setuid、setgid 或其他危险权限被继承）。
+
 ## 11. 产物根目录识别
 
 很多用户压缩产物时会出现两种结构。
@@ -518,7 +536,7 @@ export function resolveArtifactRoot(files: FileEntry[], workDir: string): {
 1. 如果根目录存在 index.html，则 rootDir = workDir。
 2. 如果根目录不存在 index.html，但只有一个顶层目录，且该目录下存在 index.html，则 rootDir = 该顶层目录。
 3. 返回的 files 需要重新计算相对 rootDir 的 path。
-4. 如果无法找到 index.html，不抛错，交给 detect 阶段返回 failed。
+4. 如果无法找到 `index.html`，不抛错，`rootDir = workDir` 原样返回，交给 detect 阶段返回 `failed`。
 ```
 
 示例：
@@ -562,7 +580,7 @@ export async function runDetection(
 | .env 文件        | 存在 .env 或 .env.*                 | failed  | ENV_FILE_DETECTED                 |
 | 密钥文件           | 存在 *.pem、*.key、id_rsa 等          | failed  | SECRET_FILE_DETECTED              |
 | .git 目录        | 存在 .git/                         | failed  | GIT_DIR_DETECTED                  |
-| 系统垃圾文件         | 存在 .DS_Store、Thumbs.db           | info    | SYSTEM_FILE_DETECTED              |
+| 系统垃圾文件         | 存在 `.DS_Store`、`Thumbs.db`、`__MACOSX/` | info    | SYSTEM_FILE_DETECTED              |
 
 ### 12.2 assets 目录检测
 
@@ -613,7 +631,9 @@ REFERENCED_ASSETS_DIR_MISSING
 
 ### 12.4 CSS 内容分析
 
-第一版建议扫描 CSS 文件中前若干 KB 或全部小文件，检测：
+CSS 文件只扫描前 1MB（`maxCssAnalyzeSize`，默认 1MB）。超过 1MB 的 CSS 文件直接跳过扫描（超大 CSS 通常为压缩后产物，风险极低）。
+
+检测：
 
 ```css
 url('/assets/font.woff2')
@@ -657,7 +677,7 @@ export async function buildManifest(files: FileEntry[]): Promise<Manifest>
 1. 对每个文件使用 stream 计算 SHA-256。
 2. 生成 ManifestEntry。
 3. 按 path 使用稳定 ASCII 字典序排序。
-4. 序列化为 JSON.stringify({ files })。
+4. 序列化为 JSON.stringify({ version: 1, hashAlgorithm: "sha256", files })。
 5. 对 JSON 字符串计算 SHA-256。
 6. 得到完整 manifest hash。
 7. 默认取前 12 位作为 releaseHash。
@@ -667,6 +687,8 @@ Manifest 示例：
 
 ```json
 {
+  "version": 1,
+  "hashAlgorithm": "sha256",
   "files": [
     {
       "path": "assets/index.js",
@@ -841,12 +863,12 @@ bun test packages/deploy-core/tests
 ```txt
 normalizeZipEntryPath('index.html') → index.html
 normalizeZipEntryPath('./assets/index.js') → assets/index.js
-normalizeZipEntryPath('../evil.txt') → throw
-normalizeZipEntryPath('..\\evil.txt') → throw
-normalizeZipEntryPath('/etc/passwd') → throw
-normalizeZipEntryPath('C:\\evil.txt') → throw
-normalizeZipEntryPath('C:/evil.txt') → throw
-normalizeZipEntryPath('file\0name.txt') → throw
+normalizeZipEntryPath('`../evil.txt`') → throw
+normalizeZipEntryPath('`..\evil.txt`') → throw
+normalizeZipEntryPath('`/etc/passwd`') → throw
+normalizeZipEntryPath('`C:\evil.txt`') → throw
+normalizeZipEntryPath('`C:/evil.txt`') → throw
+normalizeZipEntryPath('`file\0name.txt`') → throw
 ```
 
 ### 19.2 unzip.test.ts
