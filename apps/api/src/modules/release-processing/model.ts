@@ -2,6 +2,7 @@ export type ReleaseProcessingErrorCode =
   | "RAW_UPLOAD_REQUIRED"
   | "DEPLOY_CORE_FAILED"
   | "DETECT_FAILED"
+  | "PROJECT_NOT_FOUND"
   | "RELEASE_NOT_FOUND"
   | "UPLOAD_TASK_NOT_FOUND";
 

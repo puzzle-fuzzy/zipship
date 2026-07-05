@@ -6,8 +6,10 @@ import { copyDirectoryContents, createReleaseStoragePath, createUploadWorkDir } 
 import { ReleaseProcessingError } from "./model";
 import type { ReleaseProcessingResult } from "./model";
 import type { UploadTask } from "../uploads/model";
+import type { Project } from "../projects/model";
 
 export interface ReleaseProcessingRepository {
+  findProjectById(projectId: string): Promise<Project | null>;
   findUploadTaskById(uploadTaskId: string): Promise<UploadTask | null>;
   completeProcessedRelease(input: {
     uploadTaskId: string;
@@ -46,6 +48,9 @@ export class ReleaseProcessingService {
     if (!uploadTask.releaseId) return new ReleaseProcessingError("RELEASE_NOT_FOUND");
     if (!existsSync(uploadTask.rawUploadPath)) return new ReleaseProcessingError("RAW_UPLOAD_REQUIRED");
 
+    const project = await this.options.repository.findProjectById(uploadTask.projectId);
+    if (!project) return new ReleaseProcessingError("PROJECT_NOT_FOUND");
+
     const workDir = createUploadWorkDir(this.options.storagePaths, uploadTask.id);
 
     await rm(workDir, { recursive: true, force: true });
@@ -58,7 +63,7 @@ export class ReleaseProcessingService {
       });
 
       const releaseStoragePath = createReleaseStoragePath(this.options.storagePaths, {
-        projectSlug: uploadTask.projectId,
+        projectSlug: project.slug,
         releaseHash: result.manifest.releaseHash,
       });
       const totalSize = result.manifest.files.reduce((sum, file) => sum + file.size, 0);

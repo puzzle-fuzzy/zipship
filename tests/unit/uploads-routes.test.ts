@@ -393,7 +393,8 @@ describe("uploads routes", () => {
       expect(firstRelease.fileCount).toBeGreaterThan(0);
       expect(firstRelease.totalSize).toBeGreaterThan(0);
       expect(firstRelease.storagePath).toContain(storageRoot);
-      expect(firstRelease.storagePath).toContain(project.id);
+      expect(firstRelease.storagePath).toContain(project.slug);
+      expect(firstRelease.storagePath).not.toContain(project.id);
       expect(existsSync(firstRelease.storagePath)).toBe(true);
       expect(existsSync(join(firstRelease.storagePath, "index.html"))).toBe(true);
       expect(readFileSync(join(firstRelease.storagePath, "index.html"), "utf8")).toContain("./assets/index.js");

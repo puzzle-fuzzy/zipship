@@ -125,7 +125,8 @@ describe("releases routes", () => {
       expect(release.status).toBe("ready");
       expect(release.previewUrl).toBe(`/_sites/${project.slug}/${release.releaseHash}/`);
       expect(release.storagePath).toContain(storageRoot);
-      expect(release.storagePath).toContain(project.id);
+      expect(release.storagePath).toContain(project.slug);
+      expect(release.storagePath).not.toContain(project.id);
       expect(existsSync(release.storagePath)).toBe(true);
       expect(existsSync(join(release.storagePath, "index.html"))).toBe(true);
       expect(release.fileCount).toBeGreaterThan(0);

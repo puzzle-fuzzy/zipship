@@ -5,9 +5,10 @@ import type { UploadsRepository } from "./service";
 import type { StoragePaths } from "@zipship/storage";
 import { ReleaseProcessingError } from "../release-processing/model";
 import { ReleaseProcessingService } from "../release-processing/service";
+import type { ReleaseProcessingRepository } from "../release-processing/service";
 
 export interface UploadsModuleOptions {
-  repository: UploadsRepository;
+  repository: UploadsRepository & ReleaseProcessingRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   storagePaths: StoragePaths;
 }

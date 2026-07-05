@@ -10,6 +10,7 @@ import type { ReleasesRepository } from "../releases/service";
 import type { UploadTask } from "../uploads/model";
 import type { UploadsRepository } from "../uploads/service";
 import type { SitePreviewRepository } from "../site-preview/service";
+import type { ReleaseProcessingRepository } from "../release-processing/service";
 import type { Deployment } from "../deployments/model";
 import type { DeploymentsRepository } from "../deployments/service";
 
@@ -140,6 +141,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
   UploadsRepository &
   SitePreviewRepository &
   DeploymentsRepository &
+  ReleaseProcessingRepository &
   InMemoryTestRepositoryControls {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
