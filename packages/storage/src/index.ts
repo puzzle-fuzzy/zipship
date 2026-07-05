@@ -141,11 +141,12 @@ export function contentTypeForPath(absolutePath: string): string {
 function safeDecodePath(requestPath: string): string | null {
   try {
     let prev = requestPath;
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       const decoded = decodeURIComponent(prev);
       if (decoded === prev) break;
       prev = decoded;
     }
+    if (/%[0-9a-fA-F]{2}/.test(prev)) return null;
     return prev;
   } catch {
     return null;

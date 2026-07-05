@@ -58,6 +58,9 @@ describe("resolveStaticAssetPath", () => {
 
       await expect(resolveStaticAssetPath({ rootDir: root, requestPath: "../secret.txt" })).resolves.toEqual({ kind: "not-found" });
       await expect(resolveStaticAssetPath({ rootDir: root, requestPath: "%2e%2e/secret.txt" })).resolves.toEqual({ kind: "not-found" });
+      await expect(resolveStaticAssetPath({ rootDir: root, requestPath: "%25252525252e%25252525252e%25252525252fsecret.txt" })).resolves.toEqual({
+        kind: "not-found",
+      });
       await expect(resolveStaticAssetPath({ rootDir: root, requestPath: "..%5Csecret.txt" })).resolves.toEqual({ kind: "not-found" });
       await expect(resolveStaticAssetPath({ rootDir: root, requestPath: "/etc/passwd" })).resolves.toEqual({ kind: "not-found" });
     } finally {
