@@ -7,7 +7,7 @@
  * Usage: bun run packages/deploy-core/tests/fixtures/scripts/generate-fixtures.ts
  */
 
-import { existsSync, mkdirSync, writeFileSync, cpSync, rmSync } from "fs";
+import { mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "bun";
 
@@ -60,6 +60,134 @@ function createZipFixture(spec: FixtureSpec) {
 
   console.log(`  ✓ ${spec.name}.zip (${Object.keys(spec.files).length} files)`);
   rmSync(TMP_DIR, { recursive: true, force: true });
+}
+
+/**
+ * Compute CRC-32 (IEEE polynomial) for arbitrary data.
+ */
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i];
+    for (let j = 0; j < 8; j++) {
+      if (crc & 1) {
+        crc = (crc >>> 1) ^ 0xedb88320;
+      } else {
+        crc = crc >>> 1;
+      }
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * Create a valid zip file with arbitrary entry filenames (including dangerous ones
+ * like "../evil.txt" or "/etc/passwd") using raw binary construction.
+ * The system `zip` command normalizes such paths, so we need this for test fixtures.
+ *
+ * All entries are stored (uncompressed).
+ */
+function createMinimalZip(
+  outputPath: string,
+  entries: Array<{ filename: string; content: string | Uint8Array }>
+) {
+  const localBuffers: Buffer[] = [];
+  const centralEntries: Array<{
+    filename: string;
+    content: Buffer;
+    crc: number;
+    size: number;
+  }> = [];
+
+  // Build local file headers and file data
+  for (const entry of entries) {
+    const contentBuf =
+      typeof entry.content === "string"
+        ? Buffer.from(entry.content, "utf-8")
+        : Buffer.from(entry.content);
+    const filenameBuf = Buffer.from(entry.filename, "utf-8");
+    const crc = crc32(contentBuf);
+    const size = contentBuf.length;
+
+    // Local file header: 30 bytes + filename
+    const localHeader = Buffer.alloc(30 + filenameBuf.length);
+    localHeader.writeUInt32LE(0x04034b50, 0); // signature
+    localHeader.writeUInt16LE(20, 4); // version needed (2.0)
+    localHeader.writeUInt16LE(0, 6); // flags
+    localHeader.writeUInt16LE(0, 8); // compression: stored
+    localHeader.writeUInt16LE(0, 10); // mod time
+    localHeader.writeUInt16LE(0, 12); // mod date
+    localHeader.writeUInt32LE(crc, 14); // crc32
+    localHeader.writeUInt32LE(size, 18); // compressed size
+    localHeader.writeUInt32LE(size, 22); // uncompressed size
+    localHeader.writeUInt16LE(filenameBuf.length, 26); // filename length
+    localHeader.writeUInt16LE(0, 28); // extra field length
+    filenameBuf.copy(localHeader, 30); // filename bytes
+
+    localBuffers.push(localHeader, contentBuf);
+
+    centralEntries.push({
+      filename: entry.filename,
+      content: contentBuf,
+      crc,
+      size,
+    });
+  }
+
+  // Compute offset where central directory starts
+  let centralDirOffset = 0;
+  for (const buf of localBuffers) {
+    centralDirOffset += buf.length;
+  }
+
+  // Build central directory entries
+  const centralBuffers: Buffer[] = [];
+  let currentLocalOffset = 0;
+
+  for (const info of centralEntries) {
+    const filenameBuf = Buffer.from(info.filename, "utf-8");
+
+    const centralEntry = Buffer.alloc(46 + filenameBuf.length);
+    centralEntry.writeUInt32LE(0x02014b50, 0); // signature
+    centralEntry.writeUInt16LE(63, 4); // version made by
+    centralEntry.writeUInt16LE(20, 6); // version needed
+    centralEntry.writeUInt16LE(0, 8); // flags
+    centralEntry.writeUInt16LE(0, 10); // compression
+    centralEntry.writeUInt16LE(0, 12); // mod time
+    centralEntry.writeUInt16LE(0, 14); // mod date
+    centralEntry.writeUInt32LE(info.crc, 16); // crc32
+    centralEntry.writeUInt32LE(info.size, 20); // compressed size
+    centralEntry.writeUInt32LE(info.size, 24); // uncompressed size
+    centralEntry.writeUInt16LE(filenameBuf.length, 28); // filename length
+    centralEntry.writeUInt16LE(0, 30); // extra field length
+    centralEntry.writeUInt16LE(0, 32); // comment length
+    centralEntry.writeUInt16LE(0, 34); // disk number
+    centralEntry.writeUInt16LE(0, 36); // internal attrs
+    centralEntry.writeUInt32LE(0, 38); // external attrs
+    centralEntry.writeUInt32LE(currentLocalOffset, 42); // local header offset
+    filenameBuf.copy(centralEntry, 46); // filename bytes
+
+    centralBuffers.push(centralEntry);
+
+    const localHeaderSize = 30 + filenameBuf.length;
+    currentLocalOffset += localHeaderSize + info.size;
+  }
+
+  const centralDirSize = centralBuffers.reduce((sum, b) => sum + b.length, 0);
+
+  // End of central directory: 22 bytes
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0); // signature
+  eocd.writeUInt16LE(0, 4); // disk number
+  eocd.writeUInt16LE(0, 6); // disk with central dir
+  eocd.writeUInt16LE(centralEntries.length, 8); // entries on this disk
+  eocd.writeUInt16LE(centralEntries.length, 10); // total entries
+  eocd.writeUInt32LE(centralDirSize, 12); // central dir size
+  eocd.writeUInt32LE(centralDirOffset, 16); // central dir offset
+  eocd.writeUInt16LE(0, 20); // comment length
+
+  const output = Buffer.concat([...localBuffers, ...centralBuffers, eocd]);
+  writeFileSync(outputPath, output);
 }
 
 const FIXTURES: FixtureSpec[] = [
@@ -290,6 +418,8 @@ function createOverLimitFixture() {
       stderr: "pipe",
     });
     if (result.exitCode === 0) console.log("  ✓ over-limit-size.zip (513MB file)");
+  } else {
+    console.error("  ✗ over-limit-size.zip: dd failed:", ddResult.stderr.toString());
   }
   rmSync(dir, { recursive: true, force: true });
 }
@@ -304,45 +434,12 @@ function createEmptyZip() {
   console.log("  ✓ empty.zip (empty central directory)");
 }
 
-// duplicate-path: normalized paths that collide
-function createDuplicatePathFixture() {
-  // Need to manually create: zip with ./assets/index.js AND assets//index.js
-  // Using zip command won't easily do this. Create via Node.
-  const dir = join(TMP_DIR, "duplicate");
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "index.html"), "<h1>duplicate</h1>");
-  // These will have different raw paths but normalize to same
-  // Since zip normalizes, we need a different approach
-  // For now, create the fixture by constructing zip bytes manually
-  console.log("  - duplicate-path.zip: needs manual construction (see test)");
-  rmSync(dir, { recursive: true, force: true });
-}
-
-// windows-drive-path: also manual
-function createWindowsDriveFixture() {
-  console.log("  - windows-drive-path.zip: needs manual construction (see test)");
-}
-
 console.log("Generating deploy-core test fixtures...\n");
 
 for (const spec of FIXTURES) {
-  // Skip special cases that need manual construction
-  if (spec.name === "windows-drive-path" || spec.name === "duplicate-path") continue;
-
-  // For absolute-path: zip command will fail on absolute paths, handle specially
-  if (spec.name === "absolute-path") {
-    ensureCleanTmp();
-    const dir = join(TMP_DIR, "abs");
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "index.html"), "<h1>hello</h1>");
-    // Create a zip, then manually add the absolute path entry
-    const zipPath = join(FIXTURES_DIR, "absolute-path.zip");
-    const result = spawnSync(["zip", "-r", zipPath, "."], { cwd: dir, stdout: "pipe", stderr: "pipe" });
-    if (result.exitCode === 0) console.log("  ✓ absolute-path.zip (note: /etc/passwd entry tested separately)");
-    else console.error("  ✗ absolute-path.zip failed");
-    rmSync(dir, { recursive: true, force: true });
-    continue;
-  }
+  // Skip special cases that need binary construction or manual handling
+  const dangerousPaths = ["zip-slip", "absolute-path", "backslash-zip-slip", "windows-drive-path", "duplicate-path"];
+  if (dangerousPaths.includes(spec.name)) continue;
 
   // For symlink: create actual symlink, then zip with --symlinks
   if (spec.name === "symlink") {
@@ -372,20 +469,44 @@ for (const spec of FIXTURES) {
     continue;
   }
 
-  // For backslash-zip-slip: same issue, zip normalizes paths
-  if (spec.name === "backslash-zip-slip") {
-    console.log("  - backslash-zip-slip.zip: tested via path.ts normalization");
-    continue;
-  }
-
   createZipFixture(spec);
 }
 
 createSpecialFixtures();
 createOverLimitFixture();
 createEmptyZip();
-createDuplicatePathFixture();
-createWindowsDriveFixture();
+
+// Create dangerous-path fixture zips using binary zip construction
+createMinimalZip(join(FIXTURES_DIR, "zip-slip.zip"), [
+  { filename: "../evil.txt", content: "MALICIOUS" },
+  { filename: "index.html", content: "<h1>hello</h1>" },
+]);
+console.log("  ✓ zip-slip.zip (dangerous ../ entry)");
+
+createMinimalZip(join(FIXTURES_DIR, "absolute-path.zip"), [
+  { filename: "/etc/passwd", content: "root:x:0:0:root" },
+  { filename: "index.html", content: "<h1>hello</h1>" },
+]);
+console.log("  ✓ absolute-path.zip (dangerous /etc/passwd entry)");
+
+createMinimalZip(join(FIXTURES_DIR, "backslash-zip-slip.zip"), [
+  { filename: "..\\evil.txt", content: "MALICIOUS" },
+  { filename: "index.html", content: "<h1>hello</h1>" },
+]);
+console.log("  ✓ backslash-zip-slip.zip (backslash .. entry)");
+
+createMinimalZip(join(FIXTURES_DIR, "duplicate-path.zip"), [
+  { filename: "./assets/index.js", content: "// main" },
+  { filename: "assets//index.js", content: "// duplicate" },
+  { filename: "index.html", content: "<h1>duplicate</h1>" },
+]);
+console.log("  ✓ duplicate-path.zip (colliding normalized paths)");
+
+createMinimalZip(join(FIXTURES_DIR, "windows-drive-path.zip"), [
+  { filename: "C:\\Windows\\system.ini", content: "MALICIOUS" },
+  { filename: "index.html", content: "<h1>hello</h1>" },
+]);
+console.log("  ✓ windows-drive-path.zip (Windows drive path)");
 
 rmSync(TMP_DIR, { recursive: true, force: true });
 console.log("\nDone. Run fixtures with: bun test packages/deploy-core/tests");
