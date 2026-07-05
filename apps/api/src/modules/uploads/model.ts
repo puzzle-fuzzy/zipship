@@ -21,7 +21,13 @@ export const uploadTaskModel = t.Object({
   id: t.String(),
   projectId: t.String(),
   releaseId: t.Nullable(t.String()),
-  status: t.Union([t.Literal("pending"), t.Literal("processing")]),
+  status: t.Union([
+    t.Literal("pending"),
+    t.Literal("uploading"),
+    t.Literal("processing"),
+    t.Literal("completed"),
+    t.Literal("failed"),
+  ]),
   rawUploadPath: t.String(),
   originalFilename: t.String(),
   size: t.Number(),
@@ -30,6 +36,12 @@ export const uploadTaskModel = t.Object({
   createdAt: t.String(),
   startedAt: t.Nullable(t.String()),
   finishedAt: t.Nullable(t.String()),
+});
+
+export const uploadRawBodyModel = t.Object({
+  file: t.File({
+    maxSize: "512m",
+  }),
 });
 
 export const createUploadTaskSuccessModel = t.Object({
@@ -47,6 +59,8 @@ export const uploadErrorModel = t.Object({
     t.Literal("PROJECT_NOT_FOUND"),
     t.Literal("UPLOAD_TASK_NOT_FOUND"),
     t.Literal("UPLOAD_TASK_NOT_PENDING"),
+    t.Literal("UPLOAD_TASK_NOT_UPLOADING"),
+    t.Literal("RAW_UPLOAD_REQUIRED"),
     t.Literal("INVALID_UPLOAD_INPUT"),
     t.Literal("VALIDATION_ERROR"),
   ]),
@@ -57,6 +71,7 @@ export const uploadModels = {
   "Uploads.Params": uploadParamsModel,
   "Uploads.DetailParams": uploadDetailParamsModel,
   "Uploads.CreateBody": createUploadTaskBodyModel,
+  "Uploads.RawBody": uploadRawBodyModel,
   "Uploads.CreateSuccess": createUploadTaskSuccessModel,
   "Uploads.Detail": uploadTaskDetailModel,
   "Uploads.Error": uploadErrorModel,
@@ -66,6 +81,7 @@ export type UploadHeaders = typeof uploadHeadersModel.static;
 export type UploadParams = typeof uploadParamsModel.static;
 export type UploadDetailParams = typeof uploadDetailParamsModel.static;
 export type CreateUploadTaskBody = typeof createUploadTaskBodyModel.static;
+export type UploadRawBody = typeof uploadRawBodyModel.static;
 export type UploadTask = typeof uploadTaskModel.static;
 export type CreateUploadTaskSuccess = typeof createUploadTaskSuccessModel.static;
 export type UploadTaskDetail = typeof uploadTaskDetailModel.static;
@@ -102,6 +118,18 @@ export class UploadTaskNotFoundError extends UploadServiceError {
 export class UploadTaskNotPendingError extends UploadServiceError {
   constructor() {
     super("UPLOAD_TASK_NOT_PENDING");
+  }
+}
+
+export class UploadTaskNotUploadingError extends UploadServiceError {
+  constructor() {
+    super("UPLOAD_TASK_NOT_UPLOADING");
+  }
+}
+
+export class RawUploadRequiredError extends UploadServiceError {
+  constructor() {
+    super("RAW_UPLOAD_REQUIRED");
   }
 }
 

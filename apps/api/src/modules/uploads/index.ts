@@ -2,16 +2,19 @@ import { Elysia } from "elysia";
 import { uploadModels, UploadServiceError } from "./model";
 import { UploadsService } from "./service";
 import type { UploadsRepository } from "./service";
+import type { StoragePaths } from "@zipship/storage";
 
 export interface UploadsModuleOptions {
   repository: UploadsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
+  storagePaths: StoragePaths;
 }
 
 export function uploadsModule(options: UploadsModuleOptions) {
   const uploads = new UploadsService({
     repository: options.repository,
     hashRefreshToken: options.hashRefreshToken,
+    storagePaths: options.storagePaths,
     now: () => new Date(),
   });
 
@@ -52,6 +55,7 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
   const uploads = new UploadsService({
     repository: options.repository,
     hashRefreshToken: options.hashRefreshToken,
+    storagePaths: options.storagePaths,
     now: () => new Date(),
   });
 
@@ -76,6 +80,31 @@ export function uploadDetailsModule(options: UploadsModuleOptions) {
           401: "Uploads.Error",
           403: "Uploads.Error",
           404: "Uploads.Error",
+        },
+      },
+    )
+    .put(
+      "/raw",
+      async ({ body, headers, params, status }) => {
+        const result = await uploads.uploadRaw(headers, params, body);
+
+        if (result instanceof UploadServiceError) {
+          return status(toRawStatusCode(result.code), { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Uploads.Headers",
+        params: "Uploads.DetailParams",
+        body: "Uploads.RawBody",
+        response: {
+          200: "Uploads.Detail",
+          400: "Uploads.Error",
+          401: "Uploads.Error",
+          403: "Uploads.Error",
+          404: "Uploads.Error",
+          409: "Uploads.Error",
         },
       },
     )
@@ -121,5 +150,15 @@ function toCompleteStatusCode(code: string): 401 | 403 | 404 | 409 {
   if (code === "UNAUTHORIZED") return 401;
   if (code === "FORBIDDEN") return 403;
   if (code === "UPLOAD_TASK_NOT_PENDING") return 409;
+  if (code === "UPLOAD_TASK_NOT_UPLOADING") return 409;
+  return 404;
+}
+
+function toRawStatusCode(code: string): 400 | 401 | 403 | 404 | 409 {
+  if (code === "UNAUTHORIZED") return 401;
+  if (code === "FORBIDDEN") return 403;
+  if (code === "UPLOAD_TASK_NOT_PENDING") return 409;
+  if (code === "UPLOAD_TASK_NOT_UPLOADING") return 409;
+  if (code === "RAW_UPLOAD_REQUIRED") return 400;
   return 404;
 }

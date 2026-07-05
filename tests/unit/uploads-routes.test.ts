@@ -1,9 +1,15 @@
 import { treaty } from "@elysia/eden";
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
 
-async function registerLoginAndCreateProject() {
-  const api = treaty(createApp());
+function createTempStorageRoot() {
+  return mkdtempSync(join(tmpdir(), "zipship-api-upload-"));
+}
+
+async function registerLoginAndCreateProject(api = treaty(createApp())) {
 
   await api._api.auth.register.post({
     name: "Ada Lovelace",
@@ -47,8 +53,8 @@ async function registerLoginAndCreateProject() {
   };
 }
 
-async function registerLoginCreateProjectAndUploadTask() {
-  const context = await registerLoginAndCreateProject();
+async function registerLoginCreateProjectAndUploadTask(api = treaty(createApp())) {
+  const context = await registerLoginAndCreateProject(api);
   const created = await context.api._api.projects({ projectId: context.project.id }).uploads.post(
     {
       originalFilename: "dist.zip",
@@ -274,5 +280,48 @@ describe("uploads routes", () => {
     expect((response.error?.value as unknown)).toEqual({
       code: "INVALID_UPLOAD_INPUT",
     });
+  });
+
+  test("uploads raw zip bytes for an upload task", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const created = await api._api.projects({ projectId: project.id }).uploads.post(
+        {
+          originalFilename: "dist.zip",
+          size: 1024,
+        },
+        {
+          headers: {
+            authorization: `Bearer ${refreshToken}`,
+          },
+        },
+      );
+      const uploadTask = created.data?.uploadTask;
+
+      if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+      const bytes = await Bun.file(join(import.meta.dir, "../../packages/deploy-core/tests/fixtures/valid-vite-relative-base.zip")).arrayBuffer();
+      const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        {
+          file: new File([bytes], "dist.zip", { type: "application/zip" }),
+        },
+        {
+          headers: {
+            authorization: `Bearer ${refreshToken}`,
+          },
+        },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.data?.uploadTask).toMatchObject({
+        id: uploadTask.id,
+        status: "uploading",
+        errorMessage: null,
+      });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
   });
 });

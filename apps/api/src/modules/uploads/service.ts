@@ -13,12 +13,15 @@ import type {
   UploadDetailParams,
   UploadHeaders,
   UploadParams,
+  UploadRawBody,
   UploadTask,
   UploadTaskDetail,
 } from "./model";
 import type { MemberRole } from "../permissions/model";
 import { PermissionService } from "../permissions/service";
 import type { Project } from "../projects/model";
+import type { StoragePaths } from "@zipship/storage";
+import { createUploadRawPath, writeFileToPath } from "@zipship/storage";
 
 export interface UploadsRepository {
   findSessionByRefreshTokenHash(
@@ -57,11 +60,17 @@ export interface UploadsRepository {
     createdBy: string;
     now: Date;
   }): Promise<UploadTask>;
+  markUploadTaskUploaded(input: {
+    uploadTaskId: string;
+    rawUploadPath: string;
+    size: number;
+  }): Promise<UploadTask>;
 }
 
 export interface UploadsServiceOptions {
   repository: UploadsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
+  storagePaths: StoragePaths;
   now: () => Date;
   permissions?: PermissionService;
 }
@@ -137,6 +146,49 @@ export class UploadsService {
     };
   }
 
+  async uploadRaw(
+    headers: UploadHeaders,
+    params: UploadDetailParams,
+    body: UploadRawBody,
+  ): Promise<UploadTaskDetail | UploadServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+
+    if (currentUser instanceof UploadServiceError) return currentUser;
+
+    const uploadTask = await this.options.repository.findUploadTaskById(params.uploadTaskId);
+
+    if (!uploadTask) return new UploadTaskNotFoundError();
+    if (uploadTask.status !== "pending" && uploadTask.status !== "uploading") return new UploadTaskNotPendingError();
+
+    const project = await this.options.repository.findProjectById(uploadTask.projectId);
+
+    if (!project) return new UploadProjectNotFoundError();
+
+    const membership = await this.options.repository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+
+    if (!membership) return new UploadForbiddenError();
+    if (!this.permissions.can(membership.role, "upload_release")) return new UploadForbiddenError();
+
+    const rawUploadPath = createUploadRawPath(this.options.storagePaths, {
+      projectId: project.id,
+      uploadTaskId: uploadTask.id,
+      filename: uploadTask.originalFilename,
+    });
+
+    const written = await writeFileToPath(body.file, rawUploadPath);
+
+    return {
+      uploadTask: await this.options.repository.markUploadTaskUploaded({
+        uploadTaskId: uploadTask.id,
+        rawUploadPath,
+        size: written.size,
+      }),
+    };
+  }
+
   async complete(headers: UploadHeaders, params: UploadDetailParams): Promise<UploadTaskDetail | UploadServiceError> {
     const currentUser = await this.requireCurrentUser(headers);
 
@@ -145,7 +197,7 @@ export class UploadsService {
     const uploadTask = await this.options.repository.findUploadTaskById(params.uploadTaskId);
 
     if (!uploadTask) return new UploadTaskNotFoundError();
-    if (uploadTask.status !== "pending") return new UploadTaskNotPendingError();
+    if (uploadTask.status !== "pending" && uploadTask.status !== "uploading") return new UploadTaskNotPendingError();
 
     const project = await this.options.repository.findProjectById(uploadTask.projectId);
 

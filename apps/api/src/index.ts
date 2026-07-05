@@ -1,5 +1,6 @@
 import { Elysia } from "elysia";
 import { config } from "@zipship/config";
+import { createStoragePaths } from "@zipship/storage";
 import { authModule, hashRefreshToken } from "./modules/auth";
 import { createInMemoryAuthRepository } from "./modules/auth/repository";
 import { organizationsModule } from "./modules/organizations";
@@ -7,8 +8,13 @@ import { projectDetailsModule, projectsModule } from "./modules/projects";
 import { releasesModule } from "./modules/releases";
 import { uploadDetailsModule, uploadsModule } from "./modules/uploads";
 
-export function createApp() {
+export interface CreateAppOptions {
+  storageRoot?: string;
+}
+
+export function createApp(options: CreateAppOptions = {}) {
   const repository = createInMemoryAuthRepository();
+  const storagePaths = createStoragePaths(options.storageRoot ?? config.storageRoot);
 
   return new Elysia()
     .get("/_health", () => ({
@@ -20,8 +26,8 @@ export function createApp() {
     .use(projectsModule({ repository, hashRefreshToken }))
     .use(projectDetailsModule({ repository, hashRefreshToken }))
     .use(releasesModule({ repository, hashRefreshToken }))
-    .use(uploadsModule({ repository, hashRefreshToken }))
-    .use(uploadDetailsModule({ repository, hashRefreshToken }));
+    .use(uploadsModule({ repository, hashRefreshToken, storagePaths }))
+    .use(uploadDetailsModule({ repository, hashRefreshToken, storagePaths }));
 }
 
 export const app = createApp();
