@@ -5,6 +5,15 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
 
+type TestAuditLog = {
+  projectId: string | null;
+  actorId: string | null;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  metadata: Record<string, unknown>;
+};
+
 function createTempStorageRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-api-deployments-"));
 }
@@ -69,11 +78,20 @@ async function createReadyRelease(api: ReturnType<typeof treaty>, projectId: str
   return release;
 }
 
+async function listAuditLogs(app: ReturnType<typeof createApp>): Promise<TestAuditLog[]> {
+  const response = await app.handle(new Request("http://localhost/_api/__test/auditLogs"));
+  expect(response.status).toBe(200);
+
+  const body = (await response.json()) as { auditLogs: TestAuditLog[] };
+  return body.auditLogs;
+}
+
 describe("deployments routes", () => {
   test("publishes a ready release and records deployment and audit", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
 
@@ -101,7 +119,8 @@ describe("deployments routes", () => {
         status: "active",
         previewUrl: `/_sites/${project.slug}/${release.releaseHash}/`,
       });
-      expect(response.data?.release.activatedAt).toEqual(expect.any(Date));
+      expect(response.data?.release.activatedAt).toBeTruthy();
+      expect(Number.isNaN(new Date(response.data?.release.activatedAt ?? "").getTime())).toBe(false);
       expect(response.data?.previousRelease).toBeNull();
 
       const deployments = await api._api.projects({ projectId: project.id }).deployments.get({
@@ -115,9 +134,8 @@ describe("deployments routes", () => {
         status: "success",
       });
 
-      const auditResponse = await (api._api as any).__test.auditLogs.get();
-      expect(auditResponse.status).toBe(200);
-      expect(auditResponse.data?.auditLogs).toEqual(
+      const auditLogs = await listAuditLogs(app);
+      expect(auditLogs).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             projectId: project.id,
@@ -315,7 +333,8 @@ describe("deployments routes", () => {
   test("rolls back to a previous ready release and records deployment and audit", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const firstRelease = await createReadyRelease(api, project.id, refreshToken);
       const secondRelease = await createReadyRelease(api, project.id, refreshToken);
@@ -347,8 +366,8 @@ describe("deployments routes", () => {
       expect(response.data?.release).toMatchObject({ id: firstRelease.id, status: "active" });
       expect(response.data?.previousRelease).toMatchObject({ id: secondRelease.id, status: "ready" });
 
-      const auditResponse = await (api._api as any).__test.auditLogs.get();
-      expect(auditResponse.data?.auditLogs).toEqual(
+      const auditLogs = await listAuditLogs(app);
+      expect(auditLogs).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             projectId: project.id,

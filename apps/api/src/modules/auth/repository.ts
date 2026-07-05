@@ -118,6 +118,20 @@ interface DeploymentRecord {
   finishedAt: Date | null;
 }
 
+export interface InMemoryTestRepositoryControls {
+  listAuditLogsForTest(): Promise<AuditLog[]>;
+  setMemberRoleForTest(input: {
+    organizationId: string;
+    userId: string;
+    role: MemberRole;
+  }): Promise<void>;
+  setReleaseStateForTest(input: {
+    releaseId: string;
+    status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted";
+    archived: boolean;
+  }): Promise<void>;
+}
+
 export function createInMemoryAuthRepository(): AuthRepository &
   OrganizationsRepository &
   AuditRepository &
@@ -125,7 +139,8 @@ export function createInMemoryAuthRepository(): AuthRepository &
   ReleasesRepository &
   UploadsRepository &
   SitePreviewRepository &
-  DeploymentsRepository {
+  DeploymentsRepository &
+  InMemoryTestRepositoryControls {
   const users = new Map<string, UserRecord>();
   const organizations = new Map<string, OrganizationRecord>();
   const members = new Map<string, MemberRecord>();
@@ -528,14 +543,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
         .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
         .map(toAuditLog);
     },
-  } as AuthRepository &
-    OrganizationsRepository &
-    AuditRepository &
-    ProjectsRepository &
-    ReleasesRepository &
-    UploadsRepository &
-    SitePreviewRepository &
-    DeploymentsRepository;
+  };
 }
 
 function nextReleaseVersion(projectId: string, releases: Map<string, ReleaseRecord>): number {

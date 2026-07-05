@@ -14,7 +14,6 @@ import {
   DeploymentServiceError,
   DeploymentUnauthorizedError,
 } from "./model";
-import type { AuditLog } from "../audit/model";
 import type {
   Deployment,
   DeploymentBody,
@@ -68,17 +67,6 @@ export interface DeploymentsRepository extends AuditRepository {
     message: string | null;
     now: Date;
   }): Promise<DeploymentMutationResult>;
-  listAuditLogsForTest(): Promise<AuditLog[]>;
-  setMemberRoleForTest(input: {
-    organizationId: string;
-    userId: string;
-    role: MemberRole;
-  }): Promise<void>;
-  setReleaseStateForTest(input: {
-    releaseId: string;
-    status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted";
-    archived: boolean;
-  }): Promise<void>;
 }
 
 export interface DeploymentsServiceOptions {
