@@ -102,7 +102,7 @@ export const projects = pgTable(
     ...timestamps,
   },
   (table) => [
-    uniqueIndex("projects_organization_slug_unique").on(table.organizationId, table.slug),
+    uniqueIndex("projects_slug_unique").on(table.slug),
     index("projects_organization_id_idx").on(table.organizationId),
     index("projects_current_release_id_idx").on(table.currentReleaseId),
   ],

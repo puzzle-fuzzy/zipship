@@ -250,9 +250,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
     },
 
     async projectSlugExists(input) {
-      return Array.from(projects.values()).some(
-        (project) => project.organizationId === input.organizationId && project.slug === input.slug,
-      );
+      return Array.from(projects.values()).some((project) => project.slug === input.slug);
     },
 
     async createProject(input) {

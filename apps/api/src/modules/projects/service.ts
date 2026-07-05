@@ -43,7 +43,6 @@ export interface ProjectsRepository {
     role: MemberRole;
   } | null>;
   projectSlugExists(input: {
-    organizationId: string;
     slug: string;
   }): Promise<boolean>;
   createProject(input: {
@@ -97,7 +96,6 @@ export class ProjectsService {
     }
 
     const exists = await this.options.repository.projectSlugExists({
-      organizationId: params.organizationId,
       slug,
     });
 

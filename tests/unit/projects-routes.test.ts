@@ -174,4 +174,68 @@ describe("projects routes", () => {
       code: "INVALID_PROJECT_INPUT",
     });
   });
+
+  test("rejects duplicate project slugs across organizations for preview URLs", async () => {
+    const api = treaty(createApp());
+
+    await api._api.auth.register.post({
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+    const adaLogin = await api._api.auth.login.post({
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+      clientType: "web",
+    });
+    const adaToken = adaLogin.data?.session.refreshToken ?? "";
+    const adaOrganizations = await api._api.organizations.get({
+      headers: { authorization: `Bearer ${adaToken}` },
+    });
+    const adaOrganizationId = adaOrganizations.data?.organizations[0]?.id ?? "";
+
+    const first = await api._api.organizations({ organizationId: adaOrganizationId }).projects.post(
+      {
+        name: "Marketing Site",
+        slug: "marketing-site",
+        description: null,
+      },
+      {
+        headers: { authorization: `Bearer ${adaToken}` },
+      },
+    );
+    expect(first.status).toBe(201);
+
+    await api._api.auth.register.post({
+      name: "Grace Hopper",
+      email: "grace@example.com",
+      password: "correct-horse-battery",
+    });
+    const graceLogin = await api._api.auth.login.post({
+      email: "grace@example.com",
+      password: "correct-horse-battery",
+      clientType: "web",
+    });
+    const graceToken = graceLogin.data?.session.refreshToken ?? "";
+    const graceOrganizations = await api._api.organizations.get({
+      headers: { authorization: `Bearer ${graceToken}` },
+    });
+    const graceOrganizationId = graceOrganizations.data?.organizations[0]?.id ?? "";
+
+    const duplicate = await api._api.organizations({ organizationId: graceOrganizationId }).projects.post(
+      {
+        name: "Other Marketing Site",
+        slug: "marketing-site",
+        description: null,
+      },
+      {
+        headers: { authorization: `Bearer ${graceToken}` },
+      },
+    );
+
+    expect(duplicate.status).toBe(409);
+    expect((duplicate.error?.value as unknown)).toEqual({
+      code: "DUPLICATE_PROJECT_SLUG",
+    });
+  });
 });
