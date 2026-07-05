@@ -6,7 +6,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "dev": "bun ../../scripts/kill-port.ts 3001 && ZIPSHIP_API_PORT=3001 bun --watch src/index.ts",
+    "dev": "bun ../../scripts/kill-port.ts 3001 && ZIPSHIP_API_PORT=3001 bun --env-file=../../.env --watch src/index.ts",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

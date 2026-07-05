@@ -27,3 +27,9 @@ packages/storage      文件系统与未来对象存储抽象
 - Desktop Shell renderer：`http://127.0.0.1:5174`
 
 `dev:api`、`dev:web`、`dev:desktop` 都会在启动前清理对应端口；Web 与 Desktop 的 Vite 配置使用 `strictPort`，端口被占用时不会自动漂移。
+
+## 配置
+
+环境变量统一从仓库根目录 `.env` 读取，模板见 `.env.example`。前端只使用 `VITE_` 前缀变量；数据库、存储路径和服务端密钥只给后端与脚本读取。
+
+Drizzle 配置位于 `packages/db/drizzle.config.ts`，根目录的 `db:generate`、`db:migrate` 脚本会显式指向这个配置文件。
