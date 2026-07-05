@@ -1,7 +1,7 @@
 // packages/deploy-core/tests/unit/pipeline.test.ts
 
 import { describe, expect, test, beforeAll } from "bun:test";
-import { existsSync, mkdirSync, rmSync } from "fs";
+import { mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { processRelease } from "../../src/index";
 import { DeployCoreError } from "../../src/errors";
@@ -32,7 +32,6 @@ describe("processRelease (integration)", () => {
     expect(result.files.length).toBeGreaterThan(0);
     expect(result.manifest.files.length).toBe(result.files.length);
     expect(result.manifest.releaseHash.length).toBe(12);
-    expect(existsSync(result.manifest.files[0].path));
   });
 
   test("nested dist folder gets re-rooted", async () => {
