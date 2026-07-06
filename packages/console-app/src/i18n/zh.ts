@@ -48,6 +48,8 @@ export const zh = {
       uploading: '上传中',
       processing: '处理中',
       failed: '失败',
+      archived: '已归档',
+      deleted: '已删除',
     },
     files: '{{count}} 个文件',
     size: '{{size}} KB',

@@ -69,6 +69,8 @@ export function ProjectDetailPage() {
       uploading: t('versions.status.uploading'),
       processing: t('versions.status.processing'),
       failed: t('versions.status.failed'),
+      archived: t('versions.status.archived'),
+      deleted: t('versions.status.deleted'),
     };
     return map[status] ?? status;
   };
@@ -81,6 +83,9 @@ export function ProjectDetailPage() {
         return 'border-border bg-muted text-muted-foreground';
       case 'failed':
         return 'border-destructive/30 bg-destructive/10 text-destructive';
+      case 'archived':
+      case 'deleted':
+        return 'border-border bg-background text-muted-foreground';
       default:
         return 'border-border bg-background text-muted-foreground';
     }

@@ -48,6 +48,8 @@ export const en = {
       uploading: 'Uploading',
       processing: 'Processing',
       failed: 'Failed',
+      archived: 'Archived',
+      deleted: 'Deleted',
     },
     files: '{{count}} files',
     size: '{{size}} KB',
