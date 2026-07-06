@@ -48,7 +48,10 @@
     "dev:web": "bun --filter @zipship/web-shell dev",
     "dev:desktop": "bun --filter @zipship/desktop-shell start",
     "db:generate": "drizzle-kit generate --config packages/db/drizzle.config.ts",
-    "db:migrate": "drizzle-kit migrate --config packages/db/drizzle.config.ts"
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:migrate": "drizzle-kit migrate --config packages/db/drizzle.config.ts",
+    "pretest": "bun run db:up"
   },
   "devDependencies": {
     "@elysia/eden": "catalog:",

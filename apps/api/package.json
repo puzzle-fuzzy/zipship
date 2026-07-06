@@ -13,9 +13,12 @@
     "@zipship/config": "workspace:*",
     "@zipship/db": "workspace:*",
     "@zipship/shared": "workspace:*",
-    "elysia": "catalog:"
+    "drizzle-orm": "catalog:",
+    "elysia": "catalog:",
+    "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@types/pg": "^8.11.0",
     "typescript": "catalog:"
   }
 }
