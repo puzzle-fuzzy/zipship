@@ -9,8 +9,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@tabler/icons-react": "^3.31.0",
     "@zipship/runtime": "workspace:*",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-router": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:"
