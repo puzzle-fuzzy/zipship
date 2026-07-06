@@ -8,6 +8,8 @@ import {
   switchCurrentReleaseLink,
 } from "@zipship/storage";
 import { authModule, hashRefreshToken } from "./modules/auth";
+import { membersModule } from "./modules/members";
+import { invitationsModule } from "./modules/invitations";
 import { deploymentsModule } from "./modules/deployments";
 import { organizationsModule } from "./modules/organizations";
 import { projectDetailsModule, projectsModule } from "./modules/projects";
@@ -26,6 +28,8 @@ import { createDrizzleUploadsRepository } from "./modules/uploads/drizzle-reposi
 import { createDrizzleSitePreviewRepository } from "./modules/site-preview/drizzle-repository";
 import { createDrizzleDeploymentsRepository } from "./modules/deployments/drizzle-repository";
 import { createDrizzleReleaseProcessingRepository } from "./modules/release-processing/drizzle-repository";
+import { createDrizzleMembersRepository } from "./modules/members/drizzle-repository";
+import { createDrizzleInvitationsRepository } from "./modules/invitations/drizzle-repository";
 
 export interface CreateAppOptions {
   storageRoot?: string;
@@ -64,6 +68,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const sitePreviewRepository = createDrizzleSitePreviewRepository(db);
   const deploymentsRepository = createDrizzleDeploymentsRepository(db);
   const releaseProcessingRepository = createDrizzleReleaseProcessingRepository(db);
+  const membersRepositoryForModule = createDrizzleMembersRepository(db);
+  const invitationsRepository = createDrizzleInvitationsRepository(db);
 
   const sessionRepository = authRepository;
   const membersRepository = organizationsRepository;
@@ -104,7 +110,22 @@ export function createApp(options: CreateAppOptions = {}) {
       sessionRepository, projectsRepository, membersRepository, uploadsRepository,
       releaseProcessingRepository, hashRefreshToken, storagePaths,
     }))
-    .use(sitePreviewModule({ repository: sitePreviewRepository }));
+    .use(sitePreviewModule({ repository: sitePreviewRepository }))
+    .use(membersModule({
+      sessionRepository,
+      membersRepository: membersRepositoryForModule,
+      organizationsRepository,
+      hashRefreshToken,
+    }))
+    .use(invitationsModule({
+      sessionRepository,
+      authRepository,
+      organizationsRepository,
+      invitationsRepository,
+      hashRefreshToken,
+      hashToken: (token: string) => hashRefreshToken(token),
+      randomToken: () => crypto.randomUUID(),
+    }));
 }
 
 export const app = createApp();

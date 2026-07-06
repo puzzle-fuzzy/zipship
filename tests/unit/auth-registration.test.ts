@@ -5,6 +5,7 @@ import { AuthService } from "../../apps/api/src/modules/auth/service";
 function createTestRepositories() {
   const emails = new Set<string>();
   const calls: unknown[] = [];
+  let sessionCount = 0;
 
   return {
     calls,
@@ -29,8 +30,18 @@ function createTestRepositories() {
           member: { id: "member-1", role: input.member.role },
         };
       },
-      async createSession() {
-        throw new Error("createSession is not used by registration tests");
+      async createSession(input: {
+        userId: string;
+        clientType: "web" | "desktop";
+        refreshTokenHash: string;
+        expiresAt: Date;
+      }) {
+        sessionCount++;
+        return {
+          id: `session-${sessionCount}`,
+          clientType: input.clientType,
+          expiresAt: input.expiresAt.toISOString(),
+        };
       },
       async findSessionByRefreshTokenHash() {
         return null;
@@ -48,15 +59,16 @@ function createTestRepositories() {
 }
 
 describe("auth registration", () => {
-  test("creates a user, default organization, and owner member", async () => {
+  test("creates a user, default organization, owner member, and session", async () => {
     const { authRepository, auditRepository, calls } = createTestRepositories();
+    const expiresAt = new Date("2026-07-12T00:00:00.000Z");
     const auth = new AuthService({
       authRepository,
       auditRepository,
       hashPassword: async (password) => `hashed:${password}`,
       verifyPassword: async () => false,
-      createRefreshToken: () => "unused-refresh-token",
-      hashRefreshToken: async (token) => `unused:${token}`,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
       now: () => new Date("2026-07-05T00:00:00.000Z"),
     });
 
@@ -74,6 +86,10 @@ describe("auth registration", () => {
     expect(result.user).toEqual({ id: "user-1", name: "Ada Lovelace", email: "ada@example.com" });
     expect(result.organization).toEqual({ id: "org-1", name: "Ada Lovelace", slug: "ada" });
     expect(result.member).toEqual({ id: "member-1", role: "owner" });
+    expect(result.session).toBeDefined();
+    expect(result.session.clientType).toBe("web");
+    expect(result.session.refreshToken).toBe("refresh-token");
+    expect(result.session.expiresAt).toBe(expiresAt.toISOString());
     expect(calls).toEqual([
       {
         user: {

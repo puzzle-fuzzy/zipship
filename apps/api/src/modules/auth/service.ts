@@ -27,7 +27,7 @@ export interface AuthRepository {
       role: "owner";
       status: "active";
     };
-  }): Promise<RegisterSuccess>;
+  }): Promise<Omit<RegisterSuccess, "session">>;
   createSession(input: {
     userId: string;
     clientType: "web" | "desktop";
@@ -92,7 +92,7 @@ export class AuthService {
 
     const passwordHash = await this.options.hashPassword(input.password);
 
-    return this.options.authRepository.createUserWithDefaultOrganization({
+    const result = await this.options.authRepository.createUserWithDefaultOrganization({
       user: {
         name,
         email,
@@ -107,6 +107,26 @@ export class AuthService {
         status: "active",
       },
     });
+
+    // Create a session immediately so the user is logged in after registration,
+    // no separate login call needed on the frontend.
+    const refreshToken = this.options.createRefreshToken();
+    const refreshTokenHash = await this.options.hashRefreshToken(refreshToken);
+    const expiresAt = new Date(this.options.now().getTime() + refreshTokenTtlMs);
+    const session = await this.options.authRepository.createSession({
+      userId: result.user.id,
+      clientType: input.clientType ?? "web",
+      refreshTokenHash,
+      expiresAt,
+    });
+
+    return {
+      ...result,
+      session: {
+        ...session,
+        refreshToken,
+      },
+    };
   }
 
   async login(input: LoginBody): Promise<LoginSuccess | AuthServiceError> {

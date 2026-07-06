@@ -4,6 +4,7 @@ export const registerBodyModel = t.Object({
   name: t.String({ minLength: 1 }),
   email: t.String({ minLength: 1 }),
   password: t.String({ minLength: 8 }),
+  clientType: t.Optional(t.Union([t.Literal("web"), t.Literal("desktop")])),
 });
 
 export const registerSuccessModel = t.Object({
@@ -20,6 +21,12 @@ export const registerSuccessModel = t.Object({
   member: t.Object({
     id: t.String(),
     role: t.Literal("owner"),
+  }),
+  session: t.Object({
+    id: t.String(),
+    clientType: t.Union([t.Literal("web"), t.Literal("desktop")]),
+    refreshToken: t.String(),
+    expiresAt: t.String(),
   }),
 });
 

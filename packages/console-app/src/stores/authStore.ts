@@ -79,7 +79,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   register: async (apiBaseUrl, name, email, password) => {
     const api = createApiClient(apiBaseUrl);
-    const res = await api._api.auth.register.post({ name, email, password });
+    const res = await api._api.auth.register.post({ name, email, password, clientType: 'web' });
 
     if (res.error) {
       const code = (res.error.value as { code?: string })?.code;
@@ -90,23 +90,12 @@ export const useAuthStore = create<AuthState>((set) => ({
       throw new Error(messages[code ?? ''] ?? 'Registration failed');
     }
 
-    // Auto-login after registration
-    const loginApi = createApiClient(apiBaseUrl);
-    const loginRes = await loginApi._api.auth.login.post({
-      email,
-      password,
-      clientType: 'web',
-    });
-
-    if (loginRes.error) {
-      throw new Error('Account created but login failed');
-    }
-
-    sessionStorage.setItem('zipship_refresh_token', loginRes.data!.session.refreshToken);
+    // Registration already returns a session — no separate login call needed.
+    sessionStorage.setItem('zipship_refresh_token', res.data!.session.refreshToken);
     set({
       status: 'authenticated',
-      user: loginRes.data!.user,
-      refreshToken: loginRes.data!.session.refreshToken,
+      user: res.data!.user,
+      refreshToken: res.data!.session.refreshToken,
     });
   },
 
