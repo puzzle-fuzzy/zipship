@@ -17,6 +17,7 @@ interface Project {
   id: string;
   name: string;
   slug: string;
+  status: string;
 }
 
 interface AppSidebarProps {
@@ -35,6 +36,8 @@ export function AppSidebar({
   onCreateProject,
 }: AppSidebarProps) {
   const { t } = useTranslation();
+  const activeProjects = projects.filter((p) => p.status !== "archived");
+  const archivedCount = projects.length - activeProjects.length;
 
   return (
     <Sidebar collapsible="none" className="hidden md:flex p-2">
@@ -90,9 +93,12 @@ export function AppSidebar({
 
               <SidebarGroupLabel>{t('app.archive')}</SidebarGroupLabel>
               <SidebarMenuItem>
-                <SidebarMenuButton disabled>
+                <SidebarMenuButton disabled={archivedCount === 0}>
                   <Archive />
                   <span>{t('app.archivedProjects')}</span>
+                  {archivedCount > 0 && (
+                    <span className="ml-auto text-xs text-muted-foreground">{archivedCount}</span>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

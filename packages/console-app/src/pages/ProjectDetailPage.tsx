@@ -1,6 +1,7 @@
 import { Code2, MoreHorizontal, Plus, Settings, Upload, UserPlus, Users } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useParams } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+import { toast } from "sonner";
 import { useAuthStore, useMembersStore, useProjectsStore } from "../stores";
 import { useTranslation } from "../i18n";
 import { Button } from "../components/ui/button";
@@ -42,10 +43,16 @@ export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const { user, refreshToken } = useAuthStore();
-  const { projects, releases, fetchReleases } = useProjectsStore();
+  const { projects, releases, fetchReleases, deleteProject, updateProject } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading } = useMembersStore();
+  const navigate = useNavigate();
   const [showUpload, setShowUpload] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editingName, setEditingName] = useState("");
+  const [editingSlug, setEditingSlug] = useState("");
+  const [editingDesc, setEditingDesc] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const apiBaseUrl =
     (typeof window !== "undefined" && (window as any).__ZIPSHIP_API_BASE_URL) ??
@@ -76,6 +83,14 @@ export function ProjectDetailPage() {
       </div>
     );
   }
+
+  useEffect(() => {
+    if (project) {
+      setEditingName(project.name);
+      setEditingSlug(project.slug);
+      setEditingDesc(project.description ?? "");
+    }
+  }, [project?.id]);
 
   const currentMember = members.find((m) => m.userId === user?.id);
   const canManage = currentMember?.role === "owner" || currentMember?.role === "admin";
@@ -290,17 +305,39 @@ export function ProjectDetailPage() {
             <CardContent>
               <form
                 className="flex flex-col gap-4"
-                onSubmit={(e) => e.preventDefault()}
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!canManage) return;
+                  setSaving(true);
+                  try {
+                    await updateProject(apiBaseUrl, refreshToken!, project.id, {
+                      name: editingName,
+                      slug: editingSlug,
+                      description: editingDesc || null,
+                    });
+                    await fetchReleases(apiBaseUrl, refreshToken!, project.id);
+                    toast.success('项目设置已保存');
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : '保存失败');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
               >
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
                     {t("projects.name")}
-                    <Input defaultValue={project.name} disabled={!canManage} />
+                    <Input
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      disabled={!canManage}
+                    />
                   </label>
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
                     {t("projects.slug")}
                     <Input
-                      defaultValue={project.slug}
+                      value={editingSlug}
+                      onChange={(e) => setEditingSlug(e.target.value)}
                       className="font-mono"
                       disabled={!canManage}
                     />
@@ -310,7 +347,8 @@ export function ProjectDetailPage() {
                 <label className="flex flex-col gap-1.5 text-sm font-medium">
                   {t("projects.description")}
                   <Textarea
-                    defaultValue={project.description ?? ""}
+                    value={editingDesc}
+                    onChange={(e) => setEditingDesc(e.target.value)}
                     placeholder={t("projects.descriptionPlaceholder")}
                     className="field-sizing-fixed"
                     rows={4}
@@ -359,11 +397,28 @@ export function ProjectDetailPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-2">
-                  <Button type="button" variant="destructive" disabled={!canManage}>
-                    {t("settings.deleteProject")}
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={!canManage || deleting}
+                    onClick={async () => {
+                      if (!confirm(`确定要删除项目「${project.name}」吗？此操作不可撤销。`)) return;
+                      setDeleting(true);
+                      try {
+                        await deleteProject(apiBaseUrl, refreshToken!, project.id);
+                        toast.success('项目已删除');
+                        navigate('/app');
+                      } catch (err) {
+                        toast.error(err instanceof Error ? err.message : '删除失败');
+                      } finally {
+                        setDeleting(false);
+                      }
+                    }}
+                  >
+                    {deleting ? '删除中...' : t("settings.deleteProject")}
                   </Button>
-                  <Button type="submit" disabled={!canManage}>
-                    {t("common.save")}
+                  <Button type="submit" disabled={!canManage || saving}>
+                    {saving ? '保存中...' : t("common.save")}
                   </Button>
                 </div>
               </form>

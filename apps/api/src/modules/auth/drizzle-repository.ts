@@ -82,6 +82,12 @@ export function createDrizzleAuthRepository(
         .where(eq(schema.sessions.refreshTokenHash, refreshTokenHash));
     },
 
+    async updateUser(userId, input) {
+      const updates: Record<string, unknown> = {};
+      if (input.name !== undefined) updates.name = input.name;
+      await db.update(schema.users).set(updates).where(eq(schema.users.id, userId));
+    },
+
     async findDefaultOrganizationForUser(userId) {
       const rows = await db.select({ organizationId: schema.members.organizationId })
         .from(schema.members)

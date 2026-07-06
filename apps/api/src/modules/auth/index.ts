@@ -88,6 +88,27 @@ export function authModule(options: AuthModuleOptions) {
         },
       },
     )
+    .patch(
+      "/me",
+      async ({ headers, body, status }) => {
+        const result = await auth.updateProfile(headers, body);
+
+        if (result instanceof AuthServiceError) {
+          return status(400, { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Auth.MeHeaders",
+        body: "Auth.UpdateProfileBody",
+        response: {
+          200: "Auth.MeSuccess",
+          400: "Auth.Error",
+          401: "Auth.Error",
+        },
+      },
+    )
     .get(
       "/me",
       async ({ headers, status }) => {

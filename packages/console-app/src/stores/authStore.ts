@@ -19,6 +19,7 @@ interface AuthState {
   login: (apiBaseUrl: string, email: string, password: string, clientType: 'web' | 'desktop') => Promise<void>;
   register: (apiBaseUrl: string, name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
+  updateProfile: (apiBaseUrl: string, name: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -102,5 +103,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   logout: () => {
     sessionStorage.removeItem('zipship_refresh_token');
     set({ status: 'login', user: null, refreshToken: null });
+  },
+
+  updateProfile: async (apiBaseUrl, name) => {
+    const { refreshToken } = useAuthStore.getState();
+    if (!refreshToken) throw new Error('Not authenticated');
+    const api = createApiClient(apiBaseUrl);
+    const res = await api._api.auth.me.patch(
+      { name },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    if (res.error) throw new Error('Failed to update profile');
+    if (res.data) {
+      set({ user: res.data.user });
+    }
   },
 }));

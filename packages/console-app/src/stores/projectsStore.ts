@@ -43,6 +43,8 @@ interface ProjectsState {
   fetchProjects: (apiBaseUrl: string, refreshToken: string) => Promise<void>;
   createProject: (apiBaseUrl: string, refreshToken: string, input: { name: string; slug: string; description: string }) => Promise<void>;
   fetchReleases: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
+  deleteProject: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
+  updateProject: (apiBaseUrl: string, refreshToken: string, projectId: string, input: { name?: string; slug?: string; description?: string | null }) => Promise<void>;
 }
 
 export const useProjectsStore = create<ProjectsState>((set) => ({
@@ -132,6 +134,32 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       }
     } catch (err) {
       console.error('Failed to fetch releases:', err);
+    }
+  },
+
+  deleteProject: async (apiBaseUrl, refreshToken, projectId) => {
+    const api = createApiClient(apiBaseUrl);
+    const res = await api._api.projects({ projectId }).delete({
+      headers: { authorization: `Bearer ${refreshToken}` },
+    });
+    if (res.error) {
+      const code = (res.error.value as { code?: string })?.code;
+      throw new Error(code === 'FORBIDDEN' ? 'No permission to delete this project' : 'Failed to delete project');
+    }
+    // Remove from local state
+    set((state) => ({
+      projects: state.projects.filter((p) => p.id !== projectId),
+    }));
+  },
+
+  updateProject: async (apiBaseUrl, refreshToken, projectId, input) => {
+    const api = createApiClient(apiBaseUrl);
+    const res = await api._api.projects({ projectId }).patch(
+      input,
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    if (res.error) {
+      throw new Error('Failed to update project');
     }
   },
 }));

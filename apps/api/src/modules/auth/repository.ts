@@ -253,7 +253,12 @@ export function createInMemoryAuthRepository(): AuthRepository &
       };
     },
 
-    async findDefaultOrganizationForUser(userId) {
+    async updateUser(userId, input) {
+    const user = Array.from(users.values()).find((u) => u.id === userId);
+    if (user && input.name !== undefined) user.name = input.name;
+  },
+
+  async findDefaultOrganizationForUser(userId) {
       const member = Array.from(members.values()).find((candidate) => candidate.userId === userId && candidate.status === "active");
 
       if (!member) return null;

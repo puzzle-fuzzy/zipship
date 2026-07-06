@@ -1,4 +1,4 @@
-import { LogOut, Moon, Settings, Sun } from 'lucide-react';
+import { LogOut, Moon, Settings, Sun, User } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Avatar, AvatarFallback } from './avatar';
@@ -15,6 +15,7 @@ interface Props {
   user: { id: string; name: string; email: string };
   onLogout: () => void;
   onOpenSettings?: () => void;
+  onOpenProfile?: () => void;
 }
 
 function getUserInitials(name: string): string {
@@ -26,7 +27,7 @@ function getUserInitials(name: string): string {
     .slice(0, 2);
 }
 
-export function AvatarDropdown({ user, onLogout, onOpenSettings }: Props) {
+export function AvatarDropdown({ user, onLogout, onOpenSettings, onOpenProfile }: Props) {
   const { t, language } = useTranslation();
   const { theme, setTheme, setLanguage } = useSettingsStore();
 
@@ -47,6 +48,14 @@ export function AvatarDropdown({ user, onLogout, onOpenSettings }: Props) {
         </div>
 
         <DropdownMenuSeparator />
+
+        {/* Profile */}
+        {onOpenProfile && (
+          <DropdownMenuItem onClick={onOpenProfile}>
+            <User className="size-4" />
+            Edit Profile
+          </DropdownMenuItem>
+        )}
 
         {/* Theme toggle */}
         <DropdownMenuItem onClick={() => setTheme(theme === 'day' ? 'night' : 'day')}>

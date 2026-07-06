@@ -1,5 +1,5 @@
 import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
-import type { AuthServiceError, LoginBody, LoginSuccess, LogoutHeaders, LogoutSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
+import type { AuthServiceError, LoginBody, LoginSuccess, LogoutHeaders, LogoutSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess, UpdateProfileBody } from "./model";
 import { AuditService } from "../audit/service";
 import type { AuditRepository } from "../audit/service";
 
@@ -57,6 +57,7 @@ export interface AuthRepository {
   findDefaultOrganizationForUser(userId: string): Promise<{
     id: string;
   } | null>;
+  updateUser(userId: string, input: { name?: string }): Promise<void>;
 }
 
 export interface AuthServiceOptions {
@@ -218,6 +219,29 @@ export class AuthService {
 
     await this.options.authRepository.invalidateSession(refreshTokenHash, this.options.now());
     return { ok: true };
+  }
+
+  async updateProfile(
+    headers: MeHeaders,
+    body: UpdateProfileBody,
+  ): Promise<MeSuccess | AuthServiceError> {
+    const session = await this.resolveSession(headers);
+    if (!session) return new UnauthorizedError();
+
+    if (body.name !== undefined) {
+      const name = body.name.trim();
+      if (!name) return new InvalidRegistrationInputError();
+      await this.options.authRepository.updateUser(session.user.id, { name });
+    }
+
+    return session;
+  }
+
+  private async resolveSession(headers: MeHeaders) {
+    const token = parseBearerToken(headers.authorization);
+    if (!token) return null;
+    const hash = await this.options.hashRefreshToken(token);
+    return this.options.authRepository.findSessionByRefreshTokenHash(hash, this.options.now());
   }
 }
 

@@ -14,6 +14,7 @@ import {
 } from '../../components/ui/dialog';
 import { ScrollArea } from '../../components/ui/scroll-area';
 import { SidebarProvider } from '../../components/ui/sidebar';
+import { ProfileEditDialog } from '../settings/ProfileEditDialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { AppHeader } from './AppHeader';
@@ -27,6 +28,7 @@ export function AppLayout() {
   const params = useParams();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const apiBaseUrl =
@@ -73,6 +75,7 @@ export function AppLayout() {
               user={user!}
               onLogout={() => setShowLogoutConfirm(true)}
               onOpenSettings={() => setShowSettings(true)}
+              onOpenProfile={() => setShowProfile(true)}
             />
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6 pt-0">
               <Outlet context={{ setShowCreate, setShowSettings }} />
@@ -120,6 +123,11 @@ export function AppLayout() {
         onClose={() => setShowSettings(false)}
       />
 
+      <ProfileEditDialog
+        open={showProfile}
+        onClose={() => setShowProfile(false)}
+        apiBaseUrl={apiBaseUrl}
+      />
     </>
   );
 }
