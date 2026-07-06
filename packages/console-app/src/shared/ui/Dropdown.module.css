@@ -1,12 +1,13 @@
 .wrapper {
   position: relative;
-  display: inline-block;
+  display: block;
 }
 
 .trigger {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
+  width: 100%;
   cursor: pointer;
   border: none;
   background: none;
