@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ZipShip is a self-hosted static artifact deployment tool — think lightweight Netlify/Vercel self-hosted. Users upload built static assets (zip), the platform detects, versions, serves test URLs, publishes releases, and supports rollback. The first phase focuses on the core loop: upload → detect → test URL → publish → rollback.
+ZipShip is a self-hosted static artifact deployment tool — think lightweight Netlify/Vercel self-hosted. Users upload built static assets (zip or folder), the platform detects, versions, serves preview URLs, publishes releases, and supports rollback.
 
 ## Commands
 
@@ -15,124 +15,141 @@ bun run dev:web        # Web shell on http://127.0.0.1:5173
 bun run dev:desktop    # Electron shell on http://127.0.0.1:5174
 
 # Testing
-bun test               # Run all tests
-bun test path/to/file  # Run a single test file
-bun test -- --grep "pattern"  # Filter tests by name
+bun test               # Run all tests (root + packages)
+bun test tests/unit/auth-routes.test.ts  # Single file
+bun test -- --grep "logout"              # Filter by name
 
 # Type checking
-bun run typecheck      # Typecheck root + all workspace packages
+bun run typecheck      # Typecheck all packages (uses turbo)
 
 # Database (requires PostgreSQL running)
 bun run db:generate    # Generate Drizzle migrations
 bun run db:migrate     # Apply Drizzle migrations
+
+# Database lifecycle
+bun run db:up          # docker compose up -d
+bun run db:down        # docker compose down
 ```
 
-Environment variables are read from `.env` at the repo root. Copy `.env.example` to `.env` before first run. Frontend only sees `VITE_`-prefixed variables; `DATABASE_URL`, `ZIPSHIP_STORAGE_ROOT`, and secrets are server/script only.
+Environment variables from `.env` at repo root. Copy `.env.example` to `.env`. Frontend uses `VITE_`-prefixed vars; `DATABASE_URL`, `ZIPSHIP_STORAGE_ROOT` are server-only.
 
 ## Architecture
 
-### Monorepo Structure (Bun Workspaces + Bun Catalogs)
+### Monorepo (Bun Workspaces + Bun Catalogs)
 
 ```
-apps/api              Bun + Elysia backend (control plane)
-apps/web-shell        Vite + React web entry (thin shell, injects WebRuntime)
-apps/desktop-shell    Electron entry (thin shell, injects ElectronRuntime)
-packages/console-app  Shared React UI — both web and desktop render this
+apps/api              Bun + Elysia backend (control plane) — PostgreSQL via Drizzle
+apps/web-shell        Vite + React + Tailwind CSS v4 entry (thin shell)
+apps/desktop-shell    Electron entry (thin shell)
+packages/console-app  Shared React UI — shadcn/ui + Tailwind CSS v4 + Zustand
 packages/db           Drizzle ORM schema + migrations (PostgreSQL)
-packages/deploy-core  Core logic: unzip, detect, hash, manifest, publish, rollback
-packages/storage      File system abstraction (local now, S3/MinIO later)
+packages/deploy-core  Unzip, detect, hash, manifest, publish, rollback
+packages/storage      File system abstraction (local filesystem, S3/MinIO later)
 packages/api-client   Eden Treaty client — type-safe API calls
 packages/runtime      RuntimeAdapter interface (web vs desktop capabilities)
 packages/shared       Shared types, constants, reserved slugs
 packages/config       Env and path configuration
 ```
 
-Dependency versions live in root `package.json` `catalog` field; sub-packages reference them via `"catalog:"`. Cross-package deps use `"workspace:*"`.
+Dependency versions use root `package.json` `catalog` field; sub-packages use `"catalog:"`. Cross-package deps use `"workspace:*"`.
 
 ### Control Plane vs Access Plane
 
-- **Elysia** = control plane (API, auth, management). Does NOT serve production static assets.
-- **Nginx** = access plane (serves user artifacts, SPA fallback, tail-slash redirects, Cache-Control headers).
-- **PostgreSQL** = metadata (users, projects, releases, audit logs) — schema defined but **not yet wired**; all API data currently lives in-memory.
-- **File system** = artifact storage (zips, extracted sites, symlinked `current`).
-
-Nginx config template: [infra/nginx/zipship.conf](infra/nginx/zipship.conf). Routes: `/_api/` → Elysia, `/_console/` → management UI, `/:slug/` → current release, `/:slug/:hash/` → specific release.
+- **Elysia** = control plane (`/_api/`). Auth, projects, uploads, deployments, members, invitations.
+- **Nginx** = access plane (serves user static artifacts, SPA fallback, tail-slash redirects, Cache-Control headers). Template at [infra/nginx/zipship.conf](infra/nginx/zipship.conf).
+- **PostgreSQL** = all metadata (users, sessions, orgs, projects, releases, deployments, audit logs, upload tasks). **Fully wired** via Drizzle ORM.
+- **File system** = artifact storage (uploaded zips, extracted sites, symlinked `current`).
 
 ### API Module Convention (Elysia Feature-Based)
 
-Each business domain in `apps/api/src/modules/:feature/` follows this pattern:
+Each domain in `apps/api/src/modules/:feature/` follows:
 
-- `index.ts` — Elysia plugin (controller). Exports a named plugin function that receives dependencies.
-- `model.ts` — TypeBox validation schemas, derived types, and module-specific error classes.
-- `service.ts` — Business logic class. Receives dependencies (repository interface, hash functions, clock) via constructor. Never touches HTTP context.
-- `repository.ts` — Data access interface (defined in `service.ts` per-module); the single in-memory implementation lives in `auth/repository.ts`.
+- `index.ts` — Elysia plugin (controller). Exports named factory function receiving dependencies.
+- `model.ts` — TypeBox (`t.Object`) validation schemas, derived types, error classes.
+- `service.ts` — Business logic class. Receives repository interfaces, hash functions, clock via constructor. Never touches HTTP context.
+- `drizzle-repository.ts` — Drizzle implementation of the repository interface.
 
-**Error handling rule**: Services return success results OR module error objects (e.g., `AuthServiceError`). Controllers map error objects to HTTP status codes using `status(code, payload)`. API error responses contain only stable `code` strings (e.g., `"DUPLICATE_EMAIL"`), never user-facing text. The frontend handles i18n by mapping error codes to Chinese/English.
+**Error handling**: Services return success OR typed error objects. Controllers map errors to HTTP status codes. Error responses contain only stable `code` strings (e.g. `"DUPLICATE_EMAIL"`), never user-facing text. Frontend maps codes to i18n.
 
-**Type safety**: `apps/api` exports `type App = typeof app`. `packages/api-client` uses `@elysia/eden`'s `treaty<App>()` for end-to-end type-safe API calls.
+**Auth**: Bearer tokens with SHA-256 hashed refresh tokens. 7-day TTL. Server-side session revocation (`POST /_api/auth/logout` sets `revokedAt`). All `parseBearerToken` functions are case-insensitive (`bearer`/`Bearer`).
 
-**Current state — in-memory repositories**: All CRUD data is stored in `Map`s and lost on restart. The repository interfaces are cleanly segregated per module, so switching to PostgreSQL means writing separate Drizzle repository classes that implement those interfaces and replacing the single `createInMemoryAuthRepository()` call in `apps/api/src/index.ts`.
+**Type safety**: `apps/api` exports `type App = typeof app`. `packages/api-client` uses `treaty<App>()` for typed client.
 
 ### Implemented API Modules
 
 | Module | Routes | Notes |
 |--------|--------|-------|
-| auth | `POST /register`, `POST /login`, `GET /me` | Email normalization, session + refresh token |
+| auth | `POST /register`, `POST /login`, `GET /me`, `POST /logout` | Email normalization, session + refresh token, revocation |
 | organizations | `GET /` | List user's orgs |
-| projects | `POST /`, `GET /`, `GET /:id` | Slug validation, slug uniqueness |
+| projects | `POST /`, `GET /`, `GET /:id`, `PATCH /:id` | Slug validation, slug uniqueness, owner/admin update only |
+| members | `GET /` (org-scoped) | List members with user info, role badges |
+| invitations | `POST /` (org-scoped) | Invite by email, role selection, duplicate/prevent checks |
 | releases | `GET /` | List project releases |
 | deployments | `POST /publish`, `POST /rollback`, `GET /deployments` | Writes filesystem artifacts |
-| uploads | `POST /`, `PUT /raw`, `GET /:id`, `POST /complete` | Create → upload → process → complete lifecycle |
+| uploads | `POST /`, `PUT /raw`, `GET /:id`, `POST /complete` | Create task → upload raw → process → complete lifecycle |
 | site-preview | `GET /`, `GET /*` | Internal preview at `/_sites/:slug/:hash/` |
-| permissions | internal service | RBAC owner/admin/developer/deployer/viewer |
+| permissions | internal service | RBAC: owner/admin/developer/deployer/viewer |
 | audit | internal service | Logs operations |
-| release-processing | internal service | Orchestrates unzip → detect → manifest |
 
-### Database (Drizzle ORM)
+### Frontend Tech Stack
 
-Schema is in [packages/db/src/schema.ts](packages/db/src/schema.ts). Core tables: `users`, `organizations`, `members`, `invitations`, `projects`, `releases`, `deployments`, `upload_tasks`, `audit_logs`, `sessions`, `desktop_devices`, `desktop_login_requests`, `desktop_login_tickets`. Two migrations exist (initial schema + slug uniqueness change).
+**`packages/console-app`** is the shared React UI:
+- **Tailwind CSS v4** with `@import "tailwindcss"` (no tailwind.config.js). CSS variables in `index.css`.
+- **shadcn/ui** "radix-nova" style using `@base-ui/react` + `radix-ui`. 36 components in `src/components/ui/`.
+- **Icons**: `lucide-react`.
+- **State**: Zustand v5 stores: `authStore`, `projectsStore`, `membersStore`, `settingsStore`.
+- **i18n**: Custom hook `useTranslation()` with `en.ts` / `zh.ts` maps.
+- **Routing**: React Router 7 (browser router).
+- **Theme**: `.night` class on `<html>` toggled via `settingsStore`.
 
-Drizzle config is at [packages/db/drizzle.config.ts](packages/db/drizzle.config.ts); root `db:*` scripts explicitly point to it via `--config`.
-
-### Release Model
-
-- **Release** = immutable artifact version. Created after upload + unzip + detect + hash. Statuses: `uploading → processing → ready → active | failed | archived | deleted`.
-- **Deployment** = the action of publishing/rolling back. Links a release to the `current` position.
-- **current** = symlink `sites/:slug/current → releases/:hash`. Publishing = atomically relinking this symlink via `symlink → rename` for zero-downtime deploys.
-- `release_hash` is derived from content (manifest hash, truncated to 8-12 chars). Content-identical uploads produce the same hash.
-
-### deploy-core Package (`packages/deploy-core`)
-
-Fully implemented. The `processRelease()` orchestrator runs the full pipeline:
-1. **`safeExtractZip`** — yauzl-based extraction with security validation: path traversal prevention, duplicate rejection, file count / size limits, symlink detection.
-2. **`runDetection`** — multi-pass analysis: checks for missing index.html, service workers, source maps, .env/secret files, .git directories, root-path asset references, CSS root references, missing referenced assets dirs, system files.
-3. **`buildManifest`** — streaming SHA-256 hashing with concurrency limit (16), deterministic sorting, content-addressed release hash.
-4. **`resolveArtifactRoot`** — auto-detects single-top-level-directory zips (e.g., `dist/`) and re-roots paths.
-
-See [packages/deploy-core/src/index.ts](packages/deploy-core/src/index.ts) for the orchestrator, [packages/deploy-core/src/errors.ts](packages/deploy-core/src/errors.ts) for 16 error codes.
-
-### storage Package (`packages/storage`)
-
-Single-file package providing: path helpers (`createStoragePaths`, `createProjectSitePath`, etc.), atomic symlink switching (`switchCurrentReleaseLink`), static asset serving (`resolveStaticAssetPath` with traversal protection, double-decode guarding, index.html SPA fallback), MIME type resolver (`contentTypeForPath`), file I/O helpers (`writeFileToPath`, `copyDirectoryContents`, `ensureReleaseArtifactReady`).
-
-### Web/Desktop Shared UI
-
-`packages/console-app` contains the React UI. `apps/web-shell` and `apps/desktop-shell` are thin shells that inject a `RuntimeAdapter` (`"web"` or `"desktop"` kind) with platform-specific capabilities. **The console app is currently a placeholder** — only renders "ZipShip" and the runtime kind. No pages, routing, or API integration yet.
+Key patterns:
+- `apiBaseUrl` exposed via `window.__ZIPSHIP_API_BASE_URL`.
+- Each store uses `createApiClient(apiBaseUrl)` for type-safe API calls via Eden Treaty.
+- Error codes from API are mapped to user-facing messages in stores (not in UI components).
 
 ### Permission Model
 
-Roles: `owner`, `admin`, `developer`, `deployer`, `viewer`. The `permissions` module ([apps/api/src/modules/permissions/](apps/api/src/modules/permissions/)) maintains the role-permission matrix. Business routes must check permissions through the permissions service — never scatter role checks across route handlers.
+Roles: `owner` → `admin` → `developer` → `deployer` → `viewer`. Matrix in `permissions/service.ts`. Key checks:
+- `invite_member`: owner/admin only
+- `manage_member`: owner/admin only
+- `create_project`: developer+
+- `upload_release`: developer+
+- `publish_release` / `rollback_release`: deployer+
+- `view_project`: all roles
 
-### Reserved Slugs
+### Database (Drizzle ORM)
 
-Project slugs must match `/^[a-z0-9][a-z0-9_-]*$/` and must not start with `_`. Reserved: `_api`, `_console`, `_health`, `_assets`, `favicon.ico`, `robots.txt`. Defined in [packages/shared/src/index.ts](packages/shared/src/index.ts).
+Schema at [packages/db/src/schema.ts](packages/db/src/schema.ts). Core tables: `users`, `sessions` (with `revokedAt`), `organizations`, `members` (role: owner/admin/developer/deployer/viewer), `invitations`, `projects`, `releases`, `deployments`, `upload_tasks`, `audit_logs`.
+
+### Release Model
+
+- **Release** = immutable artifact version. Status flow: `uploading → processing → ready → active | failed | archived | deleted`.
+- **Deployment** = publish/rollback action. Links a release to `current`.
+- **current** = symlink `sites/:slug/current → releases/:hash`. Zero-downtime via `symlink → rename`.
+- `release_hash` = content-derived (manifest hash, truncated to 8-12 chars).
+
+### Upload Flow
+
+Frontend supports three upload modes: ZIP file, folder (webkitdirectory → JSZip), single HTML file (JSZip wrapper). The pipeline:
+1. `POST /uploads` → create upload task (sends filename + size)
+2. `PUT /uploads/:id/raw` → upload raw bytes
+3. `POST /uploads/:id/complete` → trigger `processRelease()` (unzip → detect → hash → manifest)
 
 ## Test Structure
 
-Tests live in `tests/` and individual packages. Key conventions:
+Tests live in `tests/` and `packages/*/tests/`.
 
-- **`tests/unit/`** — Full HTTP route tests via Eden Treaty client. Test the entire `createApp()` including auth, middleware, error mapping. Each test creates fresh state via `createApp()` with in-memory repos.
-- **`packages/*/tests/`** — Package-level unit tests (e.g., deploy-core's detect, unzip, hash, manifest tests, storage tests).
-- **`tests/nginx/`** — Nginx routing integration tests (auto-skips on Windows).
-- Tests use `createTempStorageRoot()` + `try/finally` cleanup pattern for filesystem tests.
-- Cross-platform: tests should use `join()` for path construction and `normalizePath()` helpers for comparing `readlinkSync` output on Windows.
+- **`tests/unit/`** — Full HTTP route tests via Eden Treaty client against `createApp({ db })`. Each test creates a fresh PostgreSQL connection and uses `beforeEach` with `truncateAllTables()`. Database must be running.
+- **`tests/e2e/`** — Multi-step end-to-end flows (register → login → create project → upload → deploy).
+- **`packages/deploy-core/tests/`** — Pure unit tests (zip extraction, detection, manifest hashing, pipeline orchestration). Use fixtures in `packages/deploy-core/tests/fixtures/`.
+- **`packages/storage/tests/`** — Filesystem tests using `createTempStorageRoot()` + `try/finally` cleanup pattern.
+- **`tests/nginx/`** — Nginx routing tests (auto-skips on Windows).
+
+Testing conventions:
+- Integration tests use the **real PostgreSQL via Drizzle** (not in-memory repos).
+- The in-memory repo at `apps/api/src/modules/auth/repository.ts` is used only for unit-style service tests (auth-login, auth-registration).
+- Use `createTestDbClient()` + `truncateAllTables()` for DB reset between tests.
+- For filesystem tests, always use `createTempStorageRoot()` + cleanup in `try/finally`.
+- Cross-platform path handling: use `join()`, `normalizePath()` helpers.
+- Auth tests should verify error response shape is exactly `{ code: string }` (no extra fields).
+- Bearer token tests should cover both `bearer` and `Bearer` (case-insensitive).
