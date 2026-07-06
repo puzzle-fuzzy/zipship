@@ -1,9 +1,0 @@
-fix: separate test database from dev to protect data during tests
-
-- .env.test for test DB config
-- db:create-test script creates zipship_test database
-- pretest now runs migrations on the test database
-- test script sets TEST_DATABASE_URL pointing to zipship_test
-- Tests no longer truncate developer's zipship database
-- Kill-port script: use findstr pipe (faster), skip on free ports
-- Release-processing: include actual error message in DEPLOY_CORE_FAILED
