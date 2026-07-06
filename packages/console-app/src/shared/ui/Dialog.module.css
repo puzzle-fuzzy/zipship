@@ -1,3 +1,5 @@
+/* ─── Overlay ─── */
+
 .overlay {
   position: fixed;
   inset: 0;
@@ -9,24 +11,31 @@
   padding: var(--space-4);
 }
 
+/* ─── Dialog ─── */
+
 .dialog {
-  width: 100%;
-  max-width: 420px;
+  display: flex;
+  flex-direction: column;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
+  max-height: 85vh;
   overflow: hidden;
 }
+
+/* ─── Header ─── */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5) var(--space-5) 0;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-divider);
+  flex-shrink: 0;
 }
 
-.title {
+.headerTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
 }
@@ -50,16 +59,9 @@
   color: var(--color-text-primary);
 }
 
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  padding: var(--space-5);
-}
+/* ─── Body ─── */
 
-.footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  padding: 0 var(--space-5) var(--space-5);
+.body {
+  overflow-y: auto;
+  padding: var(--space-6);
 }
