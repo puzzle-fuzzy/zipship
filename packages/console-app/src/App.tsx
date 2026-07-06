@@ -3,8 +3,10 @@ import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { useAuthStore } from './stores';
+import { useSettingsStore } from './stores/settingsStore';
 import { LoginPage } from './pages/LoginPage';
 import './styles/globals.css';
+import './styles/night.css';
 
 export interface AppProps {
   runtime: RuntimeAdapter;
@@ -20,6 +22,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
   }
 
   useEffect(() => {
+    useSettingsStore.getState().init();
     initSession(apiBaseUrl);
   }, []);
 

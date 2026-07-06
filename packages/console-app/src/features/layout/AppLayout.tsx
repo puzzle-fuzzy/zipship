@@ -52,7 +52,7 @@ export function AppLayout() {
             }
             items={[
               { label: 'Profile', icon: <IconUser size={18} />, onClick: () => {} },
-              { label: 'Settings', icon: <IconSettings size={18} />, onClick: () => {} },
+              { label: 'Settings', icon: <IconSettings size={18} />, onClick: () => navigate('/app/settings') },
               { divider: true },
               { label: 'Sign out', icon: <IconLogout size={18} />, danger: true, onClick: logout },
             ]}
