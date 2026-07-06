@@ -43,7 +43,7 @@ export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const { user, refreshToken } = useAuthStore();
-  const { projects, releases, fetchReleases, deleteProject, updateProject } = useProjectsStore();
+  const { projects, releases, fetchReleases, publishRelease, deleteProject, updateProject } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading } = useMembersStore();
   const navigate = useNavigate();
   const [showUpload, setShowUpload] = useState(false);
@@ -76,14 +76,6 @@ export function ProjectDetailPage() {
     }
   }, [projectId, refreshToken]);
 
-  if (!project) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-      </div>
-    );
-  }
-
   useEffect(() => {
     if (project) {
       setEditingName(project.name);
@@ -91,6 +83,14 @@ export function ProjectDetailPage() {
       setEditingDesc(project.description ?? "");
     }
   }, [project?.id]);
+
+  if (!project) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+      </div>
+    );
+  }
 
   const currentMember = members.find((m) => m.userId === user?.id);
   const canManage = currentMember?.role === "owner" || currentMember?.role === "admin";
@@ -216,17 +216,34 @@ export function ProjectDetailPage() {
                           sideOffset={6}
                           className="min-w-40"
                         >
-                          <DropdownMenuItem disabled>
+                          <DropdownMenuItem onClick={() => {
+                            const base = apiBaseUrl.replace(/\/+$/, '');
+                            const url = `${base}/_sites/${project.slug}/${release.releaseHash}/`;
+                            window.open(url, '_blank');
+                          }}>
                             {t("versions.preview")}
                           </DropdownMenuItem>
                           {release.status !== "active" && (
-                            <DropdownMenuItem disabled>
+                            <DropdownMenuItem
+                              disabled={!canManage}
+                              onClick={async () => {
+                                try {
+                                  await publishRelease(apiBaseUrl, refreshToken!, project.id, release.id);
+                                  toast.success('发布成功');
+                                } catch (err) {
+                                  toast.error(err instanceof Error ? err.message : '发布失败');
+                                }
+                              }}
+                            >
                               {t("versions.publish")}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem
-                            disabled
+                            disabled={!canManage}
                             className="text-destructive"
+                            onClick={() => {
+                              toast.info('删除版本功能即将推出');
+                            }}
                           >
                             {t("versions.delete")}
                           </DropdownMenuItem>

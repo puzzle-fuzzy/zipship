@@ -73,7 +73,8 @@ export function createDrizzleAuthRepository(
       if (!rows[0]) return null;
       if (rows[0].session.revokedAt) return null;
       if (rows[0].session.expiresAt <= now) return null;
-      return { user: rows[0].user, session: { ...rows[0].session, expiresAt: rows[0].session.expiresAt.toISOString() } };
+      const { revokedAt: _revokedAt, ...safeSession } = rows[0].session;
+      return { user: rows[0].user, session: { ...safeSession, expiresAt: rows[0].session.expiresAt.toISOString() } };
     },
 
     async invalidateSession(refreshTokenHash, now) {

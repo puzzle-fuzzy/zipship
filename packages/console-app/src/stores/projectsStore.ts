@@ -43,6 +43,7 @@ interface ProjectsState {
   fetchProjects: (apiBaseUrl: string, refreshToken: string) => Promise<void>;
   createProject: (apiBaseUrl: string, refreshToken: string, input: { name: string; slug: string; description: string }) => Promise<void>;
   fetchReleases: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
+  publishRelease: (apiBaseUrl: string, refreshToken: string, projectId: string, releaseId: string) => Promise<void>;
   deleteProject: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
   updateProject: (apiBaseUrl: string, refreshToken: string, projectId: string, input: { name?: string; slug?: string; description?: string | null }) => Promise<void>;
 }
@@ -134,6 +135,23 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       }
     } catch (err) {
       console.error('Failed to fetch releases:', err);
+    }
+  },
+
+  publishRelease: async (apiBaseUrl, refreshToken, projectId, releaseId) => {
+    const api = createApiClient(apiBaseUrl);
+    const res = await api._api.projects({ projectId }).releases({ releaseId }).publish.post({ message: null }, {
+      headers: { authorization: `Bearer ${refreshToken}` },
+    });
+    if (res.error) throw new Error('发布失败');
+    // Refresh releases to get updated status
+    const refreshRes = await api._api.projects({ projectId }).releases.get({
+      headers: { authorization: `Bearer ${refreshToken}` },
+    });
+    if (refreshRes.data) {
+      set((state) => ({
+        releases: { ...state.releases, [projectId]: refreshRes.data!.releases as Release[] },
+      }));
     }
   },
 

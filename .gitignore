@@ -16,3 +16,4 @@ coverage
 packages/*/tests/.tmp-*/
 /storage
 /tmp
+apps/api/storage
