@@ -34,7 +34,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
 
     setLoading(true);
     try {
-      onCreated({ name: name.trim(), slug: slug.trim(), description: description.trim() });
+      await onCreated({ name: name.trim(), slug: slug.trim(), description: description.trim() });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('projects.createFailed'));

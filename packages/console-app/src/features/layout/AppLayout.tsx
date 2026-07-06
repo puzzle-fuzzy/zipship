@@ -77,13 +77,9 @@ export function AppLayout() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreated={async ({ name, slug, description }) => {
-          try {
-            await createProject(apiBaseUrl, refreshToken!, { name, slug, description });
-            await fetchProjects(apiBaseUrl, refreshToken!);
-            setShowCreate(false);
-          } catch (err) {
-            console.error(err);
-          }
+          await createProject(apiBaseUrl, refreshToken!, { name, slug, description });
+          await fetchProjects(apiBaseUrl, refreshToken!);
+          setShowCreate(false);
         }}
       />
 
