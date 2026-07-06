@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AuthServiceError, DuplicateEmailError } from "../../apps/api/src/modules/auth/model";
+import { AuthServiceError, DuplicateEmailError, InvalidRegistrationInputError } from "../../apps/api/src/modules/auth/model";
 import { AuthService } from "../../apps/api/src/modules/auth/service";
 
 function createTestRepositories() {
@@ -134,5 +134,162 @@ describe("auth registration", () => {
       });
 
     expect(result).toBeInstanceOf(DuplicateEmailError);
+  });
+
+  test("rejects empty name as invalid input", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "",
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).toBeInstanceOf(InvalidRegistrationInputError);
+  });
+
+  test("rejects whitespace-only name as invalid input", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "   ",
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).toBeInstanceOf(InvalidRegistrationInputError);
+  });
+
+  test("rejects invalid email format", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "Ada",
+      email: "not-an-email",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).toBeInstanceOf(InvalidRegistrationInputError);
+  });
+
+  test("rejects short password as invalid input", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "unused-refresh-token",
+      hashRefreshToken: async (token) => `unused:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "Ada",
+      email: "ada@example.com",
+      password: "1234567",
+    });
+
+    expect(result).toBeInstanceOf(InvalidRegistrationInputError);
+  });
+
+  test("creates session with explicit desktop clientType", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "Desktop User",
+      email: "desktop@example.com",
+      password: "correct-horse-battery",
+      clientType: "desktop",
+    });
+
+    expect(result).not.toBeInstanceOf(AuthServiceError);
+    if (result instanceof AuthServiceError) return;
+    expect(result.session.clientType).toBe("desktop");
+  });
+
+  test("defaults clientType to web when not provided", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "Default User",
+      email: "default@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).not.toBeInstanceOf(AuthServiceError);
+    if (result instanceof AuthServiceError) return;
+    expect(result.session.clientType).toBe("web");
+  });
+
+  test("falls back to a generated slug when email username is entirely special characters", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.register({
+      name: "Dash User",
+      email: "-@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).not.toBeInstanceOf(AuthServiceError);
+    if (result instanceof AuthServiceError) return;
+    // Should have a non-empty, non-"dash" fallback slug
+    expect(result.organization.slug).not.toBe("");
+    expect(result.organization.slug).not.toBe("-");
+    expect(result.organization.slug).toMatch(/^user-/);
   });
 });

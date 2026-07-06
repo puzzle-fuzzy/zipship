@@ -1,4 +1,4 @@
-import { Code2, MoreHorizontal, Plus, Settings, UserPlus, Users } from "lucide-react";
+import { Code2, MoreHorizontal, Plus, Settings, Upload, UserPlus, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { useAuthStore, useMembersStore, useProjectsStore } from "../stores";
@@ -41,7 +41,7 @@ import { UploadVersionDialog } from "../features/versions/UploadVersionDialog";
 export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
-  const { refreshToken } = useAuthStore();
+  const { user, refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading } = useMembersStore();
   const [showUpload, setShowUpload] = useState(false);
@@ -77,6 +77,8 @@ export function ProjectDetailPage() {
     );
   }
 
+  const currentMember = members.find((m) => m.userId === user?.id);
+  const canManage = currentMember?.role === "owner" || currentMember?.role === "admin";
   const activeRelease = projectReleases.find((r) => r.status === "active");
 
   const statusLabel = (status: string) => {
@@ -293,14 +295,14 @@ export function ProjectDetailPage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
                     {t("projects.name")}
-                    <Input defaultValue={project.name} disabled />
+                    <Input defaultValue={project.name} disabled={!canManage} />
                   </label>
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
                     {t("projects.slug")}
                     <Input
                       defaultValue={project.slug}
                       className="font-mono"
-                      disabled
+                      disabled={!canManage}
                     />
                   </label>
                 </div>
@@ -312,18 +314,18 @@ export function ProjectDetailPage() {
                     placeholder={t("projects.descriptionPlaceholder")}
                     className="field-sizing-fixed"
                     rows={4}
-                    disabled
+                    disabled={!canManage}
                   />
                 </label>
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex items-center gap-2 text-sm font-medium">
-                    <Checkbox defaultChecked={false} disabled />
+                    <Checkbox defaultChecked={false} disabled={!canManage} />
                     {t("settings.spaMode")}
                   </label>
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
                     {t("settings.routingType")}
-                    <Select defaultValue="path" disabled>
+                    <Select defaultValue="path" disabled={!canManage}>
                       <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
@@ -357,10 +359,10 @@ export function ProjectDetailPage() {
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-2">
-                  <Button type="button" variant="destructive" disabled>
+                  <Button type="button" variant="destructive" disabled={!canManage}>
                     {t("settings.deleteProject")}
                   </Button>
-                  <Button type="submit" disabled>
+                  <Button type="submit" disabled={!canManage}>
                     {t("common.save")}
                   </Button>
                 </div>

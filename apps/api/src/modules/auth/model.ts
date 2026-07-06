@@ -1,9 +1,9 @@
 import { t } from "elysia";
 
 export const registerBodyModel = t.Object({
-  name: t.String({ minLength: 1 }),
-  email: t.String({ minLength: 1 }),
-  password: t.String({ minLength: 8 }),
+  name: t.String({ minLength: 1, maxLength: 120 }),
+  email: t.String({ minLength: 1, maxLength: 255 }),
+  password: t.String({ minLength: 8, maxLength: 128 }),
   clientType: t.Optional(t.Union([t.Literal("web"), t.Literal("desktop")])),
 });
 
@@ -31,8 +31,8 @@ export const registerSuccessModel = t.Object({
 });
 
 export const loginBodyModel = t.Object({
-  email: t.String({ minLength: 1 }),
-  password: t.String({ minLength: 8 }),
+  email: t.String({ minLength: 1, maxLength: 255 }),
+  password: t.String({ minLength: 8, maxLength: 128 }),
   clientType: t.Optional(t.Union([t.Literal("web"), t.Literal("desktop")])),
 });
 

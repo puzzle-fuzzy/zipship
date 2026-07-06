@@ -261,4 +261,120 @@ describe("auth login", () => {
     await expect(auth.me({ authorization: undefined })).resolves.toBeInstanceOf(UnauthorizedError);
     await expect(auth.me({ authorization: "Bearer missing-token" })).resolves.toBeInstanceOf(UnauthorizedError);
   });
+
+  test("returns unauthorized for expired session", async () => {
+    const { authRepository, auditRepository, sessions } = createTestRepositories();
+    (authRepository as any).addUser({
+      id: "user-1",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      passwordHash: "stored-password-hash",
+    });
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => true,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      // Session was created 8 days ago — it has expired
+      now: () => new Date("2026-06-27T00:00:00.000Z"),
+    });
+
+    await auth.login({
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+      clientType: "web",
+    });
+
+    // Now time has advanced past the 7-day TTL
+    const now = new Date("2026-07-06T00:00:00.000Z");
+    const expiredAuth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => true,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => now,
+    });
+
+    const result = await expiredAuth.me({
+      authorization: "Bearer refresh-token",
+    });
+
+    expect(result).toBeInstanceOf(UnauthorizedError);
+  });
+
+  test("returns unauthorized for malformed authorization header", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => true,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const results = await Promise.all([
+      auth.me({ authorization: "NotBearer token" }),
+      auth.me({ authorization: "Bearer " }),
+      auth.me({ authorization: "" }),
+    ]);
+
+    for (const result of results) {
+      expect(result).toBeInstanceOf(UnauthorizedError);
+    }
+  });
+
+  test("defaults clientType to web when not provided", async () => {
+    const { authRepository, auditRepository, sessions } = createTestRepositories();
+    (authRepository as any).addUser({
+      id: "user-1",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      passwordHash: "stored-password-hash",
+    });
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => true,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    const result = await auth.login({
+      email: "ada@example.com",
+      password: "correct-horse-battery",
+    });
+
+    expect(result).not.toBeInstanceOf(AuthServiceError);
+    if (result instanceof AuthServiceError) return;
+    expect(result.session.clientType).toBe("web");
+  });
+
+  test("returns invalid credentials for empty email or short password", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
+    const auth = new AuthService({
+      authRepository,
+      auditRepository,
+      hashPassword: async (password) => `hashed:${password}`,
+      verifyPassword: async () => false,
+      createRefreshToken: () => "refresh-token",
+      hashRefreshToken: async (token) => `hashed-refresh:${token}`,
+      now: () => new Date("2026-07-05T00:00:00.000Z"),
+    });
+
+    await expect(
+      auth.login({ email: "", password: "correct-horse-battery", clientType: "web" }),
+    ).resolves.toBeInstanceOf(InvalidCredentialsError);
+
+    await expect(
+      auth.login({ email: "ada@example.com", password: "short", clientType: "web" }),
+    ).resolves.toBeInstanceOf(InvalidCredentialsError);
+  });
 });

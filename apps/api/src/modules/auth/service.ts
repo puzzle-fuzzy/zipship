@@ -217,11 +217,20 @@ function normalizeEmail(email: string): string | null {
 }
 
 function createDefaultOrganizationSlug(email: string): string {
-  return email
+  let slug = email
     .split("@")[0]
     .replace(/[^a-z0-9_-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .replace(/_+/g, "-");
+
+  // Edge case: email username that was entirely special characters
+  // (e.g., "-@example.com" → "") results in an empty slug.
+  // Fall back to the email's domain user part, or a hash.
+  if (slug.length === 0) {
+    slug = `user-${crypto.randomUUID().slice(0, 8)}`;
+  }
+
+  return slug;
 }
 
 function parseBearerToken(authorization: string | undefined): string | null {

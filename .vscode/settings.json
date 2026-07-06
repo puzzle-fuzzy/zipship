@@ -1,0 +1,20 @@
+{
+    "json.schemaDownload.enable": true,
+    "json.schemas": [
+        {
+            "fileMatch": [
+                "/*.json",
+                "/*.jsonc"
+            ],
+            "url": "https://turbo.build/schema.json"
+        }
+    ],
+    "files.exclude": {
+        "**/.codegraph": true,
+        "**/.impeccable": true,
+        // "**/dist": true,
+        "**/.turbo": true,
+        "**/.vite": true,
+        "**/.bun": true
+    },
+}
