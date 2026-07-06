@@ -16,7 +16,7 @@ interface MembersState {
   error: string | null;
 
   fetchMembers: (apiBaseUrl: string, refreshToken: string, organizationId: string) => Promise<void>;
-  inviteMember: (apiBaseUrl: string, refreshToken: string, organizationId: string, email: string, role: string) => Promise<void>;
+  inviteMember: (apiBaseUrl: string, refreshToken: string, organizationId: string, email: string, role: string) => Promise<{ inviteUrl: string }>;
 }
 
 export const useMembersStore = create<MembersState>((set) => ({
@@ -60,5 +60,6 @@ export const useMembersStore = create<MembersState>((set) => ({
       };
       throw new Error(messages[code ?? ''] ?? 'Failed to send invitation');
     }
+    return res.data as { inviteUrl: string };
   },
 }));

@@ -9,6 +9,7 @@ import {
   InvitationsPendingError,
 } from "./model";
 import type { AuthRepository } from "../auth/service";
+import { EmailService } from "../email/service";
 import type { MemberRole } from "../permissions/model";
 import type { PermissionService } from "../permissions/service";
 
@@ -17,8 +18,11 @@ export interface InvitationsModuleOptions {
   authRepository: Pick<AuthRepository, "findUserByEmail">;
   organizationsRepository: {
     findMembership(input: { organizationId: string; userId: string }): Promise<{ role: MemberRole } | null>;
+    findOrganizationById(organizationId: string): Promise<{ name: string } | null>;
   };
   invitationsRepository: InvitationsRepository;
+  emailService?: EmailService;
+  invitationBaseUrl?: string;
   hashRefreshToken: (token: string) => Promise<string>;
   hashToken: (token: string) => Promise<string>;
   randomToken: () => string;
@@ -31,9 +35,11 @@ export function invitationsModule(options: InvitationsModuleOptions) {
     authRepository: options.authRepository,
     organizationsRepository: options.organizationsRepository,
     invitationsRepository: options.invitationsRepository,
+    emailService: options.emailService,
     hashRefreshToken: options.hashRefreshToken,
     hashToken: options.hashToken,
     randomToken: options.randomToken,
+    invitationBaseUrl: options.invitationBaseUrl,
     now: () => new Date(),
     permissions: options.permissions,
   });

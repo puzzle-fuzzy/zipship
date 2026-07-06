@@ -26,6 +26,7 @@ export const InviteSuccessModel = t.Object({
   email: t.String(),
   role: t.String(),
   status: t.String(),
+  inviteUrl: t.String(),
 });
 export type InviteSuccess = Static<typeof InviteSuccessModel>;
 

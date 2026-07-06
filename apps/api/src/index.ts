@@ -8,6 +8,7 @@ import {
   switchCurrentReleaseLink,
 } from "@zipship/storage";
 import { authModule, hashRefreshToken } from "./modules/auth";
+import { EmailService } from "./modules/email/service";
 import { membersModule } from "./modules/members";
 import { invitationsModule } from "./modules/invitations";
 import { deploymentsModule } from "./modules/deployments";
@@ -70,6 +71,7 @@ export function createApp(options: CreateAppOptions = {}) {
   const releaseProcessingRepository = createDrizzleReleaseProcessingRepository(db);
   const membersRepositoryForModule = createDrizzleMembersRepository(db);
   const invitationsRepository = createDrizzleInvitationsRepository(db);
+  const emailService = new EmailService({ appBaseUrl: "http://localhost:5173" });
 
   const sessionRepository = authRepository;
   const membersRepository = organizationsRepository;
@@ -122,6 +124,8 @@ export function createApp(options: CreateAppOptions = {}) {
       authRepository,
       organizationsRepository,
       invitationsRepository,
+      emailService,
+      invitationBaseUrl: "http://localhost:5173",
       hashRefreshToken,
       hashToken: (token: string) => hashRefreshToken(token),
       randomToken: () => crypto.randomUUID(),

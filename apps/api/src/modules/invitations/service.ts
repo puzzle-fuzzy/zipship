@@ -7,6 +7,7 @@ import {
   InvitationsPendingError,
 } from "./model";
 import type { AuthRepository } from "../auth/service";
+import { EmailService } from "../email/service";
 import { PermissionService } from "../permissions/service";
 import type { MemberRole } from "../permissions/model";
 
@@ -27,11 +28,14 @@ export interface InvitationsServiceOptions {
   authRepository: Pick<AuthRepository, "findUserByEmail">;
   organizationsRepository: {
     findMembership(input: { organizationId: string; userId: string }): Promise<{ role: MemberRole } | null>;
+    findOrganizationById(organizationId: string): Promise<{ name: string } | null>;
   };
   invitationsRepository: InvitationsRepository;
+  emailService?: EmailService;
   hashRefreshToken: (token: string) => Promise<string>;
   hashToken: (token: string) => Promise<string>;
   randomToken: () => string;
+  invitationBaseUrl?: string;
   now: () => Date;
   permissions?: PermissionService;
 }
@@ -91,7 +95,24 @@ export class InvitationsService {
       expiresAt,
     });
 
-    return invitation;
+    // Send email notification
+    if (this.options.emailService) {
+      const org = await this.options.organizationsRepository.findOrganizationById(params.organizationId);
+      await this.options.emailService.sendInvitation({
+        to: body.email,
+        invitedBy: session.user.name,
+        organizationName: org?.name ?? "Unknown",
+        role: body.role,
+        token,
+      });
+    }
+
+    const baseUrl = (this.options.invitationBaseUrl ?? "http://localhost:5173").replace(/\/$/, "");
+
+    return {
+      ...invitation,
+      inviteUrl: `${baseUrl}/invite/${token}`,
+    };
   }
 
   private async findSession(headers: InvitationsHeaders) {

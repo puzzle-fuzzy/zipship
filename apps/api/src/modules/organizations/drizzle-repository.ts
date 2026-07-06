@@ -32,6 +32,14 @@ export function createDrizzleOrganizationsRepository(
       return rows[0] ?? null;
     },
 
+    async findOrganizationById(organizationId) {
+      const rows = await db.select({ id: schema.organizations.id, name: schema.organizations.name, slug: schema.organizations.slug })
+        .from(schema.organizations)
+        .where(eq(schema.organizations.id, organizationId))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
     async setMemberRoleForTest(input: { organizationId: string; userId: string; role: string }) {
       await db.update(schema.members)
         .set({ role: input.role as any })

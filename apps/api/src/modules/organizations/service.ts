@@ -11,6 +11,7 @@ export interface OrganizationsRepository {
     role: MemberRole;
   } | null>;
   listOrganizationsForUser(userId: string): Promise<OrganizationList["organizations"]>;
+  findOrganizationById(organizationId: string): Promise<{ id: string; name: string; slug: string } | null>;
 }
 
 export interface OrganizationsServiceOptions {

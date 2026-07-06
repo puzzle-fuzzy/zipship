@@ -290,6 +290,11 @@ export function createInMemoryAuthRepository(): AuthRepository &
         .filter((organization): organization is NonNullable<typeof organization> => organization !== null);
     },
 
+    async findOrganizationById(organizationId) {
+      const org = organizations.get(organizationId);
+      return org ? { id: org.id, name: org.name, slug: org.slug } : null;
+    },
+
     async findMembership(input) {
       const member = Array.from(members.values()).find(
         (candidate) =>
