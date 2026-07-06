@@ -16,4 +16,6 @@ if (!root) {
   throw new Error('Missing #root element');
 }
 
-createRoot(root).render(<ConsoleApp runtime={desktopRuntime} />);
+const apiBaseUrl = 'http://localhost:3001';
+
+createRoot(root).render(<ConsoleApp runtime={desktopRuntime} apiBaseUrl={apiBaseUrl} />);

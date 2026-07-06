@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@tabler/icons-react": "^3.31.0",
+    "@zipship/api-client": "workspace:*",
     "@zipship/runtime": "workspace:*",
     "react": "catalog:",
     "react-router": "catalog:"
   },
   "devDependencies": {
+    "@zipship/api": "workspace:*",
     "typescript": "catalog:"
   }
 }
