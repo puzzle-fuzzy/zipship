@@ -1,10 +1,20 @@
 import { treaty } from "@elysia/eden";
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { createApp } from "../../apps/api/src/index";
+import { createTestDbClient } from "../../apps/api/src/db/client";
+import { truncateAllTables } from "../../apps/api/src/db/test-utils";
+
+const db = createTestDbClient(
+  process.env.TEST_DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship"
+);
+
+beforeEach(async () => {
+  await truncateAllTables(db);
+});
 
 describe("auth routes", () => {
   test("registers a user through Eden Treaty", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.auth.register.post({
       name: "Ada Lovelace",
@@ -27,7 +37,7 @@ describe("auth routes", () => {
   });
 
   test("returns conflict for duplicate email addresses", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     await api._api.auth.register.post({
       name: "Ada Lovelace",
@@ -48,7 +58,7 @@ describe("auth routes", () => {
   });
 
   test("logs in a registered user through Eden Treaty", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     await api._api.auth.register.post({
       name: "Ada Lovelace",
@@ -75,7 +85,7 @@ describe("auth routes", () => {
   });
 
   test("returns the current user for a bearer refresh token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     await api._api.auth.register.post({
       name: "Ada Lovelace",
@@ -106,7 +116,7 @@ describe("auth routes", () => {
   });
 
   test("returns unauthorized for missing current user token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.auth.me.get();
 
@@ -117,7 +127,7 @@ describe("auth routes", () => {
   });
 
   test("returns invalid credentials without revealing whether email exists", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.auth.login.post({
       email: "missing@example.com",

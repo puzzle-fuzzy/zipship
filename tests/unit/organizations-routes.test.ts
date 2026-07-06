@@ -1,9 +1,19 @@
 import { treaty } from "@elysia/eden";
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { createApp } from "../../apps/api/src/index";
+import { createTestDbClient } from "../../apps/api/src/db/client";
+import { truncateAllTables } from "../../apps/api/src/db/test-utils";
+
+const db = createTestDbClient(
+  process.env.TEST_DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship"
+);
+
+beforeEach(async () => {
+  await truncateAllTables(db);
+});
 
 async function registerAndLogin() {
-  const api = treaty(createApp());
+  const api = treaty(createApp({ db }));
 
   await api._api.auth.register.post({
     name: "Ada Lovelace",
@@ -46,7 +56,7 @@ describe("organizations routes", () => {
   });
 
   test("returns unauthorized without a bearer token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.organizations.get();
 

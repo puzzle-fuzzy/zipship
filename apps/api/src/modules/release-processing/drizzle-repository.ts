@@ -30,7 +30,7 @@ export function createDrizzleReleaseProcessingRepository(
 
     async failProcessedRelease(input) {
       await db.update(schema.releases)
-        .set({ status: "failed", detectResult: input.detectResult as any })
+        .set({ status: "failed", totalSize: input.totalSize, detectResult: input.detectResult as any })
         .where(eq(schema.releases.id, input.releaseId));
 
       const [task] = await db.update(schema.uploadTasks)

@@ -1,15 +1,25 @@
 import { treaty } from "@elysia/eden";
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
+import { createTestDbClient } from "../../apps/api/src/db/client";
+import { truncateAllTables } from "../../apps/api/src/db/test-utils";
+
+const db = createTestDbClient(
+  process.env.TEST_DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship"
+);
+
+beforeEach(async () => {
+  await truncateAllTables(db);
+});
 
 function createTempStorageRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-api-site-preview-"));
 }
 
-async function registerLoginAndCreateProject(api = treaty(createApp())) {
+async function registerLoginAndCreateProject(api = treaty(createApp({ db }))) {
   await api._api.auth.register.post({
     name: "Ada Lovelace",
     email: "ada@example.com",
@@ -53,7 +63,7 @@ async function registerLoginAndCreateProject(api = treaty(createApp())) {
 }
 
 async function createReadyRelease(storageRoot: string) {
-  const app = createApp({ storageRoot });
+  const app = createApp({ storageRoot, db });
   const api = treaty(app);
   const { refreshToken, project } = await registerLoginAndCreateProject(api);
   const created = await api._api.projects({ projectId: project.id }).uploads.post(
@@ -86,7 +96,7 @@ async function createReadyRelease(storageRoot: string) {
 }
 
 async function createFailedRelease(storageRoot: string) {
-  const app = createApp({ storageRoot });
+  const app = createApp({ storageRoot, db });
   const api = treaty(app);
   const { refreshToken, project } = await registerLoginAndCreateProject(api);
   const created = await api._api.projects({ projectId: project.id }).uploads.post(
@@ -252,7 +262,7 @@ describe("site preview routes", () => {
   test("serves an active release preview after publish", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(

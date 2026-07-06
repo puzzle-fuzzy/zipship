@@ -15,6 +15,13 @@
       "when": 1783260277641,
       "tag": "0001_great_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783310323388,
+      "tag": "0002_overrated_makkari",
+      "breakpoints": true
     }
   ]
 }

@@ -139,8 +139,8 @@ export class AuthService {
     });
     const organization = await this.options.authRepository.findDefaultOrganizationForUser(user.id);
 
-    if (organization && this.options.audit) {
-      await this.options.audit.record({
+    if (organization && this.audit) {
+      await this.audit.record({
         organizationId: organization.id,
         projectId: null,
         actorId: user.id,

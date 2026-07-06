@@ -27,6 +27,7 @@ export interface ReleaseProcessingRepository {
     uploadTaskId: string;
     releaseId: string;
     errorCode: string;
+    totalSize: number;
     detectResult: Record<string, unknown>;
     finishedAt: Date;
   }): Promise<UploadTask>;
@@ -75,6 +76,7 @@ export class ReleaseProcessingService {
           uploadTaskId: uploadTask.id,
           releaseId: uploadTask.releaseId,
           errorCode: "DETECT_FAILED",
+          totalSize: uploadTask.size,
           detectResult: result.detect as unknown as Record<string, unknown>,
           finishedAt: this.options.now(),
         });
@@ -109,6 +111,7 @@ export class ReleaseProcessingService {
         uploadTaskId: uploadTask.id,
         releaseId: uploadTask.releaseId,
         errorCode,
+        totalSize: uploadTask.size,
         detectResult: {
           level: "failed",
           items: [

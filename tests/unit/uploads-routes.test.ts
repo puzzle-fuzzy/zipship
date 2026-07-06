@@ -1,15 +1,25 @@
 import { treaty } from "@elysia/eden";
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
+import { createTestDbClient } from "../../apps/api/src/db/client";
+import { truncateAllTables } from "../../apps/api/src/db/test-utils";
+
+const db = createTestDbClient(
+  process.env.TEST_DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship"
+);
+
+beforeEach(async () => {
+  await truncateAllTables(db);
+});
 
 function createTempStorageRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-api-upload-"));
 }
 
-async function registerLoginAndCreateProject(api = treaty(createApp())) {
+async function registerLoginAndCreateProject(api = treaty(createApp({ db }))) {
   await api._api.auth.register.post({
     name: "Ada Lovelace",
     email: "ada@example.com",
@@ -52,7 +62,7 @@ async function registerLoginAndCreateProject(api = treaty(createApp())) {
   };
 }
 
-async function registerLoginCreateProjectAndUploadTask(api = treaty(createApp())) {
+async function registerLoginCreateProjectAndUploadTask(api = treaty(createApp({ db }))) {
   const context = await registerLoginAndCreateProject(api);
   const created = await context.api._api.projects({ projectId: context.project.id }).uploads.post(
     {
@@ -81,7 +91,7 @@ describe("uploads routes", () => {
   test("completes an upload task after raw upload and marks the upload as completed", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -163,7 +173,7 @@ describe("uploads routes", () => {
   });
 
   test("returns unauthorized without a bearer token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.projects({ projectId: "project-1" }).uploads.post({
       originalFilename: "dist.zip",
@@ -177,7 +187,7 @@ describe("uploads routes", () => {
   });
 
   test("returns unauthorized for upload task detail without a bearer token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).get();
 
@@ -188,7 +198,7 @@ describe("uploads routes", () => {
   });
 
   test("returns unauthorized when completing an upload task without a bearer token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
 
     const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).complete.post(null);
 
@@ -231,7 +241,7 @@ describe("uploads routes", () => {
   test("rejects completing an upload task that is already completed", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -308,7 +318,7 @@ describe("uploads routes", () => {
   test("uploads raw zip bytes for an upload task", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         {
@@ -351,7 +361,7 @@ describe("uploads routes", () => {
   test("completes an uploaded zip and marks its release ready", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -418,7 +428,7 @@ describe("uploads routes", () => {
   });
 
   test("returns unauthorized when uploading raw zip without a bearer token", async () => {
-    const api = treaty(createApp());
+    const api = treaty(createApp({ db }));
     const response = await api._api.uploads({ uploadTaskId: "upload-task-1" }).raw.put({
       file: new File(["zip"], "dist.zip", { type: "application/zip" }),
     });
@@ -446,7 +456,7 @@ describe("uploads routes", () => {
   test("writes raw zip bytes to the configured storage root", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -477,7 +487,7 @@ describe("uploads routes", () => {
   test("rejects raw upload after an upload task is completed", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -510,7 +520,7 @@ describe("uploads routes", () => {
   });
 
   test("returns stable validation error for malformed raw upload bodies", async () => {
-    const direct = createApp();
+    const direct = createApp({ db });
     const directApi = treaty(direct);
     const { refreshToken, uploadTask } = await registerLoginCreateProjectAndUploadTask(directApi);
 
@@ -534,7 +544,7 @@ describe("uploads routes", () => {
   test("rejects completing before raw zip upload exists", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -557,7 +567,7 @@ describe("uploads routes", () => {
   test("marks release failed when deploy-core detection fails", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },
@@ -609,7 +619,7 @@ describe("uploads routes", () => {
   test("rejects complete when an uploaded raw zip is missing without moving to processing", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot }));
+      const api = treaty(createApp({ storageRoot, db }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const created = await api._api.projects({ projectId: project.id }).uploads.post(
         { originalFilename: "dist.zip", size: 1024 },

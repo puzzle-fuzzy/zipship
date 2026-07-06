@@ -3,6 +3,12 @@ import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@zipship/db";
 import type { ProjectsRepository } from "./service";
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(s: string): boolean {
+  return UUID_RE.test(s);
+}
+
 export function createDrizzleProjectsRepository(
   db: NodePgDatabase<typeof schema>
 ): ProjectsRepository {
@@ -40,6 +46,8 @@ export function createDrizzleProjectsRepository(
     },
 
     async listProjectsForOrganization(organizationId) {
+      if (!isValidUuid(organizationId)) return [];
+
       const rows = await db.select()
         .from(schema.projects)
         .where(eq(schema.projects.organizationId, organizationId));
@@ -48,12 +56,18 @@ export function createDrizzleProjectsRepository(
     },
 
     async findProjectById(projectId) {
-      const rows = await db.select()
-        .from(schema.projects)
-        .where(eq(schema.projects.id, projectId))
-        .limit(1);
+      if (!isValidUuid(projectId)) return null;
 
-      return rows[0] ? toProject(rows[0]) : null;
+      try {
+        const rows = await db.select()
+          .from(schema.projects)
+          .where(eq(schema.projects.id, projectId))
+          .limit(1);
+
+        return rows[0] ? toProject(rows[0]) : null;
+      } catch {
+        return null;
+      }
     },
   };
 }

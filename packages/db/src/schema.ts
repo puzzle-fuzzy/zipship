@@ -151,7 +151,6 @@ export const releases = pgTable(
   },
   (table) => [
     uniqueIndex("releases_project_version_unique").on(table.projectId, table.versionNumber),
-    uniqueIndex("releases_project_release_hash_unique").on(table.projectId, table.releaseHash),
     index("releases_project_status_idx").on(table.projectId, table.status),
   ],
 );

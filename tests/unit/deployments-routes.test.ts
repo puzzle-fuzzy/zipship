@@ -1,11 +1,13 @@
 import { treaty } from "@elysia/eden";
-import { describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readlinkSync, rmSync } from "fs";
 import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
 import { readLinkTarget } from "../helpers/path";
+import { createTestDbClient } from "../../apps/api/src/db/client";
+import { truncateAllTables } from "../../apps/api/src/db/test-utils";
 
 type TestAuditLog = {
   projectId: string | null;
@@ -16,11 +18,19 @@ type TestAuditLog = {
   metadata: Record<string, unknown>;
 };
 
+const db = createTestDbClient(
+  process.env.TEST_DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship"
+);
+
+beforeEach(async () => {
+  await truncateAllTables(db);
+});
+
 function createTempStorageRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-api-deployments-"));
 }
 
-async function registerLoginAndCreateProject(api = treaty(createApp())) {
+async function registerLoginAndCreateProject(api = treaty(createApp({ db }))) {
   await api._api.auth.register.post({
     name: "Ada Lovelace",
     email: "ada@example.com",
@@ -92,7 +102,7 @@ describe("deployments routes", () => {
   test("publishes a ready release and records deployment and audit", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
@@ -165,7 +175,7 @@ describe("deployments routes", () => {
   test("rejects publish without a bearer token", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
 
@@ -183,7 +193,7 @@ describe("deployments routes", () => {
   test("rejects publish for developer and viewer roles", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
@@ -223,7 +233,7 @@ describe("deployments routes", () => {
   test("rejects publish for unknown project, unknown release, and release from another project", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const first = await registerLoginAndCreateProject(api);
       const second = await registerLoginAndCreateProject(api);
       const otherRelease = await createReadyRelease(api, second.project.id, second.refreshToken);
@@ -256,7 +266,7 @@ describe("deployments routes", () => {
   test("rejects publish for releases that are not ready or are archived", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
@@ -298,7 +308,7 @@ describe("deployments routes", () => {
   test("publishing a second release moves the previous active release back to ready", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const firstRelease = await createReadyRelease(api, project.id, refreshToken);
       const secondRelease = await createReadyRelease(api, project.id, refreshToken);
@@ -339,7 +349,7 @@ describe("deployments routes", () => {
   test("rolls back to a previous ready release and records deployment and audit", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const firstRelease = await createReadyRelease(api, project.id, refreshToken);
@@ -399,7 +409,7 @@ describe("deployments routes", () => {
   test("rejects rollback without permission, to current release, and to non-ready releases", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const app = createApp({ storageRoot, exposeTestRoutes: true });
+      const app = createApp({ storageRoot, db, exposeTestRoutes: true });
       const api = treaty(app);
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const firstRelease = await createReadyRelease(api, project.id, refreshToken);
@@ -459,7 +469,7 @@ describe("deployments routes", () => {
   test("lists deployments newest first for project viewers", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const firstRelease = await createReadyRelease(api, project.id, refreshToken);
       const secondRelease = await createReadyRelease(api, project.id, refreshToken);
@@ -492,7 +502,7 @@ describe("deployments routes", () => {
   test("rejects publish when artifact index.html is missing without changing current release", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
 
@@ -518,7 +528,7 @@ describe("deployments routes", () => {
   test("rejects publish when current symlink cannot be updated without changing current release", async () => {
     const storageRoot = createTempStorageRoot();
     try {
-      const api = treaty(createApp({ storageRoot, exposeTestRoutes: true }));
+      const api = treaty(createApp({ storageRoot, db, exposeTestRoutes: true }));
       const { refreshToken, project } = await registerLoginAndCreateProject(api);
       const release = await createReadyRelease(api, project.id, refreshToken);
 
