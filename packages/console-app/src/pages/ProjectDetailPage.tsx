@@ -1,10 +1,13 @@
+import { IconUpload } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../stores';
 import { useTranslation } from '../i18n';
+import { Button } from '../shared/ui/Button';
 import { Breadcrumb } from '../shared/ui/Breadcrumb';
 import { Card } from '../shared/ui/Card';
 import { Tabs } from '../shared/ui/Tabs';
+import { UploadVersionDialog } from '../features/versions/UploadVersionDialog';
 
 export function ProjectDetailPage() {
   const { t } = useTranslation();
@@ -12,6 +15,7 @@ export function ProjectDetailPage() {
   const { refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases } = useProjectsStore();
   const navigate = useNavigate();
+  const [showUpload, setShowUpload] = useState(false);
 
   const apiBaseUrl =
     (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
@@ -47,7 +51,13 @@ export function ProjectDetailPage() {
             id: 'versions',
             label: t('versions.title'),
             content: (
-              <Card title={t('versions.title')} description={t('versions.total', { count: projectReleases.length })}>
+              <Card title={t('versions.title')} description={t('versions.total', { count: projectReleases.length })}
+                action={
+                  <Button size="sm" onClick={() => setShowUpload(true)}>
+                    <IconUpload size={14} />
+                    Upload
+                  </Button>
+                }>
                 {loading ? (
                   <p style={{ color: 'var(--color-text-tertiary)' }}>{t('common.loading')}</p>
                 ) : projectReleases.length === 0 ? (
@@ -146,6 +156,15 @@ export function ProjectDetailPage() {
             ),
           },
         ]}
+      />
+
+      <UploadVersionDialog
+        open={showUpload}
+        onClose={() => setShowUpload(false)}
+        projectId={project.id}
+        refreshToken={refreshToken!}
+        apiBaseUrl={apiBaseUrl}
+        onUploaded={() => fetchReleases(apiBaseUrl, refreshToken!, project.id)}
       />
     </div>
   );

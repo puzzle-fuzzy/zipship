@@ -17,6 +17,9 @@ export function Dialog({ open, title, onClose, children, width }: DialogProps) {
     <div className={styles.overlay} onClick={onClose}>
       <div
         className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         style={width ? { width } : undefined}
         onClick={(e) => e.stopPropagation()}
       >

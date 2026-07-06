@@ -23,13 +23,17 @@ export function Tabs({ tabs, defaultTab, onTabChange }: TabsProps) {
     onTabChange?.(tabId);
   };
 
+  const activeTab = tabs.find((t) => t.id === active);
+
   return (
     <div className={styles.tabs}>
-      <div className={styles.list}>
+      <div className={styles.list} role="tablist">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             type="button"
+            role="tab"
+            aria-selected={active === tab.id}
             className={`${styles.trigger}${active === tab.id ? ` ${styles.triggerActive}` : ''}`}
             onClick={() => handleTab(tab.id)}
           >
@@ -38,11 +42,11 @@ export function Tabs({ tabs, defaultTab, onTabChange }: TabsProps) {
           </button>
         ))}
       </div>
-      {tabs.map((tab) => (
-        <div key={tab.id} className={`${styles.content}${active !== tab.id ? ` ${styles.contentHidden}` : ''}`}>
-          {tab.content}
+      {activeTab && (
+        <div key={activeTab.id} role="tabpanel" className={styles.content}>
+          {activeTab.content}
         </div>
-      ))}
+      )}
     </div>
   );
 }

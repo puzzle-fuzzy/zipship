@@ -77,15 +77,18 @@
 /* ─── Variants ─── */
 
 .success {
-  border-left: 3px solid var(--color-success);
+  background: var(--color-success-bg);
+  border-color: var(--color-success);
 }
 
 .error {
-  border-left: 3px solid var(--color-error);
+  background: var(--color-error-bg);
+  border-color: var(--color-error);
 }
 
 .info {
-  border-left: 3px solid var(--color-accent);
+  background: transparent;
+  border-color: var(--color-border);
 }
 
 /* ─── Animations ─── */

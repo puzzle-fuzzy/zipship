@@ -17,7 +17,7 @@ function getInitials(name: string): string {
 
 export function Avatar({ name, size = 'md' }: AvatarProps) {
   return (
-    <span className={`${styles.avatar} ${styles[size]}`} title={name}>
+    <span className={`${styles.avatar} ${styles[size]}`} role="img" aria-label={name} title={name}>
       {getInitials(name)}
     </span>
   );
