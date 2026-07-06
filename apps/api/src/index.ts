@@ -13,7 +13,9 @@ import { projectDetailsModule, projectsModule } from "./modules/projects";
 import { releasesModule } from "./modules/releases";
 import { uploadDetailsModule, uploadsModule } from "./modules/uploads";
 import { sitePreviewModule } from "./modules/site-preview";
+import type { MemberRole } from "./modules/permissions/model";
 import { getDb } from "./db/client";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { createDrizzleAuthRepository } from "./modules/auth/drizzle-repository";
 import { createDrizzleAuditRepository } from "./modules/audit/drizzle-repository";
 import { createDrizzleOrganizationsRepository } from "./modules/organizations/drizzle-repository";
@@ -27,7 +29,7 @@ import { createDrizzleReleaseProcessingRepository } from "./modules/release-proc
 export interface CreateAppOptions {
   storageRoot?: string;
   exposeTestRoutes?: boolean;
-  db?: any;
+  db?: NodePgDatabase<any>;
 }
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -63,11 +65,15 @@ export function createApp(options: CreateAppOptions = {}) {
       auditLogs: await auditRepository.listAuditLogsForTest(),
     }));
     api.put("/_api/__test/memberRole", async ({ body }) => {
-      await organizationsRepository.setMemberRoleForTest(body as any);
+      await organizationsRepository.setMemberRoleForTest(
+        body as { organizationId: string; userId: string; role: MemberRole },
+      );
       return { ok: true };
     });
     api.put("/_api/__test/releaseState", async ({ body }) => {
-      await releasesRepository.setReleaseStateForTest(body as any);
+      await releasesRepository.setReleaseStateForTest(
+        body as { releaseId: string; status: "uploading" | "processing" | "ready" | "active" | "failed" | "archived" | "deleted"; archived: boolean },
+      );
       return { ok: true };
     });
   }

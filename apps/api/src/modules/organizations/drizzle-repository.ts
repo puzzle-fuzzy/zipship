@@ -21,20 +21,6 @@ export function createDrizzleOrganizationsRepository(
       return rows;
     },
 
-    async findSessionByRefreshTokenHash(refreshTokenHash, now) {
-      const rows = await db.select({
-        session: { id: schema.sessions.id, clientType: schema.sessions.clientType, expiresAt: schema.sessions.expiresAt },
-        user: { id: schema.users.id, name: schema.users.name, email: schema.users.email },
-      })
-        .from(schema.sessions)
-        .innerJoin(schema.users, eq(schema.sessions.userId, schema.users.id))
-        .where(eq(schema.sessions.refreshTokenHash, refreshTokenHash))
-        .limit(1);
-
-      if (!rows[0] || rows[0].session.expiresAt <= now) return null;
-      return { user: rows[0].user, session: { ...rows[0].session, expiresAt: rows[0].session.expiresAt.toISOString() } };
-    },
-
     async findMembership(input: { organizationId: string; userId: string }) {
       const rows = await db.select({ role: schema.members.role })
         .from(schema.members)

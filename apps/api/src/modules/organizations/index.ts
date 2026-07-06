@@ -2,10 +2,11 @@ import { Elysia } from "elysia";
 import { organizationModels, OrganizationServiceError } from "./model";
 import { OrganizationsService } from "./service";
 import type { OrganizationsRepository } from "./service";
+import type { AuthRepository } from "../auth/service";
 
 export interface OrganizationsModuleOptions {
   organizationsRepository: OrganizationsRepository;
-  sessionRepository: Pick<OrganizationsRepository, "findSessionByRefreshTokenHash">;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
   hashRefreshToken: (token: string) => Promise<string>;
 }
 
