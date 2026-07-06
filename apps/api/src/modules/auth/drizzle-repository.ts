@@ -62,7 +62,7 @@ export function createDrizzleAuthRepository(
 
     async findSessionByRefreshTokenHash(refreshTokenHash, now) {
       const rows = await db.select({
-        session: { id: schema.sessions.id, clientType: schema.sessions.clientType, expiresAt: schema.sessions.expiresAt },
+        session: { id: schema.sessions.id, clientType: schema.sessions.clientType, expiresAt: schema.sessions.expiresAt, revokedAt: schema.sessions.revokedAt },
         user: { id: schema.users.id, name: schema.users.name, email: schema.users.email },
       })
         .from(schema.sessions)
@@ -70,8 +70,16 @@ export function createDrizzleAuthRepository(
         .where(eq(schema.sessions.refreshTokenHash, refreshTokenHash))
         .limit(1);
 
-      if (!rows[0] || rows[0].session.expiresAt <= now) return null;
+      if (!rows[0]) return null;
+      if (rows[0].session.revokedAt) return null;
+      if (rows[0].session.expiresAt <= now) return null;
       return { user: rows[0].user, session: { ...rows[0].session, expiresAt: rows[0].session.expiresAt.toISOString() } };
+    },
+
+    async invalidateSession(refreshTokenHash, now) {
+      await db.update(schema.sessions)
+        .set({ revokedAt: now })
+        .where(eq(schema.sessions.refreshTokenHash, refreshTokenHash));
     },
 
     async findDefaultOrganizationForUser(userId) {

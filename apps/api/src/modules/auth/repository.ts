@@ -42,6 +42,7 @@ interface SessionRecord {
   clientType: "web" | "desktop";
   refreshTokenHash: string;
   expiresAt: Date;
+  revokedAt: Date | null;
 }
 
 interface AuditLogRecord {
@@ -205,6 +206,7 @@ export function createInMemoryAuthRepository(): AuthRepository &
       const session: SessionRecord = {
         id: crypto.randomUUID(),
         ...input,
+        revokedAt: null,
       };
 
       sessions.set(session.id, session);
@@ -216,9 +218,19 @@ export function createInMemoryAuthRepository(): AuthRepository &
       };
     },
 
+    async invalidateSession(refreshTokenHash, now) {
+      const session = Array.from(sessions.values()).find(
+        (s) => s.refreshTokenHash === refreshTokenHash,
+      );
+      if (session) session.revokedAt = now;
+    },
+
     async findSessionByRefreshTokenHash(refreshTokenHash, now) {
       const session = Array.from(sessions.values()).find(
-        (candidate) => candidate.refreshTokenHash === refreshTokenHash && candidate.expiresAt > now,
+        (candidate) =>
+          candidate.refreshTokenHash === refreshTokenHash &&
+          !candidate.revokedAt &&
+          candidate.expiresAt > now,
       );
 
       if (!session) return null;

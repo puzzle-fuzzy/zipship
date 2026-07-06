@@ -654,4 +654,167 @@ describe("uploads routes", () => {
       rmSync(storageRoot, { recursive: true, force: true });
     }
   });
+
+  test("accepts .ZIP uppercase extension", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const response = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "BUILD.ZIP", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.data?.uploadTask.originalFilename).toBe("BUILD.ZIP");
+  });
+
+  test("normalizes filename with leading/trailing whitespace", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const response = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "  dist.zip  ", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.data?.uploadTask.originalFilename).toBe("dist.zip");
+  });
+
+  test("rejects filename with path separators", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const res1 = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "../dist.zip", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    expect(res1.status).toBe(400);
+    expect((res1.error?.value as unknown)).toEqual({ code: "INVALID_UPLOAD_INPUT" });
+
+    const res2 = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "foo/bar.zip", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    expect(res2.status).toBe(400);
+    expect((res2.error?.value as unknown)).toEqual({ code: "INVALID_UPLOAD_INPUT" });
+  });
+
+  test("rejects filename that trims to '.' or '..'", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const res1 = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: " .zip", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    expect(res1.status).toBe(400);
+
+    const res2 = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: " ..zip", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    expect(res2.status).toBe(400);
+  });
+
+  test("rejects size = 0 as validation error", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const response = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "dist.zip", size: 0 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects negative size as validation error", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const response = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "dist.zip", size: -1 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects non-zip extension", async () => {
+    const { api, refreshToken, project } = await registerLoginAndCreateProject();
+
+    const response = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: "dist.tar.gz", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    expect(response.status).toBe(400);
+    expect((response.error?.value as unknown)).toEqual({ code: "INVALID_UPLOAD_INPUT" });
+  });
+
+  test("handles invalid zip processing gracefully", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, db }));
+      const { refreshToken, project } = await registerLoginAndCreateProject(api);
+      const created = await api._api.projects({ projectId: project.id }).uploads.post(
+        { originalFilename: "corrupt.zip", size: 100 },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+      const uploadTask = created.data?.uploadTask;
+      if (!uploadTask) throw new Error("Upload task creation unexpectedly returned no task");
+
+      // Write garbage bytes as "raw zip"
+      const garbage = new Uint8Array([0x00, 0x01, 0x02, 0x03, 0x04]);
+      await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
+        { file: new File([garbage], "corrupt.zip", { type: "application/zip" }) },
+        { headers: { authorization: `Bearer ${refreshToken}` } },
+      );
+
+      const completed = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
+        headers: { authorization: `Bearer ${refreshToken}` },
+      });
+
+      // Should return 200 with failed status, not throw an HTTP error
+      expect(completed.status).toBe(200);
+      expect(completed.data?.uploadTask.status).toBe("failed");
+      expect(completed.data?.uploadTask.errorMessage).toBeString();
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects access to another user's upload task (forbidden)", async () => {
+    const storageRoot = createTempStorageRoot();
+    try {
+      const api = treaty(createApp({ storageRoot, db }));
+      const { refreshToken: user1Token, project: user1Project } = await registerLoginAndCreateProject(api);
+
+      // Register as user 2
+      await api._api.auth.register.post({
+        name: "Bob",
+        email: "bob@example.com",
+        password: "bob-password-123",
+      });
+      const login2 = await api._api.auth.login.post({
+        email: "bob@example.com",
+        password: "bob-password-123",
+        clientType: "web",
+      });
+      const user2Token = login2.data!.session.refreshToken;
+
+      // User 1 creates an upload task
+      const created = await api._api.projects({ projectId: user1Project.id }).uploads.post(
+        { originalFilename: "dist.zip", size: 1024 },
+        { headers: { authorization: `Bearer ${user1Token}` } },
+      );
+      const uploadTask = created.data?.uploadTask;
+      if (!uploadTask) throw new Error("Upload task creation failed");
+
+      // User 2 tries to access it
+      const response = await api._api.uploads({ uploadTaskId: uploadTask.id }).get({
+        headers: { authorization: `Bearer ${user2Token}` },
+      });
+
+      expect(response.status).toBe(403);
+      expect((response.error?.value as unknown)).toEqual({ code: "FORBIDDEN" });
+    } finally {
+      rmSync(storageRoot, { recursive: true, force: true });
+    }
+  });
 });

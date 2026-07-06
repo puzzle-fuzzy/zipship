@@ -65,6 +65,6 @@ export class MembersService {
 function parseBearerToken(authorization: string | undefined): string | null {
   if (!authorization) return null;
   const [scheme, token] = authorization.split(" ");
-  if (scheme !== "Bearer" || !token) return null;
+  if (scheme.toLowerCase() !== "bearer" || !token) return null;
   return token;
 }

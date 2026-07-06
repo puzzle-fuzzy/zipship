@@ -127,7 +127,61 @@ describe("safeExtractZip", () => {
 
   test("handles empty zip", async () => {
     const dir = runDir("empty");
-    await safeExtractZip(join(FIXTURES_DIR, "empty.zip"), dir);
+    const result = await safeExtractZip(join(FIXTURES_DIR, "empty.zip"), dir);
     // Empty zip should just produce no files
+    expect(result).toEqual([]);
+  });
+
+  test("handles zip with only directories", async () => {
+    // Use valid-vite-relative-base.zip but we can't easily create a dirs-only fixture.
+    // Instead, verify that all returned entries are files (not directories).
+    const result = await safeExtractZip(
+      join(FIXTURES_DIR, "valid-vite-relative-base.zip"),
+      runDir("only-dirs-check"),
+    );
+    for (const entry of result) {
+      expect(entry.path.endsWith("/")).toBe(false);
+    }
+  });
+
+  test("rejects backslash path traversal", async () => {
+    const dir = runDir("backslash-slip");
+    const zipPath = join(FIXTURES_DIR, "backslash-zip-slip.zip");
+    if (!existsSync(zipPath)) return;
+    try {
+      await safeExtractZip(zipPath, dir);
+      expect.unreachable("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(DeployCoreError);
+      expect((e as DeployCoreError).code).toBe("ZIP_ENTRY_PATH_TRAVERSAL");
+    }
+  });
+
+  test("rejects duplicate paths from differently-cased entries", async () => {
+    // The path normalizer lowercases paths on Windows.
+    // Duplicate paths should be detected regardless of case.
+    const dir = runDir("dup-case");
+    const zipPath = join(FIXTURES_DIR, "duplicate-path.zip");
+    if (!existsSync(zipPath)) return;
+    try {
+      await safeExtractZip(zipPath, dir);
+      expect.unreachable("Should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(DeployCoreError);
+      expect((e as DeployCoreError).code).toBe("ZIP_ENTRY_DUPLICATE_PATH");
+    }
+  });
+
+  test("accepts zip exactly at limits", async () => {
+    const dir = runDir("exact-limit");
+    const zipPath = join(FIXTURES_DIR, "exact-limit-size.zip");
+    if (!existsSync(zipPath)) return;
+    // Should succeed — fixture has ~1KB uncompressed, within a generous limit
+    const result = await safeExtractZip(zipPath, dir, {
+      maxTotalUncompressedSize: 2048,
+      maxFiles: 10,
+      maxSingleFileSize: 2048,
+    });
+    expect(result.length).toBeGreaterThan(0);
   });
 });

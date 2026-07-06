@@ -60,6 +60,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "typecheck:workspaces": "bun turbo run typecheck",
     "test": "bun test",
+    "dev": "bun turbo run dev --filter=@zipship/api --filter=@zipship/web-shell",
     "dev:api": "bun --filter @zipship/api dev",
     "dev:web": "bun --filter @zipship/web-shell dev",
     "dev:desktop": "bun --filter @zipship/desktop-shell start",

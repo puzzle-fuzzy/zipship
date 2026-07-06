@@ -1,5 +1,5 @@
 import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
-import type { AuthServiceError, LoginBody, LoginSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
+import type { AuthServiceError, LoginBody, LoginSuccess, LogoutHeaders, LogoutSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
 import { AuditService } from "../audit/service";
 import type { AuditRepository } from "../audit/service";
 
@@ -38,6 +38,7 @@ export interface AuthRepository {
     clientType: "web" | "desktop";
     expiresAt: string;
   }>;
+  invalidateSession(refreshTokenHash: string, now: Date): Promise<void>;
   findSessionByRefreshTokenHash(
     refreshTokenHash: string,
     now: Date,
@@ -204,6 +205,20 @@ export class AuthService {
 
     return currentSession;
   }
+
+  async logout(input: LogoutHeaders): Promise<LogoutSuccess | AuthServiceError> {
+    const refreshToken = parseBearerToken(input.authorization);
+
+    if (!refreshToken) return new UnauthorizedError();
+
+    const refreshTokenHash = await this.options.hashRefreshToken(refreshToken);
+    const session = await this.options.authRepository.findSessionByRefreshTokenHash(refreshTokenHash, this.options.now());
+
+    if (!session) return new UnauthorizedError();
+
+    await this.options.authRepository.invalidateSession(refreshTokenHash, this.options.now());
+    return { ok: true };
+  }
 }
 
 function normalizeName(name: string): string | null {
@@ -238,7 +253,7 @@ function parseBearerToken(authorization: string | undefined): string | null {
 
   const [scheme, token] = authorization.split(" ");
 
-  if (scheme !== "Bearer" || !token) return null;
+  if (scheme.toLowerCase() !== "bearer" || !token) return null;
 
   return token;
 }

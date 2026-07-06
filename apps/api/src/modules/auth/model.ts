@@ -50,6 +50,14 @@ export const loginSuccessModel = t.Object({
   }),
 });
 
+export const logoutHeadersModel = t.Object({
+  authorization: t.Optional(t.String()),
+});
+
+export const logoutSuccessModel = t.Object({
+  ok: t.Literal(true),
+});
+
 export const meHeadersModel = t.Object({
   authorization: t.Optional(t.String()),
 });
@@ -82,6 +90,8 @@ export const authModels = {
   "Auth.RegisterSuccess": registerSuccessModel,
   "Auth.LoginBody": loginBodyModel,
   "Auth.LoginSuccess": loginSuccessModel,
+  "Auth.LogoutHeaders": logoutHeadersModel,
+  "Auth.LogoutSuccess": logoutSuccessModel,
   "Auth.MeHeaders": meHeadersModel,
   "Auth.MeSuccess": meSuccessModel,
   "Auth.Error": authErrorModel,
@@ -93,6 +103,8 @@ export type LoginBody = typeof loginBodyModel.static;
 export type LoginSuccess = typeof loginSuccessModel.static;
 export type MeHeaders = typeof meHeadersModel.static;
 export type MeSuccess = typeof meSuccessModel.static;
+export type LogoutHeaders = typeof logoutHeadersModel.static;
+export type LogoutSuccess = typeof logoutSuccessModel.static;
 export type AuthErrorCode = typeof authErrorModel.static.code;
 
 export class AuthServiceError {

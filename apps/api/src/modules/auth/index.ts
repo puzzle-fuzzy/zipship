@@ -69,6 +69,25 @@ export function authModule(options: AuthModuleOptions) {
         },
       },
     )
+    .post(
+      "/logout",
+      async ({ headers, status }) => {
+        const result = await auth.logout(headers);
+
+        if (result instanceof AuthServiceError) {
+          return status(401, { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Auth.LogoutHeaders",
+        response: {
+          200: "Auth.LogoutSuccess",
+          401: "Auth.Error",
+        },
+      },
+    )
     .get(
       "/me",
       async ({ headers, status }) => {

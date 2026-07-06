@@ -278,4 +278,228 @@ describe("auth routes", () => {
 
     expect(response.status).toBe(400);
   });
+
+  test("accepts password at minimum length (8 chars)", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.register.post({
+      name: "Min Password",
+      email: "minpw@example.com",
+      password: "12345678",
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  test("accepts password at maximum length (128 chars)", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.register.post({
+      name: "Max Password",
+      email: "maxpw@example.com",
+      password: "a".repeat(128),
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  test("rejects password one above minimum (7 chars) on register", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.register.post({
+      name: "Ada",
+      email: "short@example.com",
+      password: "1234567",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("rejects password one above maximum (129 chars) on register", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.register.post({
+      name: "Too Long",
+      email: "toolongpw@example.com",
+      password: "a".repeat(129),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  test("accepts lowercase 'bearer' scheme", async () => {
+    const api = treaty(createApp({ db }));
+
+    await api._api.auth.register.post({
+      name: "Ada",
+      email: "ada-bearer@example.com",
+      password: "correct-horse-battery",
+    });
+
+    const login = await api._api.auth.login.post({
+      email: "ada-bearer@example.com",
+      password: "correct-horse-battery",
+    });
+
+    const response = await api._api.auth.me.get({
+      headers: {
+        authorization: `bearer ${login.data?.session.refreshToken}`,
+      },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.data?.user.email).toBe("ada-bearer@example.com");
+  });
+
+  test("rejects 'NotBearer ' scheme on /me", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.me.get({
+      headers: { authorization: "NotBearer token" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  test("rejects empty Bearer token on /me", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.me.get({
+      headers: { authorization: "Bearer " },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  test("logout revokes session and subsequent /me fails", async () => {
+    const api = treaty(createApp({ db }));
+
+    const registerRes = await api._api.auth.register.post({
+      name: "Logout Test",
+      email: "logout@test.com",
+      password: "correct-horse-battery",
+    });
+    const token = registerRes.data!.session.refreshToken;
+
+    // /me works before logout
+    const before = await api._api.auth.me.get({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(before.status).toBe(200);
+
+    // Logout (no body on POST, pass undefined then options)
+    const logoutRes = await api._api.auth.logout.post(undefined, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.data).toEqual({ ok: true });
+
+    // /me fails after logout
+    const after = await api._api.auth.me.get({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(after.status).toBe(401);
+  });
+
+  test("logout with invalid token returns 401", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.logout.post(undefined, {
+      headers: { authorization: "Bearer invalid-token" },
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  test("logout without authorization header returns 401", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.logout.post();
+
+    expect(response.status).toBe(401);
+  });
+
+  test("revoked session returns 401 on organizations route", async () => {
+    const api = treaty(createApp({ db }));
+
+    const registerRes = await api._api.auth.register.post({
+      name: "Revoked Session",
+      email: "revoked@test.com",
+      password: "correct-horse-battery",
+    });
+    const token = registerRes.data!.session.refreshToken;
+
+    // Logout to revoke the session
+    await api._api.auth.logout.post(undefined, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    // Organization list with revoked session should fail
+    const orgRes = await api._api.organizations.get({
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(orgRes.status).toBe(401);
+  });
+
+  test("error response has exactly { code } with no extra fields", async () => {
+    const api = treaty(createApp({ db }));
+
+    const response = await api._api.auth.me.get();
+
+    expect(response.status).toBe(401);
+    expect(response.error?.value).toEqual({ code: "UNAUTHORIZED" });
+    // Verify no extra fields like "message" or "stack"
+    expect(Object.keys(response.error!.value as object)).toEqual(["code"]);
+  });
+
+  test("multiple failed logins do not change error code", async () => {
+    const api = treaty(createApp({ db }));
+
+    // Create user
+    await api._api.auth.register.post({
+      name: "Brute Force",
+      email: "brute@test.com",
+      password: "correct-horse-battery",
+    });
+
+    // Multiple failed attempts with different wrong passwords
+    for (let i = 0; i < 5; i++) {
+      const response = await api._api.auth.login.post({
+        email: "brute@test.com",
+        password: `wrong-attempt-${i}`,
+        clientType: "web",
+      });
+
+      expect(response.status).toBe(401);
+      expect((response.error?.value as unknown)).toEqual({ code: "INVALID_CREDENTIALS" });
+    }
+
+    // Correct password still works after failed attempts
+    const success = await api._api.auth.login.post({
+      email: "brute@test.com",
+      password: "correct-horse-battery",
+      clientType: "web",
+    });
+    expect(success.status).toBe(200);
+  });
+
+  test("session from registration works for immediate downstream API access", async () => {
+    const api = treaty(createApp({ db }));
+
+    const registerRes = await api._api.auth.register.post({
+      name: "Downstream API",
+      email: "downstream@test.com",
+      password: "correct-horse-battery",
+    });
+    const token = registerRes.data!.session.refreshToken;
+
+    // Organizations list (downstream API) using registration session
+    const orgRes = await api._api.organizations.get({
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(orgRes.status).toBe(200);
+    expect(orgRes.data?.organizations).toHaveLength(1);
+    expect(orgRes.data?.organizations[0].name).toBe("Downstream API");
+  });
 });
