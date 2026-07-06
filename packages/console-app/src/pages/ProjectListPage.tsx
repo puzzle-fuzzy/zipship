@@ -39,47 +39,40 @@ export function ProjectListPage() {
       </div>
 
       <div className={styles.grid}>
-        {/* ─── Project Cards ─── */}
-        <div className={styles.cardGrid}>
+        {/* ─── Project List ─── */}
+        <div>
           {loading ? (
-            <div className={styles.emptyState}>
-              <p style={{ color: 'var(--color-text-tertiary)' }}>{t('common.loading')}</p>
-            </div>
+            <p style={{ color: 'var(--color-text-tertiary)', padding: 24 }}>{t('common.loading')}</p>
           ) : projects.length === 0 ? (
-            <div className={styles.emptyState}>
-              <IconFolderOpen size={40} className={styles.emptyIcon} />
-              <h3 className={styles.emptyTitle}>{t('projects.empty')}</h3>
-              <p className={styles.emptyDesc}>{t('projects.emptyDesc')}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '60px 20px', textAlign: 'center' }}>
+              <IconFolderOpen size={40} style={{ color: 'var(--color-text-tertiary)' }} />
+              <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600 }}>{t('projects.empty')}</h3>
+              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)' }}>{t('projects.emptyDesc')}</p>
               <Button onClick={() => setShowCreate(true)}>
                 <IconPlus size={16} />
                 {t('app.newProject')}
               </Button>
             </div>
           ) : (
-            projects.map((project) => (
-              <button
-                key={project.id}
-                type="button"
-                className={styles.projectCard}
-                onClick={() => navigate(`/app/projects/${project.id}`)}
-              >
-                <div className={styles.cardTop}>
-                  <div style={{ minWidth: 0, flex: 1 }}>
+            <div className={styles.cardGrid}>
+              {projects.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  className={styles.projectCard}
+                  onClick={() => navigate(`/app/projects/${project.id}`)}
+                >
+                  <IconBox size={18} className={styles.cardIcon} />
+                  <div className={styles.cardInfo}>
                     <div className={styles.cardName}>{project.name}</div>
                     <div className={styles.cardSlug}>/{project.slug}</div>
                   </div>
                   <Badge variant={project.currentReleaseId ? 'success' : 'outline'}>
                     {project.currentReleaseId ? t('projects.live') : t('projects.draft')}
                   </Badge>
-                </div>
-                <div className={styles.cardFooter}>
-                  <span className={styles.cardStat}>
-                    <IconBox size={12} />
-                    {project.currentReleaseId ? t('projects.live') : t('projects.draft')}
-                  </span>
-                </div>
-              </button>
-            ))
+                </button>
+              ))}
+            </div>
           )}
         </div>
 
