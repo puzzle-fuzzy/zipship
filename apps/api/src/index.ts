@@ -1,3 +1,4 @@
+import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
 import { config } from "@zipship/config";
 import {
@@ -36,10 +37,17 @@ export function createApp(options: CreateAppOptions = {}) {
   const db = options.db ?? getDb();
   const storagePaths = createStoragePaths(options.storageRoot ?? config.storageRoot);
 
-  const api = new Elysia().get("/_health", () => ({
-    status: "ok",
-    service: "zipship-api",
-  }));
+  const api = new Elysia()
+    .use(cors({
+      origin: /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      maxAge: 86400,
+    }))
+    .get("/_health", () => ({
+      status: "ok",
+      service: "zipship-api",
+    }));
 
   const deploymentStorage = {
     createProjectSitePath: (projectSlug: string) => createProjectSitePath(storagePaths, projectSlug),

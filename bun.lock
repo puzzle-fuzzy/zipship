@@ -9,6 +9,7 @@
       },
       "devDependencies": {
         "@elysia/eden": "catalog:",
+        "@elysiajs/cors": "^1.4.2",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
         "@types/react": "catalog:",
@@ -20,6 +21,7 @@
     "apps/api": {
       "name": "@zipship/api",
       "dependencies": {
+        "@elysiajs/cors": "^1.4.2",
         "@zipship/config": "workspace:*",
         "@zipship/db": "workspace:*",
         "@zipship/shared": "workspace:*",
@@ -254,6 +256,8 @@
     "@electron/windows-sign": ["@electron/windows-sign@1.2.2", "https://registry.npmmirror.com/@electron/windows-sign/-/windows-sign-1.2.2.tgz", { "dependencies": { "cross-dirname": "^0.1.0", "debug": "^4.3.4", "fs-extra": "^11.1.1", "minimist": "^1.2.8", "postject": "^1.0.0-alpha.6" }, "bin": { "electron-windows-sign": "bin/electron-windows-sign.js" } }, "sha512-dfZeox66AvdPtb2lD8OsIIQh12Tp0GNCRUDfBHIKGpbmopZto2/A8nSpYYLoedPIHpqkeblZ/k8OV0Gy7PYuyQ=="],
 
     "@elysia/eden": ["@elysia/eden@1.4.10", "https://registry.npmmirror.com/@elysia/eden/-/eden-1.4.10.tgz", { "peerDependencies": { "elysia": ">=1.4.19" } }, "sha512-vcZXQcW6wZj6rhTxaiTkuCbVuS/yAJQ9jqCM6b83a5hu99F5Aj3HOyWXL17iod2Rz+pJpYsQGX0XaeoCsMpw2g=="],
+
+    "@elysiajs/cors": ["@elysiajs/cors@1.4.2", "https://registry.npmmirror.com/@elysiajs/cors/-/cors-1.4.2.tgz", { "peerDependencies": { "elysia": ">= 1.4.0" } }, "sha512-FTCcbH35brTLigF1W7BYySRZomgI/dBEMK9BgK9RP9Nez7zmpGh4koL/Yr1BFv8nYz7CfhRvcM8d/c+XnwMaVQ=="],
 
     "@emnapi/core": ["@emnapi/core@1.11.1", "https://registry.npmmirror.com/@emnapi/core/-/core-1.11.1.tgz", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ=="],
 
