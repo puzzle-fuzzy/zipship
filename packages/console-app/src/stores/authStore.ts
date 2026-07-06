@@ -56,12 +56,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     const res = await api._api.auth.login.post({ email, password, clientType });
 
     if (res.error) {
-      const code = (res.error.value as { code?: string })?.code;
+      const status = res.status;
+      const errPayload = res.error.value as Record<string, unknown> | undefined;
+      const code = errPayload?.code as string | undefined;
+      console.error('Login failed', { status, code, errPayload, error: res.error });
       const messages: Record<string, string> = {
         INVALID_CREDENTIALS: 'Invalid email or password',
         UNAUTHORIZED: 'Invalid email or password',
+        VALIDATION_ERROR: 'Validation failed — check your input',
       };
-      throw new Error(messages[code ?? ''] ?? 'Login failed');
+      throw new Error(messages[code ?? ''] ?? `Login failed (${code ?? `HTTP ${status}`})`);
+    }
+
+    if (!res.data) {
+      throw new Error('Login failed — empty response');
     }
 
     const data = res.data!;
