@@ -1,0 +1,35 @@
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.link {
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.link:hover {
+  color: var(--color-text-primary);
+}
+
+.current {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.separator {
+  color: var(--color-text-tertiary);
+}
