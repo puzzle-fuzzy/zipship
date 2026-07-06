@@ -16,6 +16,7 @@ import type {
   ProjectHeaders,
   ProjectList,
   ProjectParams,
+  UpdateProjectBody,
 } from "./model";
 import type { MemberRole } from "../permissions/model";
 import { PermissionService } from "../permissions/service";
@@ -36,6 +37,13 @@ export interface ProjectsRepository {
   }): Promise<Project>;
   listProjectsForOrganization(organizationId: string): Promise<Project[]>;
   findProjectById(projectId: string): Promise<Project | null>;
+  updateProject(input: {
+    projectId: string;
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    now: Date;
+  }): Promise<Project>;
 }
 
 export interface ProjectsServiceOptions {
@@ -111,6 +119,42 @@ export class ProjectsService {
 
     return {
       projects: await this.options.projectsRepository.listProjectsForOrganization(params.organizationId),
+    };
+  }
+
+  async update(
+    headers: ProjectHeaders,
+    params: ProjectDetailParams,
+    body: UpdateProjectBody,
+  ): Promise<ProjectDetail | ProjectServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+    if (currentUser instanceof ProjectServiceError) return currentUser;
+
+    const project = await this.options.projectsRepository.findProjectById(params.projectId);
+    if (!project) return new ProjectNotFoundError();
+
+    const membership = await this.options.membersRepository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+    if (!membership) return new ProjectForbiddenError();
+    // Only owner/admin can update project settings
+    if (!this.permissions.can(membership.role, "delete_project")) return new ProjectForbiddenError();
+
+    // Validate slug if provided
+    if (body.slug !== undefined) {
+      const slug = normalizeSlug(body.slug);
+      if (!slug || !isValidProjectSlug(slug)) return new InvalidProjectInputError();
+    }
+
+    return {
+      project: await this.options.projectsRepository.updateProject({
+        projectId: params.projectId,
+        name: body.name !== undefined ? normalizeName(body.name) ?? undefined : undefined,
+        slug: body.slug !== undefined ? normalizeSlug(body.slug) ?? undefined : undefined,
+        description: body.description !== undefined ? normalizeDescription(body.description) : undefined,
+        now: this.options.now(),
+      }),
     };
   }
 

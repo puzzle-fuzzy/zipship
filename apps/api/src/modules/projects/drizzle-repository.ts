@@ -69,6 +69,20 @@ export function createDrizzleProjectsRepository(
         return null;
       }
     },
+
+    async updateProject(input) {
+      const updates: Record<string, unknown> = { updatedAt: input.now };
+      if (input.name !== undefined) updates.name = input.name;
+      if (input.slug !== undefined) updates.slug = input.slug;
+      if (input.description !== undefined) updates.description = input.description;
+
+      const [project] = await db.update(schema.projects)
+        .set(updates)
+        .where(eq(schema.projects.id, input.projectId))
+        .returning();
+
+      return toProject(project);
+    },
   };
 }
 

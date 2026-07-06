@@ -44,6 +44,12 @@ export const projectListModel = t.Object({
   projects: t.Array(projectModel),
 });
 
+export const updateProjectBodyModel = t.Object({
+  name: t.Optional(t.String({ minLength: 1 })),
+  slug: t.Optional(t.String({ minLength: 1 })),
+  description: t.Optional(t.Nullable(t.String())),
+});
+
 export const projectErrorModel = t.Object({
   code: t.Union([
     t.Literal("UNAUTHORIZED"),
@@ -60,6 +66,7 @@ export const projectModels = {
   "Projects.Params": projectParamsModel,
   "Projects.DetailParams": projectDetailParamsModel,
   "Projects.CreateBody": createProjectBodyModel,
+  "Projects.UpdateBody": updateProjectBodyModel,
   "Projects.CreateSuccess": createProjectSuccessModel,
   "Projects.Detail": projectDetailModel,
   "Projects.List": projectListModel,
@@ -70,6 +77,7 @@ export type ProjectHeaders = typeof projectHeadersModel.static;
 export type ProjectParams = typeof projectParamsModel.static;
 export type ProjectDetailParams = typeof projectDetailParamsModel.static;
 export type CreateProjectBody = typeof createProjectBodyModel.static;
+export type UpdateProjectBody = typeof updateProjectBodyModel.static;
 export type Project = typeof projectModel.static;
 export type CreateProjectSuccess = typeof createProjectSuccessModel.static;
 export type ProjectDetail = typeof projectDetailModel.static;

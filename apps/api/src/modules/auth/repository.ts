@@ -326,6 +326,18 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return project ? toProject(project) : null;
     },
 
+    async updateProject(input) {
+      const project = projects.get(input.projectId);
+      if (!project) throw new Error("Project not found");
+
+      if (input.name !== undefined) project.name = input.name;
+      if (input.slug !== undefined) project.slug = input.slug;
+      if (input.description !== undefined) project.description = input.description;
+      project.updatedAt = input.now;
+
+      return toProject(project);
+    },
+
     async listReleasesForProject(projectId) {
       return Array.from(releases.values())
         .filter((release) => release.projectId === projectId)

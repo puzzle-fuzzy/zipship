@@ -8,6 +8,7 @@ build
 .vite
 out
 coverage
+.turbo
 .DS_Store
 .codegraph/
 .superpowers/
