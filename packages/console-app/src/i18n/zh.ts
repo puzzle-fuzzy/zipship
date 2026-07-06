@@ -41,6 +41,15 @@ export const zh = {
     files: '{{count}} 个文件',
     size: '{{size}} KB',
   },
+  members: {
+    title: '成员',
+    invite: '邀请',
+    owner: '所有者',
+    admin: '管理员',
+    developer: '开发者',
+    deployer: '部署者',
+    viewer: '查看者',
+  },
   settings: {
     title: '设置',
     appearance: '外观',

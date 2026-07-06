@@ -1,5 +1,6 @@
-import { IconBox, IconPlus, IconRocket } from '@tabler/icons-react';
+import { IconBox, IconMenu2, IconPlus, IconRocket, IconX } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
+import { useEffect } from 'react';
 import { useTranslation } from '../../i18n';
 import styles from './Layout.module.css';
 
@@ -18,6 +19,9 @@ interface LayoutProps {
   children: ReactNode;
   headerExtra?: ReactNode;
   sidebarFooter?: ReactNode;
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+  onCloseSidebar: () => void;
 }
 
 export function Layout({
@@ -28,24 +32,58 @@ export function Layout({
   children,
   headerExtra,
   sidebarFooter,
+  sidebarOpen,
+  onToggleSidebar,
+  onCloseSidebar,
 }: LayoutProps) {
   const { t } = useTranslation();
 
+  // Close sidebar on navigation (project selection)
+  const handleSelectProject = (project: Project | null) => {
+    onSelectProject(project);
+    onCloseSidebar();
+  };
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseSidebar();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [sidebarOpen, onCloseSidebar]);
+
   return (
     <div className={styles.layout}>
-      <aside className={styles.sidebar}>
+      {/* Mobile overlay */}
+      {sidebarOpen && <div className={styles.overlay} onClick={onCloseSidebar} />}
+
+      <aside
+        className={`${styles.sidebar}${sidebarOpen ? ` ${styles.sidebarOpen}` : ''}`}
+        aria-label={t('app.projects')}
+      >
         <div className={styles.sidebarHeader}>
           <IconRocket size={22} className={styles.sidebarLogo} />
           <span className={styles.sidebarTitle}>{t('app.name')}</span>
+          <button
+            type="button"
+            className={styles.sidebarClose}
+            onClick={onCloseSidebar}
+            aria-label="Close sidebar"
+          >
+            <IconX size={18} />
+          </button>
         </div>
 
-        <div className={styles.sidebarContent}>
+        <nav className={styles.sidebarContent} aria-label={t('projects.title')}>
           {projects.map((project) => (
             <button
               key={project.id}
               type="button"
               className={`${styles.projectItem}${selectedProjectId === project.id ? ` ${styles.projectItemActive}` : ''}`}
-              onClick={() => onSelectProject(project)}
+              onClick={() => handleSelectProject(project)}
+              {...(selectedProjectId === project.id ? { 'aria-current': 'page' as const } : {})}
             >
               <IconBox size={16} className={styles.projectIcon} />
               <div className={styles.projectInfo}>
@@ -60,25 +98,32 @@ export function Layout({
           <button
             type="button"
             className={styles.projectItem}
-            onClick={onCreateProject}
-            style={{ marginTop: 8, color: 'var(--color-text-secondary)' }}
+            onClick={() => {
+              onCreateProject();
+              onCloseSidebar();
+            }}
           >
             <IconPlus size={16} />
             <span>{t('app.newProject')}</span>
           </button>
-        </div>
+        </nav>
 
         {sidebarFooter && <div className={styles.sidebarFooter}>{sidebarFooter}</div>}
       </aside>
 
       <div className={styles.content}>
-        {headerExtra && (
-          <div className={styles.contentHeader}>
-            <div>{headerExtra}</div>
-            <div />
-          </div>
-        )}
-        <div className={styles.contentBody}>{children}</div>
+        <div className={styles.contentHeader}>
+          <button
+            type="button"
+            className={styles.menuButton}
+            onClick={onToggleSidebar}
+            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          >
+            <IconMenu2 size={20} />
+          </button>
+          {headerExtra && <div className={styles.headerExtra}>{headerExtra}</div>}
+        </div>
+        <main className={styles.contentBody}>{children}</main>
       </div>
     </div>
   );

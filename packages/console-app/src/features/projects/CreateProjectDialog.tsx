@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n';
 import { Button } from '../../shared/ui/Button';
 import { Dialog } from '../../shared/ui/Dialog';
 import { Input } from '../../shared/ui/Input';
+import styles from './CreateProjectDialog.module.css';
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -56,17 +57,9 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
 
   return (
     <Dialog open={open} title={t('projects.create')} onClose={onClose} width={420}>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <form onSubmit={handleSubmit} className={styles.form}>
         {error && (
-          <div
-            style={{
-              padding: '8px 12px',
-              fontSize: 'var(--font-size-sm)',
-              color: 'var(--color-error)',
-              background: 'var(--color-error-bg)',
-              borderRadius: 'var(--radius-md)',
-            }}
-          >
+          <div className={styles.errorBanner}>
             {error}
           </div>
         )}
@@ -78,7 +71,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
           value={description}
           onChange={setDescription}
         />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
+        <div className={styles.actions}>
           <Button variant="secondary" type="button" onClick={onClose}>
             {t('projects.cancel')}
           </Button>

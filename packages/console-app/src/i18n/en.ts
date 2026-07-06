@@ -41,6 +41,15 @@ export const en = {
     files: '{{count}} files',
     size: '{{size}} KB',
   },
+  members: {
+    title: 'Members',
+    invite: 'Invite',
+    owner: 'Owner',
+    admin: 'Admin',
+    developer: 'Developer',
+    deployer: 'Deployer',
+    viewer: 'Viewer',
+  },
   settings: {
     title: 'Settings',
     appearance: 'Appearance',

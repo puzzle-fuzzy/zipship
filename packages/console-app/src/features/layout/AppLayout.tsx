@@ -18,6 +18,7 @@ export function AppLayout() {
   const params = useParams();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const apiBaseUrl =
     (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
@@ -39,6 +40,9 @@ export function AppLayout() {
           navigate(project ? `/app/projects/${project.id}` : '/app');
         }}
         onCreateProject={() => setShowCreate(true)}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        onCloseSidebar={() => setSidebarOpen(false)}
         sidebarFooter={
           <Dropdown
             upward
