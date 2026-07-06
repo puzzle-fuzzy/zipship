@@ -479,11 +479,6 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return toAuditLog(auditLog);
     },
 
-    async findReleaseById(releaseId) {
-      const release = releases.get(releaseId);
-      return release ? toRelease(release) : null;
-    },
-
     async listDeploymentsForProject(projectId) {
       return Array.from(deployments.values())
         .filter((deployment) => deployment.projectId === projectId)

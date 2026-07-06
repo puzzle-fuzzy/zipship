@@ -7,10 +7,10 @@ import { ReleaseProcessingError } from "./model";
 import type { ReleaseProcessingResult } from "./model";
 import type { UploadTask } from "../uploads/model";
 import type { Project } from "../projects/model";
+import type { UploadsRepository } from "../uploads/service";
+import type { ProjectsRepository } from "../projects/service";
 
 export interface ReleaseProcessingRepository {
-  findProjectById(projectId: string): Promise<Project | null>;
-  findUploadTaskById(uploadTaskId: string): Promise<UploadTask | null>;
   completeProcessedRelease(input: {
     uploadTaskId: string;
     releaseId: string;
@@ -33,7 +33,9 @@ export interface ReleaseProcessingRepository {
 }
 
 export interface ReleaseProcessingServiceOptions {
-  repository: ReleaseProcessingRepository;
+  projectsRepository: Pick<ProjectsRepository, "findProjectById">;
+  uploadsRepository: Pick<UploadsRepository, "findUploadTaskById">;
+  releaseProcessingRepository: ReleaseProcessingRepository;
   storagePaths: StoragePaths;
   now: () => Date;
 }
@@ -42,13 +44,13 @@ export class ReleaseProcessingService {
   constructor(private readonly options: ReleaseProcessingServiceOptions) {}
 
   async processUploadTask(uploadTaskId: string): Promise<ReleaseProcessingResult> {
-    const uploadTask = await this.options.repository.findUploadTaskById(uploadTaskId);
+    const uploadTask = await this.options.uploadsRepository.findUploadTaskById(uploadTaskId);
 
     if (!uploadTask) return new ReleaseProcessingError("UPLOAD_TASK_NOT_FOUND");
     if (!uploadTask.releaseId) return new ReleaseProcessingError("RELEASE_NOT_FOUND");
     if (!existsSync(uploadTask.rawUploadPath)) return new ReleaseProcessingError("RAW_UPLOAD_REQUIRED");
 
-    const project = await this.options.repository.findProjectById(uploadTask.projectId);
+    const project = await this.options.projectsRepository.findProjectById(uploadTask.projectId);
     if (!project) return new ReleaseProcessingError("PROJECT_NOT_FOUND");
 
     const workDir = createUploadWorkDir(this.options.storagePaths, uploadTask.id);
@@ -69,7 +71,7 @@ export class ReleaseProcessingService {
       const totalSize = result.manifest.files.reduce((sum, file) => sum + file.size, 0);
 
       if (result.detect.level === "failed") {
-        await this.options.repository.failProcessedRelease({
+        await this.options.releaseProcessingRepository.failProcessedRelease({
           uploadTaskId: uploadTask.id,
           releaseId: uploadTask.releaseId,
           errorCode: "DETECT_FAILED",
@@ -84,7 +86,7 @@ export class ReleaseProcessingService {
 
       await copyDirectoryContents(result.rootDir, releaseStoragePath);
 
-      await this.options.repository.completeProcessedRelease({
+      await this.options.releaseProcessingRepository.completeProcessedRelease({
         uploadTaskId: uploadTask.id,
         releaseId: uploadTask.releaseId,
         releaseHash: result.manifest.releaseHash,
@@ -103,7 +105,7 @@ export class ReleaseProcessingService {
     } catch (error) {
       const errorCode = error instanceof DeployCoreError ? `DEPLOY_CORE:${error.code}` : "DEPLOY_CORE_FAILED";
 
-      await this.options.repository.failProcessedRelease({
+      await this.options.releaseProcessingRepository.failProcessedRelease({
         uploadTaskId: uploadTask.id,
         releaseId: uploadTask.releaseId,
         errorCode,

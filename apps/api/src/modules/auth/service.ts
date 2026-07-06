@@ -1,6 +1,7 @@
 import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
 import type { AuthServiceError, LoginBody, LoginSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess } from "./model";
-import type { AuditService } from "../audit/service";
+import { AuditService } from "../audit/service";
+import type { AuditRepository } from "../audit/service";
 
 const refreshTokenTtlMs = 1000 * 60 * 60 * 24 * 7;
 
@@ -58,7 +59,8 @@ export interface AuthRepository {
 }
 
 export interface AuthServiceOptions {
-  repository: AuthRepository;
+  authRepository: AuthRepository;
+  auditRepository: AuditRepository;
   hashPassword: (password: string) => Promise<string>;
   verifyPassword: (password: string, hash: string) => Promise<boolean>;
   createRefreshToken: () => string;
@@ -68,7 +70,13 @@ export interface AuthServiceOptions {
 }
 
 export class AuthService {
-  constructor(private readonly options: AuthServiceOptions) {}
+  private readonly audit: AuditService;
+
+  constructor(private readonly options: AuthServiceOptions) {
+    this.audit =
+      options.audit ??
+      new AuditService({ repository: options.auditRepository, now: options.now });
+  }
 
   async register(input: RegisterBody): Promise<RegisterSuccess | AuthServiceError> {
     const name = normalizeName(input.name);
@@ -78,13 +86,13 @@ export class AuthService {
       return new InvalidRegistrationInputError();
     }
 
-    if (await this.options.repository.emailExists(email)) {
+    if (await this.options.authRepository.emailExists(email)) {
       return new DuplicateEmailError();
     }
 
     const passwordHash = await this.options.hashPassword(input.password);
 
-    return this.options.repository.createUserWithDefaultOrganization({
+    return this.options.authRepository.createUserWithDefaultOrganization({
       user: {
         name,
         email,
@@ -108,7 +116,7 @@ export class AuthService {
       return new InvalidCredentialsError();
     }
 
-    const user = await this.options.repository.findUserByEmail(email);
+    const user = await this.options.authRepository.findUserByEmail(email);
 
     if (!user) {
       return new InvalidCredentialsError();
@@ -123,13 +131,13 @@ export class AuthService {
     const refreshToken = this.options.createRefreshToken();
     const refreshTokenHash = await this.options.hashRefreshToken(refreshToken);
     const expiresAt = new Date(this.options.now().getTime() + refreshTokenTtlMs);
-    const session = await this.options.repository.createSession({
+    const session = await this.options.authRepository.createSession({
       userId: user.id,
       clientType: input.clientType ?? "web",
       refreshTokenHash,
       expiresAt,
     });
-    const organization = await this.options.repository.findDefaultOrganizationForUser(user.id);
+    const organization = await this.options.authRepository.findDefaultOrganizationForUser(user.id);
 
     if (organization && this.options.audit) {
       await this.options.audit.record({
@@ -168,7 +176,7 @@ export class AuthService {
     }
 
     const refreshTokenHash = await this.options.hashRefreshToken(refreshToken);
-    const currentSession = await this.options.repository.findSessionByRefreshTokenHash(refreshTokenHash, this.options.now());
+    const currentSession = await this.options.authRepository.findSessionByRefreshTokenHash(refreshTokenHash, this.options.now());
 
     if (!currentSession) {
       return new UnauthorizedError();

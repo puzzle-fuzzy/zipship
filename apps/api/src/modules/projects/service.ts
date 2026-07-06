@@ -19,29 +19,10 @@ import type {
 } from "./model";
 import type { MemberRole } from "../permissions/model";
 import { PermissionService } from "../permissions/service";
+import type { AuthRepository } from "../auth/service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 export interface ProjectsRepository {
-  findSessionByRefreshTokenHash(
-    refreshTokenHash: string,
-    now: Date,
-  ): Promise<{
-    user: {
-      id: string;
-      name: string;
-      email: string;
-    };
-    session: {
-      id: string;
-      clientType: "web" | "desktop";
-      expiresAt: string;
-    };
-  } | null>;
-  findMembership(input: {
-    organizationId: string;
-    userId: string;
-  }): Promise<{
-    role: MemberRole;
-  } | null>;
   projectSlugExists(input: {
     slug: string;
   }): Promise<boolean>;
@@ -58,7 +39,9 @@ export interface ProjectsRepository {
 }
 
 export interface ProjectsServiceOptions {
-  repository: ProjectsRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  projectsRepository: ProjectsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
   permissions?: PermissionService;
@@ -80,7 +63,7 @@ export class ProjectsService {
 
     if (currentUser instanceof ProjectServiceError) return currentUser;
 
-    const membership = await this.options.repository.findMembership({
+    const membership = await this.options.membersRepository.findMembership({
       organizationId: params.organizationId,
       userId: currentUser.user.id,
     });
@@ -95,14 +78,14 @@ export class ProjectsService {
       return new InvalidProjectInputError();
     }
 
-    const exists = await this.options.repository.projectSlugExists({
+    const exists = await this.options.projectsRepository.projectSlugExists({
       slug,
     });
 
     if (exists) return new DuplicateProjectSlugError();
 
     return {
-      project: await this.options.repository.createProject({
+      project: await this.options.projectsRepository.createProject({
         organizationId: params.organizationId,
         name,
         slug,
@@ -118,7 +101,7 @@ export class ProjectsService {
 
     if (currentUser instanceof ProjectServiceError) return currentUser;
 
-    const membership = await this.options.repository.findMembership({
+    const membership = await this.options.membersRepository.findMembership({
       organizationId: params.organizationId,
       userId: currentUser.user.id,
     });
@@ -127,7 +110,7 @@ export class ProjectsService {
     if (!this.permissions.can(membership.role, "view_project")) return new ProjectForbiddenError();
 
     return {
-      projects: await this.options.repository.listProjectsForOrganization(params.organizationId),
+      projects: await this.options.projectsRepository.listProjectsForOrganization(params.organizationId),
     };
   }
 
@@ -136,11 +119,11 @@ export class ProjectsService {
 
     if (currentUser instanceof ProjectServiceError) return currentUser;
 
-    const project = await this.options.repository.findProjectById(params.projectId);
+    const project = await this.options.projectsRepository.findProjectById(params.projectId);
 
     if (!project) return new ProjectNotFoundError();
 
-    const membership = await this.options.repository.findMembership({
+    const membership = await this.options.membersRepository.findMembership({
       organizationId: project.organizationId,
       userId: currentUser.user.id,
     });
@@ -158,7 +141,7 @@ export class ProjectsService {
 
     if (!refreshToken) return new ProjectUnauthorizedError();
 
-    const currentSession = await this.options.repository.findSessionByRefreshTokenHash(
+    const currentSession = await this.options.sessionRepository.findSessionByRefreshTokenHash(
       await this.options.hashRefreshToken(refreshToken),
       this.options.now(),
     );

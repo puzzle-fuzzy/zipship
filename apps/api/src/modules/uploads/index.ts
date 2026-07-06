@@ -6,16 +6,25 @@ import type { StoragePaths } from "@zipship/storage";
 import { ReleaseProcessingError } from "../release-processing/model";
 import { ReleaseProcessingService } from "../release-processing/service";
 import type { ReleaseProcessingRepository } from "../release-processing/service";
+import type { AuthRepository } from "../auth/service";
+import type { ProjectsRepository } from "../projects/service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 export interface UploadsModuleOptions {
-  repository: UploadsRepository & ReleaseProcessingRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  projectsRepository: Pick<ProjectsRepository, "findProjectById">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  uploadsRepository: UploadsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   storagePaths: StoragePaths;
 }
 
 export function uploadsModule(options: UploadsModuleOptions) {
   const uploads = new UploadsService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    projectsRepository: options.projectsRepository,
+    membersRepository: options.membersRepository,
+    uploadsRepository: options.uploadsRepository,
     hashRefreshToken: options.hashRefreshToken,
     storagePaths: options.storagePaths,
     now: () => new Date(),
@@ -54,16 +63,23 @@ export function uploadsModule(options: UploadsModuleOptions) {
     );
 }
 
-export function uploadDetailsModule(options: UploadsModuleOptions) {
+export function uploadDetailsModule(options: UploadsModuleOptions & {
+  releaseProcessingRepository: ReleaseProcessingRepository;
+}) {
   const uploads = new UploadsService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    projectsRepository: options.projectsRepository,
+    membersRepository: options.membersRepository,
+    uploadsRepository: options.uploadsRepository,
     hashRefreshToken: options.hashRefreshToken,
     storagePaths: options.storagePaths,
     now: () => new Date(),
   });
 
   const releaseProcessing = new ReleaseProcessingService({
-    repository: options.repository,
+    projectsRepository: options.projectsRepository,
+    uploadsRepository: options.uploadsRepository,
+    releaseProcessingRepository: options.releaseProcessingRepository,
     storagePaths: options.storagePaths,
     now: () => new Date(),
   });

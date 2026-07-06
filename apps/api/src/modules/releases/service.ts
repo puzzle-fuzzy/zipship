@@ -5,38 +5,20 @@ import {
   ReleaseUnauthorizedError,
 } from "./model";
 import type { Release, ReleaseHeaders, ReleaseList, ReleaseParams } from "./model";
-import type { MemberRole } from "../permissions/model";
 import { PermissionService } from "../permissions/service";
-import type { Project } from "../projects/model";
+import type { AuthRepository } from "../auth/service";
+import type { ProjectsRepository } from "../projects/service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 export interface ReleasesRepository {
-  findSessionByRefreshTokenHash(
-    refreshTokenHash: string,
-    now: Date,
-  ): Promise<{
-    user: {
-      id: string;
-      name: string;
-      email: string;
-    };
-    session: {
-      id: string;
-      clientType: "web" | "desktop";
-      expiresAt: string;
-    };
-  } | null>;
-  findProjectById(projectId: string): Promise<Project | null>;
-  findMembership(input: {
-    organizationId: string;
-    userId: string;
-  }): Promise<{
-    role: MemberRole;
-  } | null>;
   listReleasesForProject(projectId: string): Promise<Release[]>;
 }
 
 export interface ReleasesServiceOptions {
-  repository: ReleasesRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  projectsRepository: Pick<ProjectsRepository, "findProjectById">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  releasesRepository: ReleasesRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
   permissions?: PermissionService;
@@ -54,11 +36,11 @@ export class ReleasesService {
 
     if (currentUser instanceof ReleaseServiceError) return currentUser;
 
-    const project = await this.options.repository.findProjectById(params.projectId);
+    const project = await this.options.projectsRepository.findProjectById(params.projectId);
 
     if (!project) return new ReleaseProjectNotFoundError();
 
-    const membership = await this.options.repository.findMembership({
+    const membership = await this.options.membersRepository.findMembership({
       organizationId: project.organizationId,
       userId: currentUser.user.id,
     });
@@ -66,7 +48,7 @@ export class ReleasesService {
     if (!membership) return new ReleaseForbiddenError();
     if (!this.permissions.can(membership.role, "view_project")) return new ReleaseForbiddenError();
 
-    const releases = await this.options.repository.listReleasesForProject(project.id);
+    const releases = await this.options.releasesRepository.listReleasesForProject(project.id);
 
     return {
       releases: releases.map((release) => ({
@@ -84,7 +66,7 @@ export class ReleasesService {
 
     if (!refreshToken) return new ReleaseUnauthorizedError();
 
-    const currentSession = await this.options.repository.findSessionByRefreshTokenHash(
+    const currentSession = await this.options.sessionRepository.findSessionByRefreshTokenHash(
       await this.options.hashRefreshToken(refreshToken),
       this.options.now(),
     );

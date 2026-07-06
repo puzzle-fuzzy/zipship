@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@zipship/db";
 import type { DeploymentsRepository, DeploymentMutationResult } from "./service";
@@ -7,62 +7,6 @@ export function createDrizzleDeploymentsRepository(
   db: NodePgDatabase<typeof schema>
 ): DeploymentsRepository {
   return {
-    async findSessionByRefreshTokenHash(refreshTokenHash, now) {
-      const rows = await db.select({
-        session: { id: schema.sessions.id, clientType: schema.sessions.clientType, expiresAt: schema.sessions.expiresAt },
-        user: { id: schema.users.id, name: schema.users.name, email: schema.users.email },
-      })
-        .from(schema.sessions)
-        .innerJoin(schema.users, eq(schema.sessions.userId, schema.users.id))
-        .where(eq(schema.sessions.refreshTokenHash, refreshTokenHash))
-        .limit(1);
-
-      if (!rows[0] || rows[0].session.expiresAt <= now) return null;
-      return { user: rows[0].user, session: { ...rows[0].session, expiresAt: rows[0].session.expiresAt.toISOString() } };
-    },
-
-    async findProjectById(projectId) {
-      const rows = await db.select()
-        .from(schema.projects)
-        .where(eq(schema.projects.id, projectId))
-        .limit(1);
-      if (!rows[0]) return null;
-      const p = rows[0];
-      return {
-        id: p.id,
-        organizationId: p.organizationId,
-        name: p.name,
-        slug: p.slug,
-        description: p.description,
-        currentReleaseId: p.currentReleaseId,
-        status: "active" as const,
-        visibility: "private" as const,
-        createdBy: p.createdBy,
-        createdAt: p.createdAt.toISOString(),
-        updatedAt: p.updatedAt.toISOString(),
-      };
-    },
-
-    async findMembership(input) {
-      const rows = await db.select({ role: schema.members.role })
-        .from(schema.members)
-        .where(and(
-          eq(schema.members.organizationId, input.organizationId),
-          eq(schema.members.userId, input.userId),
-        ))
-        .limit(1);
-      return rows[0] ?? null;
-    },
-
-    async findReleaseById(releaseId) {
-      const rows = await db.select()
-        .from(schema.releases)
-        .where(eq(schema.releases.id, releaseId))
-        .limit(1);
-      if (!rows[0]) return null;
-      return toRelease(rows[0]);
-    },
-
     async listDeploymentsForProject(projectId) {
       const rows = await db.select()
         .from(schema.deployments)
@@ -77,34 +21,6 @@ export function createDrizzleDeploymentsRepository(
 
     async rollbackRelease(input) {
       return mutateCurrentRelease(db, { ...input, action: "rollback" as const });
-    },
-
-    async createAuditLog(input) {
-      const [log] = await db.insert(schema.auditLogs).values({
-        organizationId: input.organizationId,
-        projectId: input.projectId ?? null,
-        actorId: input.actorId ?? null,
-        action: input.action,
-        targetType: input.targetType,
-        targetId: input.targetId ?? null,
-        metadata: (input.metadata ?? {}) as any,
-        ipAddress: input.ipAddress ?? null,
-        userAgent: input.userAgent ?? null,
-      }).returning();
-
-      return {
-        id: log.id,
-        organizationId: log.organizationId,
-        projectId: log.projectId,
-        actorId: log.actorId,
-        action: log.action,
-        targetType: log.targetType,
-        targetId: log.targetId,
-        metadata: log.metadata as Record<string, unknown>,
-        ipAddress: log.ipAddress,
-        userAgent: log.userAgent,
-        createdAt: log.createdAt.toISOString(),
-      };
     },
   };
 }
@@ -225,28 +141,6 @@ async function mutateCurrentRelease(
         : null,
     };
   });
-}
-
-function toRelease(record: typeof schema.releases.$inferSelect) {
-  return {
-    id: record.id,
-    projectId: record.projectId,
-    versionNumber: record.versionNumber,
-    releaseHash: record.releaseHash,
-    previewUrl: null,
-    fullHash: record.fullHash,
-    status: record.status,
-    storagePath: record.storagePath,
-    rawUploadPath: record.rawUploadPath,
-    fileCount: record.fileCount,
-    totalSize: record.totalSize,
-    manifest: record.manifest as Record<string, unknown>,
-    detectResult: record.detectResult as Record<string, unknown>,
-    createdBy: record.createdBy,
-    createdAt: record.createdAt.toISOString(),
-    activatedAt: record.activatedAt?.toISOString() ?? null,
-    archivedAt: record.archivedAt?.toISOString() ?? null,
-  };
 }
 
 function toDeployment(record: typeof schema.deployments.$inferSelect) {

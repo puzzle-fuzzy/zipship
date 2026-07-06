@@ -1,10 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { AuditCreateInput } from "../../apps/api/src/modules/audit/model";
-import { AuditService } from "../../apps/api/src/modules/audit/service";
 import { AuthServiceError, InvalidCredentialsError, UnauthorizedError } from "../../apps/api/src/modules/auth/model";
 import { AuthService } from "../../apps/api/src/modules/auth/service";
 
-function createRepository() {
+function createTestRepositories() {
   const users = new Map<string, { id: string; name: string; email: string; passwordHash: string }>();
   const sessions: unknown[] = [];
   const auditLogs: unknown[] = [];
@@ -12,89 +11,93 @@ function createRepository() {
   return {
     sessions,
     auditLogs,
-    addUser(user: { id: string; name: string; email: string; passwordHash: string }) {
-      users.set(user.email, user);
-    },
-    async emailExists(email: string) {
-      return users.has(email);
-    },
-    async findUserByEmail(email: string) {
-      return users.get(email) ?? null;
-    },
-    async createUserWithDefaultOrganization() {
-      throw new Error("createUserWithDefaultOrganization is not used by login tests");
-    },
-    async createSession(input: {
-      userId: string;
-      clientType: "web" | "desktop";
-      refreshTokenHash: string;
-      expiresAt: Date;
-    }) {
-      sessions.push(input);
-      return {
-        id: "session-1",
-        clientType: input.clientType,
-        expiresAt: input.expiresAt.toISOString(),
-      };
-    },
-    async findSessionByRefreshTokenHash(refreshTokenHash: string, now: Date) {
-      const session = sessions.find((candidate) => {
-        const value = candidate as {
-          userId: string;
-          clientType: "web" | "desktop";
-          refreshTokenHash: string;
-          expiresAt: Date;
+    authRepository: {
+      addUser(user: { id: string; name: string; email: string; passwordHash: string }) {
+        users.set(user.email, user);
+      },
+      async emailExists(email: string) {
+        return users.has(email);
+      },
+      async findUserByEmail(email: string) {
+        return users.get(email) ?? null;
+      },
+      async createUserWithDefaultOrganization() {
+        throw new Error("createUserWithDefaultOrganization is not used by login tests");
+      },
+      async createSession(input: {
+        userId: string;
+        clientType: "web" | "desktop";
+        refreshTokenHash: string;
+        expiresAt: Date;
+      }) {
+        sessions.push(input);
+        return {
+          id: "session-1",
+          clientType: input.clientType,
+          expiresAt: input.expiresAt.toISOString(),
         };
-
-        return value.refreshTokenHash === refreshTokenHash && value.expiresAt > now;
-      }) as
-        | {
+      },
+      async findSessionByRefreshTokenHash(refreshTokenHash: string, now: Date) {
+        const session = sessions.find((candidate) => {
+          const value = candidate as {
             userId: string;
             clientType: "web" | "desktop";
             refreshTokenHash: string;
             expiresAt: Date;
-          }
-        | undefined;
+          };
 
-      if (!session) return null;
+          return value.refreshTokenHash === refreshTokenHash && value.expiresAt > now;
+        }) as
+          | {
+              userId: string;
+              clientType: "web" | "desktop";
+              refreshTokenHash: string;
+              expiresAt: Date;
+            }
+          | undefined;
 
-      const user = Array.from(users.values()).find((candidate) => candidate.id === session.userId);
-      if (!user) return null;
+        if (!session) return null;
 
-      return {
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        },
-        session: {
-          id: "session-1",
-          clientType: session.clientType,
-          expiresAt: session.expiresAt.toISOString(),
-        },
-      };
+        const user = Array.from(users.values()).find((candidate) => candidate.id === session.userId);
+        if (!user) return null;
+
+        return {
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+          },
+          session: {
+            id: "session-1",
+            clientType: session.clientType,
+            expiresAt: session.expiresAt.toISOString(),
+          },
+        };
+      },
+      async findDefaultOrganizationForUser(userId: string) {
+        return {
+          id: "org-1",
+          userId,
+        };
+      },
     },
-    async findDefaultOrganizationForUser(userId: string) {
-      return {
-        id: "org-1",
-        userId,
-      };
-    },
-    async createAuditLog(input: AuditCreateInput) {
-      auditLogs.push(input);
-      return {
-        id: "audit-1",
-        ...input,
-        createdAt: input.createdAt.toISOString(),
-      };
+    auditRepository: {
+      async createAuditLog(input: AuditCreateInput) {
+        auditLogs.push(input);
+        return {
+          id: "audit-1",
+          ...input,
+          createdAt: input.createdAt.toISOString(),
+        };
+      },
     },
   };
 }
 
 describe("auth login", () => {
   test("returns a session and refresh token for valid credentials", async () => {
-    const repository = createRepository();
-    repository.addUser({
+    const { authRepository, auditRepository, sessions, auditLogs } = createTestRepositories();
+    (authRepository as any).addUser({
       id: "user-1",
       name: "Ada Lovelace",
       email: "ada@example.com",
@@ -102,16 +105,13 @@ describe("auth login", () => {
     });
     const expiresAt = new Date("2026-07-12T00:00:00.000Z");
     const auth = new AuthService({
-      repository,
+      authRepository,
+      auditRepository,
       hashPassword: async (password) => `hashed:${password}`,
       verifyPassword: async (password, hash) => password === "correct-horse-battery" && hash === "stored-password-hash",
       createRefreshToken: () => "refresh-token",
       hashRefreshToken: async (token) => `hashed-refresh:${token}`,
       now: () => new Date("2026-07-05T00:00:00.000Z"),
-      audit: new AuditService({
-        repository,
-        now: () => new Date("2026-07-05T00:00:00.000Z"),
-      }),
     });
 
     const result = await auth.login({
@@ -138,7 +138,7 @@ describe("auth login", () => {
         expiresAt: expiresAt.toISOString(),
       },
     });
-    expect(repository.sessions).toEqual([
+    expect(sessions).toEqual([
       {
         userId: "user-1",
         clientType: "desktop",
@@ -146,7 +146,7 @@ describe("auth login", () => {
         expiresAt,
       },
     ]);
-    expect(repository.auditLogs).toEqual([
+    expect(auditLogs).toEqual([
       {
         organizationId: "org-1",
         projectId: null,
@@ -165,15 +165,16 @@ describe("auth login", () => {
   });
 
   test("returns invalid credentials for unknown email or wrong password", async () => {
-    const repository = createRepository();
-    repository.addUser({
+    const { authRepository, auditRepository } = createTestRepositories();
+    (authRepository as any).addUser({
       id: "user-1",
       name: "Ada Lovelace",
       email: "ada@example.com",
       passwordHash: "stored-password-hash",
     });
     const auth = new AuthService({
-      repository,
+      authRepository,
+      auditRepository,
       hashPassword: async (password) => `hashed:${password}`,
       verifyPassword: async () => false,
       createRefreshToken: () => "refresh-token",
@@ -199,15 +200,16 @@ describe("auth login", () => {
   });
 
   test("returns the current user for a valid bearer refresh token", async () => {
-    const repository = createRepository();
-    repository.addUser({
+    const { authRepository, auditRepository } = createTestRepositories();
+    (authRepository as any).addUser({
       id: "user-1",
       name: "Ada Lovelace",
       email: "ada@example.com",
       passwordHash: "stored-password-hash",
     });
     const auth = new AuthService({
-      repository,
+      authRepository,
+      auditRepository,
       hashPassword: async (password) => `hashed:${password}`,
       verifyPassword: async () => true,
       createRefreshToken: () => "refresh-token",
@@ -245,8 +247,10 @@ describe("auth login", () => {
   });
 
   test("returns unauthorized for missing or unknown bearer refresh token", async () => {
+    const { authRepository, auditRepository } = createTestRepositories();
     const auth = new AuthService({
-      repository: createRepository(),
+      authRepository,
+      auditRepository,
       hashPassword: async (password) => `hashed:${password}`,
       verifyPassword: async () => true,
       createRefreshToken: () => "refresh-token",

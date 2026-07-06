@@ -2,15 +2,21 @@ import { Elysia } from "elysia";
 import { projectModels, ProjectServiceError } from "./model";
 import { ProjectsService } from "./service";
 import type { ProjectsRepository } from "./service";
+import type { AuthRepository } from "../auth/service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 export interface ProjectsModuleOptions {
-  repository: ProjectsRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  projectsRepository: ProjectsRepository;
   hashRefreshToken: (token: string) => Promise<string>;
 }
 
 export function projectsModule(options: ProjectsModuleOptions) {
   const projects = new ProjectsService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    membersRepository: options.membersRepository,
+    projectsRepository: options.projectsRepository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
   });
@@ -71,7 +77,9 @@ export function projectsModule(options: ProjectsModuleOptions) {
 
 export function projectDetailsModule(options: ProjectsModuleOptions) {
   const projects = new ProjectsService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    membersRepository: options.membersRepository,
+    projectsRepository: options.projectsRepository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
   });

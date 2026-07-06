@@ -4,13 +4,15 @@ import { OrganizationsService } from "./service";
 import type { OrganizationsRepository } from "./service";
 
 export interface OrganizationsModuleOptions {
-  repository: OrganizationsRepository;
+  organizationsRepository: OrganizationsRepository;
+  sessionRepository: Pick<OrganizationsRepository, "findSessionByRefreshTokenHash">;
   hashRefreshToken: (token: string) => Promise<string>;
 }
 
 export function organizationsModule(options: OrganizationsModuleOptions) {
   const organizations = new OrganizationsService({
-    repository: options.repository,
+    organizationsRepository: options.organizationsRepository,
+    sessionRepository: options.sessionRepository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
   });

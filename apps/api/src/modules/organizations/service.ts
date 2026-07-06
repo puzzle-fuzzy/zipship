@@ -1,5 +1,6 @@
 import { OrganizationUnauthorizedError } from "./model";
 import type { OrganizationList, OrganizationsHeaders, OrganizationServiceError } from "./model";
+import type { MemberRole } from "../permissions/model";
 
 export interface OrganizationsRepository {
   findSessionByRefreshTokenHash(
@@ -17,11 +18,18 @@ export interface OrganizationsRepository {
       expiresAt: string;
     };
   } | null>;
+  findMembership(input: {
+    organizationId: string;
+    userId: string;
+  }): Promise<{
+    role: MemberRole;
+  } | null>;
   listOrganizationsForUser(userId: string): Promise<OrganizationList["organizations"]>;
 }
 
 export interface OrganizationsServiceOptions {
-  repository: OrganizationsRepository;
+  organizationsRepository: OrganizationsRepository;
+  sessionRepository: Pick<OrganizationsRepository, "findSessionByRefreshTokenHash">;
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
 }
@@ -36,7 +44,7 @@ export class OrganizationsService {
       return new OrganizationUnauthorizedError();
     }
 
-    const currentSession = await this.options.repository.findSessionByRefreshTokenHash(
+    const currentSession = await this.options.sessionRepository.findSessionByRefreshTokenHash(
       await this.options.hashRefreshToken(refreshToken),
       this.options.now(),
     );
@@ -46,7 +54,7 @@ export class OrganizationsService {
     }
 
     return {
-      organizations: await this.options.repository.listOrganizationsForUser(currentSession.user.id),
+      organizations: await this.options.organizationsRepository.listOrganizationsForUser(currentSession.user.id),
     };
   }
 }

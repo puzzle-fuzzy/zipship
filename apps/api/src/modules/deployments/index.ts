@@ -2,16 +2,31 @@ import { Elysia } from "elysia";
 import { deploymentModels, DeploymentServiceError } from "./model";
 import { DeploymentsService } from "./service";
 import type { DeploymentStorage, DeploymentsRepository } from "./service";
+import type { AuthRepository } from "../auth/service";
+import type { ProjectsRepository } from "../projects/service";
+import type { OrganizationsRepository } from "../organizations/service";
+import type { ReleasesRepository } from "../releases/service";
+import type { AuditRepository } from "../audit/service";
 
 export interface DeploymentsModuleOptions {
-  repository: DeploymentsRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  projectsRepository: Pick<ProjectsRepository, "findProjectById">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  releasesRepository: Pick<ReleasesRepository, "listReleasesForProject">;
+  deploymentsRepository: DeploymentsRepository;
+  auditRepository: AuditRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   storage: DeploymentStorage;
 }
 
 export function deploymentsModule(options: DeploymentsModuleOptions) {
   const deployments = new DeploymentsService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    projectsRepository: options.projectsRepository,
+    membersRepository: options.membersRepository,
+    releasesRepository: options.releasesRepository,
+    deploymentsRepository: options.deploymentsRepository,
+    auditRepository: options.auditRepository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
     storage: options.storage,

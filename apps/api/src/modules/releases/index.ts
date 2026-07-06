@@ -2,15 +2,24 @@ import { Elysia } from "elysia";
 import { releaseModels, ReleaseServiceError } from "./model";
 import { ReleasesService } from "./service";
 import type { ReleasesRepository } from "./service";
+import type { AuthRepository } from "../auth/service";
+import type { ProjectsRepository } from "../projects/service";
+import type { OrganizationsRepository } from "../organizations/service";
 
 export interface ReleasesModuleOptions {
-  repository: ReleasesRepository;
+  sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
+  projectsRepository: Pick<ProjectsRepository, "findProjectById">;
+  membersRepository: Pick<OrganizationsRepository, "findMembership">;
+  releasesRepository: ReleasesRepository;
   hashRefreshToken: (token: string) => Promise<string>;
 }
 
 export function releasesModule(options: ReleasesModuleOptions) {
   const releases = new ReleasesService({
-    repository: options.repository,
+    sessionRepository: options.sessionRepository,
+    projectsRepository: options.projectsRepository,
+    membersRepository: options.membersRepository,
+    releasesRepository: options.releasesRepository,
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
   });
