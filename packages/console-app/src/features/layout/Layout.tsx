@@ -1,15 +1,5 @@
-import {
-  IconBox,
-  IconChevronUp,
-  IconLogout,
-  IconPlus,
-  IconRocket,
-  IconSettings,
-  IconUser,
-} from '@tabler/icons-react';
+import { IconBox, IconPlus, IconRocket } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
-import { Avatar } from '../../shared/ui/Avatar';
-import { Dropdown } from '../../shared/ui/Dropdown';
 import styles from './Layout.module.css';
 
 interface Project {
@@ -28,17 +18,17 @@ interface LayoutProps {
   onLogout: () => void;
   children: ReactNode;
   headerExtra?: ReactNode;
+  sidebarFooter?: ReactNode;
 }
 
 export function Layout({
-  user,
   projects,
   selectedProjectId,
   onSelectProject,
   onCreateProject,
-  onLogout,
   children,
   headerExtra,
+  sidebarFooter,
 }: LayoutProps) {
   return (
     <div className={styles.layout}>
@@ -78,38 +68,18 @@ export function Layout({
           </button>
         </div>
 
-        <div className={styles.sidebarFooter}>
-          <Dropdown
-            upward
-            trigger={
-              <div className={styles.userArea}>
-                <Avatar name={user.name} size="md" />
-                <div className={styles.userInfo}>
-                  <div className={styles.userName}>{user.name}</div>
-                  <div className={styles.userEmail}>{user.email}</div>
-                </div>
-                <IconChevronUp size={14} style={{ color: 'var(--color-text-tertiary)' }} />
-              </div>
-            }
-            items={[
-              { label: 'Profile', icon: <IconUser size={18} />, onClick: () => {} },
-              { label: 'Settings', icon: <IconSettings size={18} />, onClick: () => {} },
-              { divider: true },
-              { label: 'Sign out', icon: <IconLogout size={18} />, danger: true, onClick: onLogout },
-            ]}
-          />
-        </div>
+        {sidebarFooter && <div className={styles.sidebarFooter}>{sidebarFooter}</div>}
       </aside>
 
       {/* ─── Content ─── */}
       <div className={styles.content}>
-        <div className={styles.contentHeader}>
-          <div>{headerExtra}</div>
-          <div />
-        </div>
-        <div className={styles.contentBody}>
-          {children}
-        </div>
+        {headerExtra && (
+          <div className={styles.contentHeader}>
+            <div>{headerExtra}</div>
+            <div />
+          </div>
+        )}
+        <div className={styles.contentBody}>{children}</div>
       </div>
     </div>
   );

@@ -13,7 +13,8 @@
     "@zipship/api-client": "workspace:*",
     "@zipship/runtime": "workspace:*",
     "react": "catalog:",
-    "react-router": "catalog:"
+    "react-router": "catalog:",
+    "zustand": "^5.0.4"
   },
   "devDependencies": {
     "@zipship/api": "workspace:*",
