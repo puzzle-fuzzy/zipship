@@ -31,6 +31,10 @@ export const zh = {
     title: '版本',
     total: '共 {{count}} 个',
     empty: '还没有上传版本',
+    upload: '上传',
+    uploadTitle: '上传版本',
+    chooseFile: '选择 ZIP 文件',
+    uploading: '上传中...',
     status: {
       active: '活跃',
       ready: '就绪',

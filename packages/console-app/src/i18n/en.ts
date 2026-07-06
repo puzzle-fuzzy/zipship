@@ -31,6 +31,10 @@ export const en = {
     title: 'Versions',
     total: '{{count}} total',
     empty: 'No versions uploaded yet',
+    upload: 'Upload',
+    uploadTitle: 'Upload Version',
+    chooseFile: 'Choose ZIP file',
+    uploading: 'Uploading...',
     status: {
       active: 'Active',
       ready: 'Ready',

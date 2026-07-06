@@ -65,7 +65,7 @@ export function ProjectDetailPage() {
                 action={
                   <Button size="sm" onClick={() => setShowUpload(true)}>
                     <IconUpload size={14} />
-                    Upload
+                    {t('versions.upload')}
                   </Button>
                 }>
                 {loading ? (

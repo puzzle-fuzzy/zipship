@@ -1,5 +1,6 @@
 import { IconUpload } from '@tabler/icons-react';
 import { useState } from 'react';
+import { useTranslation } from '../../i18n';
 import { Dialog } from '../../shared/ui/Dialog';
 
 interface UploadVersionDialogProps {
@@ -15,10 +16,11 @@ export function UploadVersionDialog({
   open,
   onClose,
 }: UploadVersionDialogProps) {
+  const { t } = useTranslation();
   const [loading] = useState(false);
 
   return (
-    <Dialog open={open} title="Upload Version" onClose={onClose} width={480}>
+    <Dialog open={open} title={t('versions.uploadTitle')} onClose={onClose} width={480}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '24px 0' }}>
         <IconUpload size={40} style={{ color: 'var(--color-text-tertiary)' }} />
         <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
@@ -40,7 +42,7 @@ export function UploadVersionDialog({
           }}
         >
           <IconUpload size={16} />
-          {loading ? 'Uploading...' : 'Choose ZIP file'}
+          {loading ? t('versions.uploading') : t('versions.chooseFile')}
           <input type="file" accept=".zip" style={{ display: 'none' }} />
         </label>
       </div>
