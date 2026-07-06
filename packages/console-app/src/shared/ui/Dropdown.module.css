@@ -17,16 +17,23 @@
 
 .menu {
   position: absolute;
-  top: 100%;
   right: 0;
   z-index: 50;
-  min-width: 200px;
-  margin-top: var(--space-1);
+  min-width: 220px;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
   overflow: hidden;
+  padding: var(--space-1);
+}
+
+.menuDown {
+  top: calc(100% + 4px);
+}
+
+.menuUp {
+  bottom: calc(100% + 4px);
 }
 
 .item {
@@ -41,6 +48,7 @@
   border: none;
   background: none;
   text-align: left;
+  border-radius: var(--radius-lg);
   transition: background var(--transition-fast);
 }
 
@@ -52,8 +60,13 @@
   color: var(--color-error);
 }
 
+.itemDanger:hover {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+}
+
 .divider {
   height: 1px;
   background: var(--color-divider);
-  margin: var(--space-1) 0;
+  margin: var(--space-1) var(--space-2);
 }

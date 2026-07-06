@@ -12,10 +12,10 @@ interface DropdownItem {
 interface DropdownProps {
   trigger: ReactNode;
   items: (DropdownItem | { divider: true })[];
-  align?: 'left' | 'right';
+  upward?: boolean;
 }
 
-export function Dropdown({ trigger, items }: DropdownProps) {
+export function Dropdown({ trigger, items, upward = false }: DropdownProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -29,13 +29,15 @@ export function Dropdown({ trigger, items }: DropdownProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const menuClass = `${styles.menu} ${upward ? styles.menuUp : styles.menuDown}`;
+
   return (
     <div className={styles.wrapper} ref={ref}>
       <button type="button" className={styles.trigger} onClick={() => setOpen(!open)}>
         {trigger}
       </button>
       {open && (
-        <div className={styles.menu}>
+        <div className={menuClass}>
           {items.map((item, i) =>
             'divider' in item ? (
               <div key={i} className={styles.divider} />

@@ -1,6 +1,6 @@
 import {
   IconBox,
-  IconChevronDown,
+  IconChevronUp,
   IconLogout,
   IconPlus,
   IconRocket,
@@ -80,6 +80,7 @@ export function Layout({
 
         <div className={styles.sidebarFooter}>
           <Dropdown
+            upward
             trigger={
               <div className={styles.userArea}>
                 <Avatar name={user.name} size="sm" />
@@ -87,14 +88,14 @@ export function Layout({
                   <div className={styles.userName}>{user.name}</div>
                   <div className={styles.userEmail}>{user.email}</div>
                 </div>
-                <IconChevronDown size={14} style={{ color: 'var(--color-text-tertiary)' }} />
+                <IconChevronUp size={14} style={{ color: 'var(--color-text-tertiary)' }} />
               </div>
             }
             items={[
-              { label: 'Profile', icon: <IconUser size={14} />, onClick: () => {} },
-              { label: 'Settings', icon: <IconSettings size={14} />, onClick: () => {} },
+              { label: 'Profile', icon: <IconUser size={18} />, onClick: () => {} },
+              { label: 'Settings', icon: <IconSettings size={18} />, onClick: () => {} },
               { divider: true },
-              { label: 'Sign out', icon: <IconLogout size={14} />, danger: true, onClick: onLogout },
+              { label: 'Sign out', icon: <IconLogout size={18} />, danger: true, onClick: onLogout },
             ]}
           />
         </div>

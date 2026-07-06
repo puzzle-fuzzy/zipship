@@ -3,6 +3,7 @@ import type { RuntimeAdapter } from '@zipship/runtime';
 import { useCallback, useEffect, useState } from 'react';
 import { Layout } from './features/layout/Layout';
 import { LoginPage } from './pages/LoginPage';
+import { CreateProjectDialog } from './features/projects/CreateProjectDialog';
 import { ProjectList } from './features/projects/ProjectList';
 import { Breadcrumb } from './shared/ui/Breadcrumb';
 import { Card } from './shared/ui/Card';
@@ -62,6 +63,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>({ kind: 'projects' });
+  const [showCreate, setShowCreate] = useState(false);
 
   const api = createApiClient(apiBaseUrl);
 
@@ -147,6 +149,27 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
     setPage({ kind: 'projects' });
   };
 
+  const handleCreateProject = async (input: { name: string; slug: string; description: string }) => {
+    if (!refreshToken) return;
+    const orgRes = await api._api.organizations.get({
+      headers: { authorization: `Bearer ${refreshToken}` },
+    });
+    const orgId = orgRes.data?.organizations[0]?.id;
+    if (!orgId) return;
+
+    const res = await api._api.organizations({ organizationId: orgId }).projects.post(
+      { name: input.name, slug: input.slug, description: input.description || null },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+
+    if (res.error) {
+      const code = (res.error.value as { code?: string })?.code;
+      throw new Error(code === 'DUPLICATE_PROJECT_SLUG' ? 'A project with this slug already exists' : 'Failed to create project');
+    }
+
+    await refreshProjects();
+  };
+
   const refreshProjects = useCallback(async () => {
     if (!refreshToken) return;
     const orgRes = await api._api.organizations.get({
@@ -182,48 +205,63 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
 
   // Authenticated — show layout
   return (
-    <Layout
-      user={auth}
-      projects={projects}
-      selectedProjectId={selectedProject?.id ?? null}
-      onSelectProject={(project) => {
-        if (project) {
-          setPage({ kind: 'project', projectId: project.id });
-        } else {
-          setPage({ kind: 'projects' });
+    <>
+      <Layout
+        user={auth}
+        projects={projects}
+        selectedProjectId={selectedProject?.id ?? null}
+        onSelectProject={(project) => {
+          if (project) {
+            setPage({ kind: 'project', projectId: project.id });
+          } else {
+            setPage({ kind: 'projects' });
+          }
+        }}
+        onCreateProject={() => setShowCreate(true)}
+        onLogout={handleLogout}
+        headerExtra={
+          selectedProject ? (
+            <Breadcrumb
+              items={[
+                { label: 'Projects', onClick: () => setPage({ kind: 'projects' }) },
+                { label: selectedProject.name },
+              ]}
+            />
+          ) : (
+            <Breadcrumb items={[{ label: 'Projects' }]} />
+          )
         }
-      }}
-      onCreateProject={() => {}}
-      onLogout={handleLogout}
-      headerExtra={
-        selectedProject ? (
-          <Breadcrumb
-            items={[
-              { label: 'Projects', onClick: () => setPage({ kind: 'projects' }) },
-              { label: selectedProject.name },
-            ]}
+      >
+        {!selectedProject ? (
+          <ProjectList
+            projects={projects}
+            loading={false}
+            onSelect={(p) => setPage({ kind: 'project', projectId: p.id })}
+            onCreate={() => {}}
+            onRefresh={refreshProjects}
           />
         ) : (
-          <Breadcrumb items={[{ label: 'Projects' }]} />
-        )
-      }
-    >
-      {!selectedProject ? (
-        <ProjectList
-          projects={projects}
-          loading={false}
-          onSelect={(p) => setPage({ kind: 'project', projectId: p.id })}
-          onCreate={() => {}}
-          onRefresh={refreshProjects}
-        />
-      ) : (
-        <ProjectDetailSection
-          project={selectedProject}
-          refreshToken={refreshToken!}
-          apiBaseUrl={apiBaseUrl}
-        />
-      )}
-    </Layout>
+          <ProjectDetailSection
+            project={selectedProject}
+            refreshToken={refreshToken!}
+            apiBaseUrl={apiBaseUrl}
+          />
+        )}
+      </Layout>
+
+      <CreateProjectDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={async ({ name, slug, description }) => {
+          try {
+            await handleCreateProject({ name, slug, description });
+            setShowCreate(false);
+          } catch (err) {
+            console.error(err);
+          }
+        }}
+      />
+    </>
   );
 }
 
