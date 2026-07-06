@@ -16,12 +16,10 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
     setLoading(true);
 
     try {
@@ -30,8 +28,6 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       } else {
         await onRegister(name, email, password);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
     }
@@ -39,7 +35,6 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
 
   const toggleMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
-    setError('');
   };
 
   return (
@@ -92,8 +87,6 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
           </div>
 
           <form className={styles.form} onSubmit={handleSubmit}>
-            {error && <div className={styles.formError}>{error}</div>}
-
             {mode === 'register' && (
               <Input
                 label="Name"

@@ -118,14 +118,6 @@
   gap: var(--space-5);
 }
 
-.formError {
-  padding: var(--space-3) var(--space-4);
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
-  background-color: var(--color-error-bg);
-  border-radius: var(--radius-md);
-}
-
 .formFooter {
   margin-top: var(--space-6);
   text-align: center;

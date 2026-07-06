@@ -2,9 +2,10 @@ import type { RuntimeAdapter } from '@zipship/runtime';
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
-import { useAuthStore } from './stores';
+import { useAuthStore, useToastStore } from './stores';
 import { useSettingsStore } from './stores/settingsStore';
 import { LoginPage } from './pages/LoginPage';
+import { ToastContainer } from './shared/ui/Toast';
 import './styles/globals.css';
 import './styles/night.css';
 
@@ -15,8 +16,9 @@ export interface AppProps {
 
 export function App({ runtime, apiBaseUrl }: AppProps) {
   const { status, initSession, login, register } = useAuthStore();
+  const { addToast } = useToastStore();
 
-  // Expose the base URL so AppLayout can reach it without prop drilling.
+  // Expose base URL so AppLayout can reach it without prop drilling.
   if (typeof window !== 'undefined') {
     (window as any).__ZIPSHIP_API_BASE_URL = apiBaseUrl;
   }
@@ -25,6 +27,22 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
     useSettingsStore.getState().init();
     initSession(apiBaseUrl);
   }, []);
+
+  const handleLogin = async (email: string, password: string) => {
+    try {
+      await login(apiBaseUrl, email, password, runtime.kind === 'desktop' ? 'desktop' : 'web');
+    } catch (err) {
+      addToast({ type: 'error', title: (err as Error).message || 'Login failed' });
+    }
+  };
+
+  const handleRegister = async (name: string, email: string, password: string) => {
+    try {
+      await register(apiBaseUrl, name, email, password);
+    } catch (err) {
+      addToast({ type: 'error', title: (err as Error).message || 'Registration failed' });
+    }
+  };
 
   if (status === 'loading') {
     return (
@@ -44,16 +62,17 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
 
   if (status === 'login') {
     return (
-      <LoginPage
-        onLogin={async (email, password) => {
-          await login(apiBaseUrl, email, password, runtime.kind === 'desktop' ? 'desktop' : 'web');
-        }}
-        onRegister={async (name, email, password) => {
-          await register(apiBaseUrl, name, email, password);
-        }}
-      />
+      <>
+        <LoginPage onLogin={handleLogin} onRegister={handleRegister} />
+        <ToastContainer />
+      </>
     );
   }
 
-  return <RouterProvider router={router} />;
+  return (
+    <>
+      <RouterProvider router={router} />
+      <ToastContainer />
+    </>
+  );
 }
