@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../stores';
 import { useTranslation } from '../i18n';
-import { Avatar, AvatarFallback } from '../components/ui/avatar';
 import { Button } from '../components/ui/button';
 import {
   Card,
@@ -187,30 +186,10 @@ export function ProjectDetailPage() {
               <CardTitle>{t('members.title')}</CardTitle>
               <CardDescription>{t('members.title')}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              {[1, 2, 3].map((i) => {
-                const roles: Record<number, string> = { 1: 'owner', 2: 'admin', 3: 'developer' };
-                const role = roles[i] ?? 'viewer';
-                return (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarFallback>U{i}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">User {i}</div>
-                        <div className="text-xs text-muted-foreground">user{i}@example.com</div>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
-                      {t(`members.${role}`)}
-                    </span>
-                  </div>
-                );
-              })}
+            <CardContent>
+              <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                {t('members.title')}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
