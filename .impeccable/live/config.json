@@ -1,0 +1,10 @@
+{
+  "files": [
+    "apps/web-shell/index.html",
+    "apps/desktop-shell/index.html"
+  ],
+  "insertBefore": "</body>",
+  "commentSyntax": "html",
+  "cspChecked": false
+
+}

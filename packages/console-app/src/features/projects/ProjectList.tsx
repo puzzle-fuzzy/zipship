@@ -1,4 +1,4 @@
-import { IconBox, IconFolderOpen, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { IconBox, IconFolderOpen, IconRefresh } from '@tabler/icons-react';
 import { useTranslation } from '../../i18n';
 import { Badge } from '../../shared/ui/Badge';
 import { Button } from '../../shared/ui/Button';
@@ -18,11 +18,10 @@ interface ProjectListProps {
   projects: Project[];
   loading: boolean;
   onSelect: (project: Project) => void;
-  onCreate: () => void;
   onRefresh: () => void;
 }
 
-export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }: ProjectListProps) {
+export function ProjectList({ projects, loading, onSelect, onRefresh }: ProjectListProps) {
   const { t } = useTranslation();
 
   if (loading) {
@@ -38,10 +37,6 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginBottom: 20 }}>
             {t('projects.emptyDesc')}
           </p>
-          <Button onClick={onCreate}>
-            <IconPlus size={16} />
-            {t('app.newProject')}
-          </Button>
         </div>
       </Card>
     );
@@ -51,15 +46,9 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
     <Card
       title={t('projects.title')}
       action={
-        <div style={{ display: 'flex', gap: 8 }}>
-          <Button variant="ghost" size="sm" onClick={onRefresh}>
-            <IconRefresh size={14} />
-          </Button>
-          <Button size="sm" onClick={onCreate}>
-            <IconPlus size={14} />
-            {t('app.newProject')}
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" onClick={onRefresh}>
+          <IconRefresh size={14} />
+        </Button>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

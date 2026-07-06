@@ -1,4 +1,4 @@
-import { useNavigate, useOutletContext } from 'react-router';
+import { useNavigate } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../stores';
 import { useTranslation } from '../i18n';
 import { Breadcrumb } from '../shared/ui/Breadcrumb';
@@ -9,7 +9,6 @@ export function ProjectListPage() {
   const { refreshToken } = useAuthStore();
   const { projects, loading, fetchProjects } = useProjectsStore();
   const navigate = useNavigate();
-  const { setShowCreate } = useOutletContext<{ setShowCreate: (v: boolean) => void }>();
 
   const apiBaseUrl =
     (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
@@ -21,7 +20,6 @@ export function ProjectListPage() {
         projects={projects}
         loading={loading}
         onSelect={(p) => navigate(`/app/projects/${p.id}`)}
-        onCreate={() => setShowCreate(true)}
         onRefresh={() => refreshToken && fetchProjects(apiBaseUrl, refreshToken)}
       />
     </div>

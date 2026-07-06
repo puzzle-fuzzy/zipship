@@ -1,0 +1,195 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-06T00:00:00.000Z",
+  "title": "Design System: ZipShip",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Charcoal",
+        "canonical": "#1a1a1a",
+        "tonalRamp": ["#000000", "#0d0d0d", "#1a1a1a", "#262626", "#333333", "#4d4d4d", "#666666", "#808080"]
+      },
+      "neutral-bg": {
+        "role": "neutral",
+        "displayName": "White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#e0e0e0", "#e8e8e8", "#f0f0f0", "#f5f5f5", "#f7f7f7", "#fafafa", "#fcfcfc", "#ffffff"]
+      },
+      "neutral-bg-subtle": {
+        "role": "neutral",
+        "displayName": "Subtle Gray",
+        "canonical": "#f7f7f7",
+        "tonalRamp": ["#d9d9d9", "#e0e0e0", "#e8e8e8", "#f0f0f0", "#f5f5f5", "#f7f7f7", "#fafafa", "#fcfcfc"]
+      },
+      "neutral-text": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#1a1a1a",
+        "tonalRamp": ["#000000", "#0d0d0d", "#1a1a1a", "#262626", "#333333", "#4d4d4d", "#666666", "#808080"]
+      },
+      "neutral-text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#6b6b6b",
+        "tonalRamp": ["#333333", "#4d4d4d", "#5c5c5c", "#6b6b6b", "#808080", "#999999", "#b3b3b3", "#cccccc"]
+      },
+      "error": {
+        "role": "error",
+        "displayName": "Error Red",
+        "canonical": "#d32f2f",
+        "tonalRamp": ["#8e0000", "#b71c1c", "#c62828", "#d32f2f", "#e53935", "#ef5350", "#e57373", "#ef9a9a"]
+      },
+      "success": {
+        "role": "success",
+        "displayName": "Success Green",
+        "canonical": "#2e7d32",
+        "tonalRamp": ["#1b5e20", "#2e7d32", "#388e3c", "#43a047", "#4caf50", "#66bb6a", "#81c784", "#a5d6a7"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page titles and modal headers, used once per view." },
+      "title": { "displayName": "Title", "purpose": "Card titles and section headings." },
+      "body": { "displayName": "Body", "purpose": "Primary reading size for content, max 75ch." },
+      "label": { "displayName": "Label", "purpose": "Form labels, button text, tab labels." },
+      "mono": { "displayName": "Mono", "purpose": "Code snippets, deploy URLs, release hashes." }
+    },
+    "shadows": [
+      { "name": "sm", "value": "0 1px 2px rgba(0,0,0,0.04)", "purpose": "Subtle hover lift for interactive elements." },
+      { "name": "md", "value": "0 2px 8px rgba(0,0,0,0.06)", "purpose": "Dropdown menus and small elevated panels." },
+      { "name": "lg", "value": "0 4px 20px rgba(0,0,0,0.08)", "purpose": "Toast notifications and temporary overlays." },
+      { "name": "xl", "value": "0 8px 40px rgba(0,0,0,0.10)", "purpose": "Modal dialogs and full-screen overlays." }
+    ],
+    "motion": [
+      { "name": "fast", "value": "150ms ease", "purpose": "Quick state transitions (hover, focus, border shifts)." },
+      { "name": "normal", "value": "200ms ease", "purpose": "Standard transitions." },
+      { "name": "slide-in", "value": "250ms ease-out", "purpose": "Toast and panel slide-in entrance." },
+      { "name": "slide-out", "value": "200ms ease-in", "purpose": "Toast and panel slide-out exit." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "900px" },
+      { "name": "lg", "value": "1200px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main call-to-action button. Charcoal background, white text.",
+      "html": "<button class=\"ds-btn-primary\">New Project</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 20px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; font-weight: 500; color: #ffffff; background: #1a1a1a; border: 1px solid #1a1a1a; border-radius: 6px; cursor: pointer; transition: all 150ms ease; white-space: nowrap; user-select: none; } .ds-btn-primary:hover { background: #333333; border-color: #333333; } .ds-btn-primary:active { background: #000000; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Secondary action button. Outlined with border.",
+      "html": "<button class=\"ds-btn-secondary\">Cancel</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 20px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; font-weight: 500; color: #1a1a1a; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; cursor: pointer; transition: all 150ms ease; white-space: nowrap; user-select: none; } .ds-btn-secondary:hover { background: #f5f5f5; border-color: #c0c0c0; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Low-emphasis action, used for icon buttons inline.",
+      "html": "<button class=\"ds-btn-ghost\">Refresh</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 32px; padding: 0 12px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; font-weight: 500; color: #6b6b6b; background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; transition: all 150ms ease; white-space: nowrap; user-select: none; } .ds-btn-ghost:hover { background: #f5f5f5; color: #1a1a1a; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard text input with label and optional icon.",
+      "html": "<div class=\"ds-input-wrap\"><label class=\"ds-label\">Email</label><div class=\"ds-field\"><svg class=\"ds-icon\" width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"2\" y=\"4\" width=\"20\" height=\"16\" rx=\"2\"/><path d=\"m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7\"/></svg><input class=\"ds-input\" type=\"email\" placeholder=\"you@example.com\" value=\"\"></div></div>",
+      "css": ".ds-input-wrap { display: flex; flex-direction: column; gap: 4px; } .ds-label { font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 13px; font-weight: 500; color: #1a1a1a; } .ds-field { position: relative; display: flex; align-items: center; } .ds-icon { position: absolute; left: 12px; color: #9a9a9a; pointer-events: none; } .ds-input { width: 100%; height: 40px; padding: 0 12px; padding-left: 36px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 14px; color: #1a1a1a; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; transition: border-color 150ms ease, box-shadow 150ms ease; } .ds-input::placeholder { color: #9a9a9a; } .ds-input:focus { border-color: #1a1a1a; box-shadow: 0 0 0 1px #1a1a1a; outline: none; }"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Content container with optional header. No shadow at rest.",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><div><div class=\"ds-card-title\">Projects</div><div class=\"ds-card-desc\">3 total</div></div><button class=\"ds-btn-primary\" style=\"height:32px;padding:0 12px;font-size:13px\">+ New</button></div><div class=\"ds-card-body\"><div style=\"padding:8px 0;border-bottom:1px solid #e8e8e8;font-size:14px\">Project A</div><div style=\"padding:8px 0;border-bottom:1px solid #e8e8e8;font-size:14px\">Project B</div><div style=\"padding:8px 0;font-size:14px\">Project C</div></div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; } .ds-card-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 0; } .ds-card-title { font-size: 16px; font-weight: 600; color: #1a1a1a; } .ds-card-desc { font-size: 13px; color: #6b6b6b; margin-top: 4px; } .ds-card-body { padding: 20px; }"
+    },
+    {
+      "name": "Dialog",
+      "kind": "card",
+      "refersTo": "dialog",
+      "description": "Modal dialog with overlay, header, and scrollable body.",
+      "html": "<div class=\"ds-dialog-overlay\"><div class=\"ds-dialog\"><div class=\"ds-dialog-header\"><span class=\"ds-dialog-title\">Settings</span><button class=\"ds-dialog-close\" aria-label=\"Close\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div><div class=\"ds-dialog-body\"><p style=\"color:#6b6b6b;font-size:14px\">Dialog content goes here.</p></div></div></div>",
+      "css": ".ds-dialog-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.3); padding: 16px; z-index: 100; } .ds-dialog { display: flex; flex-direction: column; background: #ffffff; border: 1px solid #e0e0e0; border-radius: 12px; box-shadow: 0 8px 40px rgba(0,0,0,0.10); max-height: 85vh; overflow: hidden; min-width: 420px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; } .ds-dialog-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid #e8e8e8; } .ds-dialog-title { font-size: 16px; font-weight: 600; } .ds-dialog-close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 6px; color: #9a9a9a; cursor: pointer; border: none; background: none; transition: background 150ms ease; } .ds-dialog-close:hover { background: #f5f5f5; color: #1a1a1a; } .ds-dialog-body { overflow-y: auto; padding: 24px; }"
+    },
+    {
+      "name": "Badge Outline",
+      "kind": "chip",
+      "refersTo": "badge-outline",
+      "description": "Default status badge, outline style.",
+      "html": "<span class=\"ds-badge-outline\">Draft</span>",
+      "css": ".ds-badge-outline { display: inline-flex; align-items: center; padding: 2px 8px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 500; color: #6b6b6b; border: 1px solid #e0e0e0; border-radius: 999px; white-space: nowrap; }"
+    },
+    {
+      "name": "Badge Success",
+      "kind": "chip",
+      "refersTo": "badge-success",
+      "description": "Success/live status badge, green tint.",
+      "html": "<span class=\"ds-badge-success\">Live</span>",
+      "css": ".ds-badge-success { display: inline-flex; align-items: center; padding: 2px 8px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; font-size: 11px; font-weight: 500; color: #2e7d32; background: #f0fdf0; border-radius: 999px; white-space: nowrap; }"
+    },
+    {
+      "name": "Navigation Sidebar",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Left sidebar with project list and user menu.",
+      "html": "<aside class=\"ds-sidebar\"><div class=\"ds-sidebar-header\"><svg width=\"22\" height=\"22\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"color:#1a1a1a\"><path d=\"M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z\"/><path d=\"m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z\"/><path d=\"M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0\"/><path d=\"M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5\"/></svg><span class=\"ds-sidebar-title\">ZipShip</span></div><div class=\"ds-sidebar-content\"><button class=\"ds-sidebar-item ds-sidebar-item-active\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"color:#9a9a9a;flex-shrink:0\"><path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/><polyline points=\"3.27 6.96 12 12.01 20.73 6.96\"/><line x1=\"12\" y1=\"22.08\" x2=\"12\" y2=\"12\"/></svg><div style=\"flex:1;min-width:0\"><div style=\"overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">Admin Dashboard</div><div style=\"font-size:11px;color:#9a9a9a\">Live</div></div></button><button class=\"ds-sidebar-item\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"color:#9a9a9a;flex-shrink:0\"><path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/><polyline points=\"3.27 6.96 12 12.01 20.73 6.96\"/><line x1=\"12\" y1=\"22.08\" x2=\"12\" y2=\"12\"/></svg><div style=\"flex:1;min-width:0\"><div style=\"overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">Docs Site</div><div style=\"font-size:11px;color:#9a9a9a\">Draft</div></div></button></div><div class=\"ds-sidebar-footer\"><div class=\"ds-sidebar-user\"><span class=\"ds-avatar\">JD</span><div style=\"flex:1;min-width:0\"><div style=\"font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">John Doe</div><div style=\"font-size:11px;color:#9a9a9a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">john@example.com</div></div></div></div></aside>",
+      "css": ".ds-sidebar { width: 260px; display: flex; flex-direction: column; border-right: 1px solid #e8e8e8; background: #ffffff; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; } .ds-sidebar-header { display: flex; align-items: center; gap: 12px; padding: 20px 20px 16px; border-bottom: 1px solid #e8e8e8; } .ds-sidebar-title { font-size: 16px; font-weight: 700; letter-spacing: -0.02em; } .ds-sidebar-content { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 4px; } .ds-sidebar-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; font-size: 13px; color: #1a1a1a; border-radius: 6px; cursor: pointer; border: none; background: none; text-align: left; transition: background 150ms ease; } .ds-sidebar-item:hover { background: #f5f5f5; } .ds-sidebar-item-active { background: #f0f0f0; font-weight: 500; } .ds-sidebar-footer { padding: 16px; border-top: 1px solid #e8e8e8; } .ds-sidebar-user { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border-radius: 12px; cursor: pointer; transition: background 150ms ease; } .ds-sidebar-user:hover { background: #f5f5f5; } .ds-avatar { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: 50%; background: #f0f0f0; color: #6b6b6b; font-size: 13px; font-weight: 500; user-select: none; flex-shrink: 0; }"
+    },
+    {
+      "name": "Toast Notification",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Temporary notification, slides in from right.",
+      "html": "<div class=\"ds-toast\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#2e7d32\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink:0;margin-top:1px\"><polyline points=\"20 6 9 17 4 12\"/></svg><div class=\"ds-toast-body\"><div class=\"ds-toast-title\">Published successfully</div><div class=\"ds-toast-msg\">Version a8f32c91 is now live</div></div><button class=\"ds-toast-close\" aria-label=\"Close\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div>",
+      "css": ".ds-toast { display: flex; align-items: flex-start; gap: 12px; padding: 16px; background: #ffffff; border: 1px solid #e0e0e0; border-left: 3px solid #2e7d32; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); pointer-events: auto; min-width: 300px; max-width: 380px; font-family: Inter4CJK, Inter, -apple-system, BlinkMacSystemFont, sans-serif; } .ds-toast-body { flex: 1; min-width: 0; } .ds-toast-title { font-size: 13px; font-weight: 500; color: #1a1a1a; } .ds-toast-msg { font-size: 12px; color: #6b6b6b; margin-top: 2px; } .ds-toast-close { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; color: #9a9a9a; cursor: pointer; border: none; background: none; flex-shrink: 0; transition: background 150ms ease; } .ds-toast-close:hover { background: #f5f5f5; color: #1a1a1a; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Precision Deck",
+    "overview": "ZipShip's console is a clean, purposeful workspace for deploying static sites — a pilot's console, not a manager's dashboard. Every surface is restrained by default: warm off-whites, charcoal accents, crisp borders. The system communicates through typographic weight and spatial rhythm, not decorative color.\n\nThis is a restrained palette with one committed accent: near-black charcoal. The accent's job is to mark interactive truth — a button, an active tab, a focused input — not to decorate. Color is semantic, not ornamental.\n\nThe console explicitly rejects the visual language of AI tools (no blue or purple accents, no gradient text, no glassmorphism), the density of enterprise backends (no packed data tables, no heavy card grids), and the clichés of SaaS templates (no hero-metric sections, no numbered section markers, no tiny uppercase eyebrow over every heading).",
+    "keyCharacteristics": [
+      "Charcoal anchor. The single accent is near-black (#1a1a1a). No hue, no gradient, no blue.",
+      "Warm neutral canvas. Off-white backgrounds with subtle tonal separation, not cold gray.",
+      "Type-driven hierarchy. Scale + weight do the layout work; color accents are rare.",
+      "Flat-by-default. Surfaces sit flat at rest. Shadows appear only for state changes and modal elevation.",
+      "Generous but precise spacing. An 8px baseline grid with deliberate breathing room between sections.",
+      "Day and night as equals. Both themes are first-class citizens, built from the same token system."
+    ],
+    "rules": [
+      { "name": "The Charcoal Accent Rule", "body": "The accent is never blue, purple, teal, or gradient. It is always a near-black neutral. This single constraint prevents the system from drifting into 'AI tool' or 'enterprise portal' territory.", "section": "colors" },
+      { "name": "The One-Color Rule", "body": "Any given screen uses at most two colors from the palette: a neutral background tone + the charcoal accent. Semantic colors (red, green) appear only in badges and toasts. If a screen needs a third color, the design is wrong — simplify.", "section": "colors" },
+      { "name": "The One-Family Rule", "body": "Inter4CJK handles everything — Latin, CJK, display, body, labels, mono. No secondary display face, no serif accent, no brand typeface outside the app shell. A single loaded family eliminates FOUT, keeps the bundle lean, and guarantees visual cohesion across all 6 font sizes and 4 weights.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "No surface has a shadow at rest. If it's not interactive and not an overlay, it doesn't float. A card with a 1px border and no shadow reads as a container; a card with a shadow reads as 'pick me up.' The second interpretation is almost never what the UI intends.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use charcoal (#1a1a1a) as the single accent color across buttons, tabs, focus rings, and links. Consistency builds trust.",
+      "Do let typography do the hierarchy work — weight and size establish what's important, not color.",
+      "Do keep surfaces flat at rest. A 1px border + tonal background separation is enough depth.",
+      "Do use the full spacing scale deliberately. 24px between sections, 16px between related items, 8px between label and input.",
+      "Do use semantic colors (red, green) only for their named purpose — never as decoration.",
+      "Do treat day and night themes as equals. Both are designed from the same tokens, not one adapted from the other."
+    ],
+    "donts": [
+      "Don't use blue, dark blue, blue-purple, or teal anywhere in the UI. This is a hard constraint — the system rejects the 'AI tool' color family entirely.",
+      "Don't use gradient text (background-clip: text with gradient). Emphasis comes from weight and size, not color transitions.",
+      "Don't use glassmorphism (backdrop blur + semi-transparency) as a default surface treatment.",
+      "Don't use side-stripe borders (colored border-left > 1px on cards or list items). Use full borders, background tints, or nothing.",
+      "Don't over-round corners. Cards max out at 8px, dialogs at 12px, buttons at 6px. The 24px+ rounded card is an anti-pattern.",
+      "Don't pair border: 1px solid with box-shadow blur ≥ 16px on the same element. Pick one — border OR shadow, never both as decoration.",
+      "Don't create identical card grids (same-sized cards with icon + heading + text repeated across a section).",
+      "Don't use the hero-metric template (big number, small label, gradient accent) — it reads as SaaS-template, not precision tool.",
+      "Don't put a tiny uppercase tracked eyebrow above every section heading. One deliberate kicker is voice; repeating it on every section is AI grammar.",
+      "Don't use numbered section markers (01 / 02 / 03) as default scaffolding."
+    ]
+  }
+}
