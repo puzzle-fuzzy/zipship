@@ -44,6 +44,7 @@ export interface ProjectsRepository {
     description?: string | null;
     now: Date;
   }): Promise<Project>;
+  deleteProject(projectId: string): Promise<void>;
 }
 
 export interface ProjectsServiceOptions {
@@ -156,6 +157,27 @@ export class ProjectsService {
         now: this.options.now(),
       }),
     };
+  }
+
+  async delete(
+    headers: ProjectHeaders,
+    params: ProjectDetailParams,
+  ): Promise<Pick<ProjectDetail, "project"> | ProjectServiceError> {
+    const currentUser = await this.requireCurrentUser(headers);
+    if (currentUser instanceof ProjectServiceError) return currentUser;
+
+    const project = await this.options.projectsRepository.findProjectById(params.projectId);
+    if (!project) return new ProjectNotFoundError();
+
+    const membership = await this.options.membersRepository.findMembership({
+      organizationId: project.organizationId,
+      userId: currentUser.user.id,
+    });
+    if (!membership) return new ProjectForbiddenError();
+    if (!this.permissions.can(membership.role, "delete_project")) return new ProjectForbiddenError();
+
+    await this.options.projectsRepository.deleteProject(params.projectId);
+    return { project };
   }
 
   async get(headers: ProjectHeaders, params: ProjectDetailParams): Promise<ProjectDetail | ProjectServiceError> {

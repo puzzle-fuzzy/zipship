@@ -350,6 +350,10 @@ export function createInMemoryAuthRepository(): AuthRepository &
       return toProject(project);
     },
 
+    async deleteProject(projectId) {
+      projects.delete(projectId);
+    },
+
     async listReleasesForProject(projectId) {
       return Array.from(releases.values())
         .filter((release) => release.projectId === projectId)

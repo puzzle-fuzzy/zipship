@@ -107,6 +107,8 @@ export class ReleaseProcessingService {
     } catch (error) {
       const errorCode = error instanceof DeployCoreError ? `DEPLOY_CORE:${error.code}` : "DEPLOY_CORE_FAILED";
 
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
       await this.options.releaseProcessingRepository.failProcessedRelease({
         uploadTaskId: uploadTask.id,
         releaseId: uploadTask.releaseId,
@@ -118,6 +120,7 @@ export class ReleaseProcessingService {
             {
               level: "failed",
               code: errorCode,
+              details: { message: errorMessage },
             },
           ],
         },
@@ -126,6 +129,7 @@ export class ReleaseProcessingService {
 
       return new ReleaseProcessingError("DEPLOY_CORE_FAILED", {
         errorCode,
+        errorMessage,
       });
     } finally {
       await rm(workDir, { recursive: true, force: true });

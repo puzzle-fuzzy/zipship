@@ -131,6 +131,28 @@ export function projectDetailsModule(options: ProjectsModuleOptions) {
           404: "Projects.Error",
         },
       },
+    )
+    .delete(
+      "/",
+      async ({ headers, params, status }) => {
+        const result = await projects.delete(headers, params);
+
+        if (result instanceof ProjectServiceError) {
+          return status(toDeleteStatusCode(result.code), { code: result.code });
+        }
+
+        return result;
+      },
+      {
+        headers: "Projects.Headers",
+        params: "Projects.DetailParams",
+        response: {
+          200: "Projects.Detail",
+          401: "Projects.Error",
+          403: "Projects.Error",
+          404: "Projects.Error",
+        },
+      },
     );
 }
 
@@ -157,4 +179,11 @@ function toUpdateStatusCode(code: string): 400 | 401 | 403 | 404 {
   if (code === "FORBIDDEN") return 403;
   if (code === "PROJECT_NOT_FOUND") return 404;
   return 400;
+}
+
+function toDeleteStatusCode(code: string): 401 | 403 | 404 {
+  if (code === "UNAUTHORIZED") return 401;
+  if (code === "FORBIDDEN") return 403;
+  if (code === "PROJECT_NOT_FOUND") return 404;
+  return 403;
 }

@@ -75,6 +75,10 @@ export const meSuccessModel = t.Object({
   }),
 });
 
+export const updateProfileBodyModel = t.Object({
+  name: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
+});
+
 export const authErrorModel = t.Object({
   code: t.Union([
     t.Literal("DUPLICATE_EMAIL"),
@@ -94,6 +98,7 @@ export const authModels = {
   "Auth.LogoutSuccess": logoutSuccessModel,
   "Auth.MeHeaders": meHeadersModel,
   "Auth.MeSuccess": meSuccessModel,
+  "Auth.UpdateProfileBody": updateProfileBodyModel,
   "Auth.Error": authErrorModel,
 };
 
@@ -105,6 +110,7 @@ export type MeHeaders = typeof meHeadersModel.static;
 export type MeSuccess = typeof meSuccessModel.static;
 export type LogoutHeaders = typeof logoutHeadersModel.static;
 export type LogoutSuccess = typeof logoutSuccessModel.static;
+export type UpdateProfileBody = typeof updateProfileBodyModel.static;
 export type AuthErrorCode = typeof authErrorModel.static.code;
 
 export class AuthServiceError {

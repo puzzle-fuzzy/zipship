@@ -83,6 +83,11 @@ export function createDrizzleProjectsRepository(
 
       return toProject(project);
     },
+
+    async deleteProject(projectId) {
+      await db.delete(schema.projects)
+        .where(eq(schema.projects.id, projectId));
+    },
   };
 }
 
