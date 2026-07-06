@@ -5,6 +5,7 @@ import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";
+import { readLinkTarget } from "../helpers/path";
 
 type TestAuditLog = {
   projectId: string | null;
@@ -155,7 +156,7 @@ describe("deployments routes", () => {
 
       const currentPath = join(storageRoot, "sites", project.slug, "current");
       expect(existsSync(currentPath)).toBe(true);
-      expect(readlinkSync(currentPath)).toBe(`releases/${release.releaseHash}`);
+      expect(readLinkTarget(currentPath)).toBe(`releases/${release.releaseHash}`);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }
@@ -389,7 +390,7 @@ describe("deployments routes", () => {
       );
 
       const currentPath = join(storageRoot, "sites", project.slug, "current");
-      expect(readlinkSync(currentPath)).toBe(`releases/${firstRelease.releaseHash}`);
+      expect(readLinkTarget(currentPath)).toBe(`releases/${firstRelease.releaseHash}`);
     } finally {
       rmSync(storageRoot, { recursive: true, force: true });
     }

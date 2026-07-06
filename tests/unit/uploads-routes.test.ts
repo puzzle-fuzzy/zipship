@@ -466,7 +466,7 @@ describe("uploads routes", () => {
       expect(rawPath).toContain(storageRoot);
       expect(rawPath).toContain(project.id);
       expect(rawPath).toContain(uploadTask.id);
-      expect(rawPath?.endsWith("/dist.zip")).toBe(true);
+      expect(rawPath?.endsWith("dist.zip")).toBe(true);
       expect(existsSync(rawPath ?? "")).toBe(true);
       expect(Bun.file(rawPath ?? "").size).toBe(bytes.byteLength);
     } finally {

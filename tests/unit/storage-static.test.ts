@@ -14,6 +14,7 @@ import {
   switchCurrentReleaseLink,
   ReleaseArtifactNotFoundError,
 } from "../../packages/storage/src/index";
+import { readLinkTarget } from "../helpers/path";
 
 function createTempRoot() {
   return mkdtempSync(join(tmpdir(), "zipship-storage-static-"));
@@ -99,11 +100,11 @@ describe("slug-based site storage paths", () => {
   test("creates project site, release, and current paths from project slug", () => {
     const paths = createStoragePaths("/srv/zipship");
 
-    expect(createProjectSitePath(paths, "admin")).toBe("/srv/zipship/sites/admin");
+    expect(createProjectSitePath(paths, "admin")).toBe(join("/srv/zipship", "sites/admin"));
     expect(createReleaseStoragePath(paths, { projectSlug: "admin", releaseHash: "a8f32c91abcd" })).toBe(
-      "/srv/zipship/sites/admin/releases/a8f32c91abcd",
+      join("/srv/zipship", "sites/admin/releases/a8f32c91abcd"),
     );
-    expect(createCurrentReleaseLinkPath(paths, "admin")).toBe("/srv/zipship/sites/admin/current");
+    expect(createCurrentReleaseLinkPath(paths, "admin")).toBe(join("/srv/zipship", "sites/admin/current"));
   });
 
   test("verifies a release artifact directory with index.html", async () => {
@@ -142,10 +143,10 @@ describe("slug-based site storage paths", () => {
 
       await switchCurrentReleaseLink({ projectSitePath, releaseHash: "a8f32c91abcd" });
       expect(lstatSync(createCurrentReleaseLinkPath(paths, "admin")).isSymbolicLink()).toBe(true);
-      expect(readlinkSync(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/a8f32c91abcd");
+      expect(readLinkTarget(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/a8f32c91abcd");
 
       await switchCurrentReleaseLink({ projectSitePath, releaseHash: "b7d91f20cafe" });
-      expect(readlinkSync(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/b7d91f20cafe");
+      expect(readLinkTarget(createCurrentReleaseLinkPath(paths, "admin"))).toBe("releases/b7d91f20cafe");
       expect(existsSync(join(projectSitePath, "current.tmp"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });

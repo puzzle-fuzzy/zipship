@@ -4,7 +4,7 @@ import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const nginxAvailable = await commandSucceeds(["nginx", "-v"]);
+const nginxAvailable = process.platform !== "win32" && await commandSucceeds(["nginx", "-v"]);
 
 describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
   const root = mkdtempSync(join(tmpdir(), "zipship-nginx-"));

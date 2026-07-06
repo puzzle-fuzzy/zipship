@@ -1,12 +1,13 @@
 // packages/deploy-core/tests/unit/detect.test.ts
 
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { join } from "path";
+import { tmpdir } from "os";
+import { dirname, join } from "path";
 import { mkdirSync, rmSync, writeFileSync } from "fs";
 import { runDetection } from "../../src/detect";
 import type { FileEntry } from "../../src/types";
 
-const TMP_DIR = join("/tmp", `zipship-detect-test-${Date.now()}`);
+const TMP_DIR = join(tmpdir(), `zipship-detect-test-${Date.now()}`);
 
 beforeAll(() => {
   rmSync(TMP_DIR, { recursive: true, force: true });
@@ -21,7 +22,7 @@ function makeFile(relPath: string, content?: string): FileEntry {
   const absPath = join(TMP_DIR, relPath);
   const body = content ?? "";
   // Ensure parent directory exists
-  const parent = absPath.substring(0, absPath.lastIndexOf("/"));
+  const parent = dirname(absPath);
   mkdirSync(parent, { recursive: true });
   writeFileSync(absPath, body);
   return {
