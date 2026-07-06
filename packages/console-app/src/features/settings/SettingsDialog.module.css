@@ -1,21 +1,83 @@
-.page {
+/* ─── Overlay ─── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  padding: var(--space-4);
+}
+
+/* ─── Dialog ─── */
+
+.dialog {
+  width: 100%;
+  max-width: 680px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+/* ─── Header ─── */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.headerTitle {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: background var(--transition-fast);
+}
+
+.closeBtn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+/* ─── Body: side menu + content ─── */
+
+.body {
   display: flex;
   gap: var(--space-6);
-  align-items: flex-start;
+  padding: var(--space-6);
+  overflow-y: auto;
+  flex: 1;
 }
 
 /* ─── Side menu ─── */
 
 .sideMenu {
-  width: 200px;
+  width: 180px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  background: var(--color-bg);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-2);
 }
 
 .menuItem {
@@ -52,25 +114,25 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+  min-width: 0;
 }
 
 .section {
-  background: var(--color-bg);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-6);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
 }
 
 .sectionTitle {
-  font-size: var(--font-size-lg);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
   margin-bottom: var(--space-1);
 }
 
 .sectionDesc {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-5);
+  margin-bottom: var(--space-4);
 }
 
 /* ─── Radio group ─── */
@@ -78,13 +140,14 @@
 .radioGroup {
   display: flex;
   gap: var(--space-3);
+  flex-wrap: wrap;
 }
 
 .radioOption {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   cursor: pointer;
@@ -125,7 +188,6 @@
   height: 10px;
   border-radius: 50%;
   background: var(--color-accent);
-  transition: all var(--transition-fast);
 }
 
 .radioLabel {

@@ -4,6 +4,7 @@ import { Outlet, useNavigate, useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../../stores';
 import { Avatar } from '../../shared/ui/Avatar';
 import { Dropdown } from '../../shared/ui/Dropdown';
+import { SettingsDialog } from '../settings/SettingsDialog';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { Layout } from './Layout';
 import layoutStyles from './Layout.module.css';
@@ -14,6 +15,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const params = useParams();
   const [showCreate, setShowCreate] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const apiBaseUrl =
     (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
@@ -52,7 +54,11 @@ export function AppLayout() {
             }
             items={[
               { label: 'Profile', icon: <IconUser size={18} />, onClick: () => {} },
-              { label: 'Settings', icon: <IconSettings size={18} />, onClick: () => navigate('/app/settings') },
+              {
+                label: 'Settings',
+                icon: <IconSettings size={18} />,
+                onClick: () => setShowSettings(true),
+              },
               { divider: true },
               { label: 'Sign out', icon: <IconLogout size={18} />, danger: true, onClick: logout },
             ]}
@@ -75,6 +81,8 @@ export function AppLayout() {
           }
         }}
       />
+
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
     </>
   );
 }
