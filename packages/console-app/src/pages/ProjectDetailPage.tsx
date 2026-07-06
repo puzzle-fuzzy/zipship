@@ -159,15 +159,15 @@ export function ProjectDetailPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" sideOffset={6} className="min-w-40">
                           <DropdownMenuItem disabled>
-                            {t('versions.status.preview') || '预览'}
+                            {t('versions.preview')}
                           </DropdownMenuItem>
                           {release.status !== 'active' && (
                             <DropdownMenuItem disabled>
-                              发布
+                              {t('versions.publish')}
                             </DropdownMenuItem>
                           )}
                           <DropdownMenuItem disabled className="text-destructive">
-                            删除
+                            {t('versions.delete')}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -249,18 +249,18 @@ export function ProjectDetailPage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   <label className="flex items-center gap-2 text-sm font-medium">
                     <Checkbox defaultChecked={false} disabled />
-                    SPA 模式
+                    {t('settings.spaMode')}
                   </label>
                   <label className="flex flex-col gap-1.5 text-sm font-medium">
-                    路由方式
+                    {t('settings.routingType')}
                     <Select defaultValue="path" disabled>
                       <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectGroup>
-                          <SelectItem value="path">Path (/about)</SelectItem>
-                          <SelectItem value="hash">Hash (#/about)</SelectItem>
+                          <SelectItem value="path">{t('settings.routingPath')}</SelectItem>
+                          <SelectItem value="hash">{t('settings.routingHash')}</SelectItem>
                         </SelectGroup>
                       </SelectContent>
                     </Select>
@@ -280,10 +280,10 @@ export function ProjectDetailPage() {
 
                 <div className="flex items-center justify-between gap-2 pt-2">
                   <Button type="button" variant="destructive" disabled>
-                    删除项目
+                    {t('settings.deleteProject')}
                   </Button>
                   <Button type="submit" disabled>
-                    保存
+                    {t('common.save')}
                   </Button>
                 </div>
               </form>

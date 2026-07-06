@@ -148,3 +148,36 @@
   height: 100%;
   background-color: inherit;
 }
+
+/* ─── Sonner toast overrides ─── */
+.toaster [data-close-button] {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toaster [data-close-button]:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.toaster [data-close-button] svg {
+  width: 12px;
+  height: 12px;
+}
+
+.toaster [data-sonner-toast] {
+  gap: 8px;
+  padding: 12px 36px 12px 12px;
+}

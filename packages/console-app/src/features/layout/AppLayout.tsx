@@ -72,6 +72,7 @@ export function AppLayout() {
             <AppHeader
               user={user!}
               onLogout={() => setShowLogoutConfirm(true)}
+              onOpenSettings={() => setShowSettings(true)}
             />
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6 pt-0">
               <Outlet context={{ setShowCreate, setShowSettings }} />

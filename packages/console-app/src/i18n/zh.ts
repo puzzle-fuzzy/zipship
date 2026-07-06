@@ -8,6 +8,10 @@ export const zh = {
     notifications: '通知',
     profile: '个人资料',
     signOut: '退出登录',
+    archive: '归档',
+    archivedProjects: '已归档',
+    more: '更多',
+    noProjects: '暂无项目',
   },
   projects: {
     title: '项目',
@@ -35,6 +39,9 @@ export const zh = {
     uploadTitle: '上传版本',
     chooseFile: '选择 ZIP 文件',
     uploading: '上传中...',
+    preview: '预览',
+    publish: '发布',
+    delete: '删除',
     status: {
       active: '活跃',
       ready: '就绪',
@@ -67,6 +74,11 @@ export const zh = {
     shortcutsComing: '敬请期待',
     deployUrl: '部署 URL',
     noDeployed: '发布版本后可查看 URL',
+    spaMode: 'SPA 模式',
+    routingType: '路由方式',
+    routingHash: 'Hash (#/about)',
+    routingPath: 'Path (/about)',
+    deleteProject: '删除项目',
   },
   auth: {
     welcome: '欢迎回来',

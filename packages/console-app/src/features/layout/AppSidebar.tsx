@@ -81,24 +81,24 @@ export function AppSidebar({
                 <SidebarMenuItem>
                   <SidebarMenuButton disabled>
                     <Box />
-                    <span>暂无项目</span>
+                    <span>{t('app.noProjects')}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               )}
 
               <Separator />
 
-              <SidebarGroupLabel>归档</SidebarGroupLabel>
+              <SidebarGroupLabel>{t('app.archive')}</SidebarGroupLabel>
               <SidebarMenuItem>
                 <SidebarMenuButton disabled>
                   <Archive />
-                  <span>已归档项目</span>
+                  <span>{t('app.archivedProjects')}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton className="text-sidebar-foreground/70">
                   <Ellipsis className="text-sidebar-foreground/70" />
-                  <span>更多</span>
+                  <span>{t('app.more')}</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

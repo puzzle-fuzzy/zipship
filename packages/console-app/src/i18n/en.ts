@@ -8,6 +8,10 @@ export const en = {
     notifications: 'Notifications',
     profile: 'Profile',
     signOut: 'Sign out',
+    archive: 'Archive',
+    archivedProjects: 'Archived',
+    more: 'More',
+    noProjects: 'No projects',
   },
   projects: {
     title: 'Projects',
@@ -35,6 +39,9 @@ export const en = {
     uploadTitle: 'Upload Version',
     chooseFile: 'Choose ZIP file',
     uploading: 'Uploading...',
+    preview: 'Preview',
+    publish: 'Publish',
+    delete: 'Delete',
     status: {
       active: 'Active',
       ready: 'Ready',
@@ -67,6 +74,11 @@ export const en = {
     shortcutsComing: 'Coming soon',
     deployUrl: 'Deploy URL',
     noDeployed: 'Publish a version to see the URL',
+    spaMode: 'SPA Mode',
+    routingType: 'Routing Type',
+    routingHash: 'Hash (#/about)',
+    routingPath: 'Path (/about)',
+    deleteProject: 'Delete project',
   },
   auth: {
     welcome: 'Welcome back',

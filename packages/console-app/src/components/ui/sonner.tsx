@@ -6,12 +6,16 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
+import { useSettingsStore } from '../../stores/settingsStore';
 
 const Toaster = ({ ...props }: ToasterProps) => {
+  const theme = useSettingsStore((s) => s.theme);
+
   return (
     <Sonner
-      theme="system"
+      theme={theme === 'night' ? 'dark' : 'light'}
       className="toaster group"
+      position="top-right"
       closeButton
       icons={{
         success: <CircleCheckIcon className="size-4" />,
