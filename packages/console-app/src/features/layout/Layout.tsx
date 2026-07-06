@@ -1,4 +1,4 @@
-import { IconBox, IconMenu2, IconPlus, IconRocket, IconX } from '@tabler/icons-react';
+import { IconMenu2, IconPlus, IconRocket, IconX } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import { useEffect } from 'react';
 import { useTranslation } from '../../i18n';
@@ -85,13 +85,8 @@ export function Layout({
               onClick={() => handleSelectProject(project)}
               {...(selectedProjectId === project.id ? { 'aria-current': 'page' as const } : {})}
             >
-              <IconBox size={16} className={styles.projectIcon} />
-              <div className={styles.projectInfo}>
-                <div className={styles.projectName}>{project.name}</div>
-                <div className={styles.projectMeta}>
-                  {project.currentReleaseId ? t('projects.live') : t('projects.draft')}
-                </div>
-              </div>
+              <span className={`${styles.dot} ${project.currentReleaseId ? styles.dotLive : styles.dotDraft}`} />
+              <span className={styles.projectName}>{project.name}</span>
             </button>
           ))}
 
