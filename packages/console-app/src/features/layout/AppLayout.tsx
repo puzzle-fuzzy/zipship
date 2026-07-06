@@ -1,24 +1,24 @@
-import { IconChevronUp, IconLogout, IconSettings, IconUser } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../../stores';
+import { useToastStore } from '../../stores/toastStore';
 import { useTranslation } from '../../i18n';
-import { Avatar } from '../../shared/ui/Avatar';
-import { Dropdown } from '../../shared/ui/Dropdown';
+import { Button } from '../../shared/ui/Button';
+import { Dialog } from '../../shared/ui/Dialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { Layout } from './Layout';
-import layoutStyles from './Layout.module.css';
 
 export function AppLayout() {
   const { t } = useTranslation();
   const { user, refreshToken, logout } = useAuthStore();
   const { projects, fetchProjects, createProject } = useProjectsStore();
+  const { addToast } = useToastStore();
   const navigate = useNavigate();
   const params = useParams();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const apiBaseUrl =
     (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
@@ -29,53 +29,42 @@ export function AppLayout() {
     }
   }, [refreshToken, fetchProjects, apiBaseUrl]);
 
-  const selectedProjectId = params.projectId ?? null;
+  const handleLogout = () => {
+    setShowLogoutConfirm(false);
+    logout();
+    addToast({ type: 'info', title: t('app.signOut') });
+  };
+
+  const handleHelp = () => {
+    addToast({ type: 'info', title: 'ZipShip Docs', message: 'https://github.com/zipship' });
+  };
 
   return (
     <>
       <Layout
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        onSelectProject={(project) => {
-          navigate(project ? `/app/projects/${project.id}` : '/app');
-        }}
-        onCreateProject={() => setShowCreate(true)}
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        onCloseSidebar={() => setSidebarOpen(false)}
-        sidebarFooter={
-          <Dropdown
-            upward
-            trigger={
-              <div className={layoutStyles.userArea}>
-                <Avatar name={user!.name} size="md" />
-                <div className={layoutStyles.userInfo}>
-                  <div className={layoutStyles.userName}>{user!.name}</div>
-                  <div className={layoutStyles.userEmail}>{user!.email}</div>
-                </div>
-                <IconChevronUp size={14} style={{ color: 'var(--color-text-tertiary)', flexShrink: 0 }} />
-              </div>
-            }
-            items={[
-              { label: t('app.profile'), icon: <IconUser size={18} />, onClick: () => {} },
-              {
-                label: t('app.settings'),
-                icon: <IconSettings size={18} />,
-                onClick: () => setShowSettings(true),
-              },
-              { divider: true },
-              {
-                label: t('app.signOut'),
-                icon: <IconLogout size={18} />,
-                danger: true,
-                onClick: logout,
-              },
-            ]}
-          />
-        }
+        user={user!}
+        onLogout={() => setShowLogoutConfirm(true)}
+        onOpenSettings={() => setShowSettings(true)}
+        onHelp={handleHelp}
       >
-        <Outlet context={{ setShowCreate }} />
+        <Outlet context={{ setShowCreate, setShowSettings }} />
       </Layout>
+
+      <Dialog open={showLogoutConfirm} title={t('app.signOut')} onClose={() => setShowLogoutConfirm(false)} width={380}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+            {t('help.signOutDesc')}
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Button variant="secondary" onClick={() => setShowLogoutConfirm(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={handleLogout}>
+              {t('app.signOut')}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <CreateProjectDialog
         open={showCreate}

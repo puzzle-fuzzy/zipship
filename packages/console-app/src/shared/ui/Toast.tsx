@@ -9,20 +9,23 @@ const iconMap = {
 };
 
 export function ToastContainer() {
-  const { toasts, removeToast } = useToastStore();
+  const { toasts, dismissToast } = useToastStore();
 
   if (toasts.length === 0) return null;
 
   return (
     <div className={styles.container}>
       {toasts.map((toast) => (
-        <div key={toast.id} className={`${styles.toast} ${styles[toast.type]}`}>
+        <div
+          key={toast.id}
+          className={`${styles.toast} ${styles[toast.type]}${toast.leaving ? ` ${styles.toastLeaving}` : ''}`}
+        >
           <span className={styles.icon}>{iconMap[toast.type]}</span>
           <div className={styles.body}>
             <div className={styles.title}>{toast.title}</div>
             {toast.message && <div className={styles.message}>{toast.message}</div>}
           </div>
-          <button type="button" className={styles.close} onClick={() => removeToast(toast.id)}>
+          <button type="button" className={styles.close} onClick={() => dismissToast(toast.id)}>
             <IconX size={14} />
           </button>
         </div>

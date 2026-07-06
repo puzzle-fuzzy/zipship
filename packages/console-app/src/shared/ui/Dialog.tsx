@@ -1,6 +1,6 @@
 import { IconX } from '@tabler/icons-react';
 import type { ReactNode, MouseEvent } from 'react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import styles from './Dialog.module.css';
 
 interface DialogProps {
@@ -14,10 +14,18 @@ interface DialogProps {
 export function Dialog({ open, title, onClose, children, width }: DialogProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const handleOverlayClick = (e: MouseEvent) => {
-    // Only close if the click started AND ended on the overlay (not a drag from dialog)
     if (e.target === overlayRef.current) {
       onClose();
     }

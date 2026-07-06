@@ -99,4 +99,13 @@ export const zh = {
     confirm: '确认',
     back: '返回',
   },
+  help: {
+    title: '帮助',
+    slug: '部署地址中使用的 URL 友好标识符，例如 "my-project"',
+    releaseHash: '基于内容的短哈希值，用于唯一标识此版本',
+    signOutConfirm: '确定要退出登录吗？',
+    signOutDesc: '退出后需要重新登录才能访问项目。',
+    noVersions: '上传您的第一个构建产物后，版本列表将在此显示。',
+    noVersionsAction: '点击"上传"按钮，选择已构建的静态站点 ZIP 文件。',
+  },
 };

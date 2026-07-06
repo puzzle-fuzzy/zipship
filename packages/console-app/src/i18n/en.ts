@@ -99,4 +99,13 @@ export const en = {
     confirm: 'Confirm',
     back: 'Back',
   },
+  help: {
+    title: 'Help',
+    slug: 'A URL-friendly identifier used in the deployment address, e.g. "my-project"',
+    releaseHash: 'A short content-based hash that uniquely identifies this version',
+    signOutConfirm: 'Are you sure you want to sign out?',
+    signOutDesc: 'You will need to sign in again to access your projects.',
+    noVersions: 'Upload your first build to see versions here.',
+    noVersionsAction: 'Click "Upload" to upload a ZIP file of your built static site.',
+  },
 };
