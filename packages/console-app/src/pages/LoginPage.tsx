@@ -1,5 +1,6 @@
 import { IconBox, IconLock, IconMail, IconRocket, IconUpload, IconUsers } from '@tabler/icons-react';
 import { useState } from 'react';
+import { useTranslation } from '../i18n';
 import { Button } from '../shared/ui/Button';
 import { Input } from '../shared/ui/Input';
 import styles from './LoginPage.module.css';
@@ -12,6 +13,7 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -21,7 +23,6 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       if (mode === 'login') {
         await onLogin(email, password);
@@ -43,7 +44,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
       <div className={styles.brand}>
         <div className={styles.brandLogo}>
           <IconRocket size={28} className={styles.brandIcon} />
-          <span className={styles.brandName}>ZipShip</span>
+          <span className={styles.brandName}>{t('app.name')}</span>
         </div>
         <h1 className={styles.brandTitle}>
           Deploy your static sites<br />with confidence
@@ -77,19 +78,17 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
         <div className={styles.formContainer}>
           <div className={styles.formHeader}>
             <h2 className={styles.formTitle}>
-              {mode === 'login' ? 'Welcome back' : 'Create account'}
+              {mode === 'login' ? t('auth.welcome') : t('auth.createAccount')}
             </h2>
             <p className={styles.formSubtitle}>
-              {mode === 'login'
-                ? 'Sign in to your account to continue'
-                : 'Get started with your team account'}
+              {mode === 'login' ? t('auth.welcomeDesc') : t('auth.createAccountDesc')}
             </p>
           </div>
 
           <form className={styles.form} onSubmit={handleSubmit}>
             {mode === 'register' && (
               <Input
-                label="Name"
+                label={t('auth.name')}
                 type="text"
                 placeholder="Your name"
                 value={name}
@@ -98,7 +97,7 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             )}
 
             <Input
-              label="Email"
+              label={t('auth.email')}
               type="email"
               placeholder="you@example.com"
               value={email}
@@ -107,9 +106,9 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             />
 
             <Input
-              label="Password"
+              label={t('auth.password')}
               type="password"
-              placeholder={mode === 'register' ? 'At least 8 characters' : 'Enter your password'}
+              placeholder={mode === 'register' ? t('auth.passwordHint') : t('auth.password')}
               value={password}
               onChange={setPassword}
               icon={<IconLock size={16} />}
@@ -124,21 +123,21 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
               {loading
                 ? 'Please wait...'
                 : mode === 'login'
-                  ? 'Sign in'
-                  : 'Create account'}
+                  ? t('auth.signIn')
+                  : t('auth.register')}
             </Button>
           </form>
 
           <div className={styles.formFooter}>
             {mode === 'login' ? (
               <>
-                Don't have an account?{' '}
-                <button type="button" onClick={toggleMode}>Create one</button>
+                {t('auth.noAccount')}{' '}
+                <button type="button" onClick={toggleMode}>{t('auth.createOne')}</button>
               </>
             ) : (
               <>
-                Already have an account?{' '}
-                <button type="button" onClick={toggleMode}>Sign in</button>
+                {t('auth.hasAccount')}{' '}
+                <button type="button" onClick={toggleMode}>{t('auth.signInLink')}</button>
               </>
             )}
           </div>

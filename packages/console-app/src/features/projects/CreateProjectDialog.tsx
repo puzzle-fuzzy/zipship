@@ -1,5 +1,6 @@
 import type { FormEvent } from 'react';
 import { useState } from 'react';
+import { useTranslation } from '../../i18n';
 import { Button } from '../../shared/ui/Button';
 import { Dialog } from '../../shared/ui/Dialog';
 import { Input } from '../../shared/ui/Input';
@@ -11,6 +12,7 @@ interface CreateProjectDialogProps {
 }
 
 export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
@@ -35,7 +37,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
       onCreated({ name: name.trim(), slug: slug.trim(), description: description.trim() });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project');
+      setError(err instanceof Error ? err.message : t('projects.createFailed'));
     } finally {
       setLoading(false);
     }
@@ -53,7 +55,7 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
   };
 
   return (
-    <Dialog open={open} title="New Project" onClose={onClose} width={420}>
+    <Dialog open={open} title={t('projects.create')} onClose={onClose} width={420}>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {error && (
           <div
@@ -68,20 +70,20 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
             {error}
           </div>
         )}
-        <Input label="Project name" placeholder="My Project" value={name} onChange={handleNameChange} />
-        <Input label="Slug" placeholder="my-project" value={slug} onChange={setSlug} hint="URL-friendly identifier" />
+        <Input label={t('projects.name')} placeholder="My Project" value={name} onChange={handleNameChange} />
+        <Input label={t('projects.slug')} placeholder="my-project" value={slug} onChange={setSlug} hint={t('projects.slugHint')} />
         <Input
-          label="Description (optional)"
-          placeholder="What is this project for?"
+          label={t('projects.description')}
+          placeholder={t('projects.descriptionPlaceholder')}
           value={description}
           onChange={setDescription}
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
           <Button variant="secondary" type="button" onClick={onClose}>
-            Cancel
+            {t('projects.cancel')}
           </Button>
           <Button type="submit" disabled={loading || !name.trim() || !slug.trim()}>
-            {loading ? 'Creating...' : 'Create'}
+            {loading ? t('projects.creating') : t('projects.create')}
           </Button>
         </div>
       </form>

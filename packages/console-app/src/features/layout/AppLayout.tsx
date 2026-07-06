@@ -2,6 +2,7 @@ import { IconChevronUp, IconLogout, IconSettings, IconUser } from '@tabler/icons
 import { useEffect, useState } from 'react';
 import { Outlet, useNavigate, useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../../stores';
+import { useTranslation } from '../../i18n';
 import { Avatar } from '../../shared/ui/Avatar';
 import { Dropdown } from '../../shared/ui/Dropdown';
 import { SettingsDialog } from '../settings/SettingsDialog';
@@ -10,6 +11,7 @@ import { Layout } from './Layout';
 import layoutStyles from './Layout.module.css';
 
 export function AppLayout() {
+  const { t } = useTranslation();
   const { user, refreshToken, logout } = useAuthStore();
   const { projects, fetchProjects, createProject } = useProjectsStore();
   const navigate = useNavigate();
@@ -31,14 +33,12 @@ export function AppLayout() {
   return (
     <>
       <Layout
-        user={user!}
         projects={projects}
         selectedProjectId={selectedProjectId}
         onSelectProject={(project) => {
           navigate(project ? `/app/projects/${project.id}` : '/app');
         }}
         onCreateProject={() => setShowCreate(true)}
-        onLogout={logout}
         sidebarFooter={
           <Dropdown
             upward
@@ -53,19 +53,24 @@ export function AppLayout() {
               </div>
             }
             items={[
-              { label: 'Profile', icon: <IconUser size={18} />, onClick: () => {} },
+              { label: t('app.profile'), icon: <IconUser size={18} />, onClick: () => {} },
               {
-                label: 'Settings',
+                label: t('app.settings'),
                 icon: <IconSettings size={18} />,
                 onClick: () => setShowSettings(true),
               },
               { divider: true },
-              { label: 'Sign out', icon: <IconLogout size={18} />, danger: true, onClick: logout },
+              {
+                label: t('app.signOut'),
+                icon: <IconLogout size={18} />,
+                danger: true,
+                onClick: logout,
+              },
             ]}
           />
         }
       >
-        <Outlet />
+        <Outlet context={{ setShowCreate }} />
       </Layout>
 
       <CreateProjectDialog

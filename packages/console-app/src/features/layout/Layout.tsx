@@ -1,5 +1,6 @@
 import { IconBox, IconPlus, IconRocket } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
+import { useTranslation } from '../../i18n';
 import styles from './Layout.module.css';
 
 interface Project {
@@ -10,12 +11,10 @@ interface Project {
 }
 
 interface LayoutProps {
-  user: { id: string; name: string; email: string };
   projects: Project[];
   selectedProjectId: string | null;
   onSelectProject: (project: Project | null) => void;
   onCreateProject: () => void;
-  onLogout: () => void;
   children: ReactNode;
   headerExtra?: ReactNode;
   sidebarFooter?: ReactNode;
@@ -30,13 +29,14 @@ export function Layout({
   headerExtra,
   sidebarFooter,
 }: LayoutProps) {
+  const { t } = useTranslation();
+
   return (
     <div className={styles.layout}>
-      {/* ─── Sidebar ─── */}
       <aside className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
           <IconRocket size={22} className={styles.sidebarLogo} />
-          <span className={styles.sidebarTitle}>ZipShip</span>
+          <span className={styles.sidebarTitle}>{t('app.name')}</span>
         </div>
 
         <div className={styles.sidebarContent}>
@@ -51,7 +51,7 @@ export function Layout({
               <div className={styles.projectInfo}>
                 <div className={styles.projectName}>{project.name}</div>
                 <div className={styles.projectMeta}>
-                  {project.currentReleaseId ? 'Live' : 'Draft'}
+                  {project.currentReleaseId ? t('projects.live') : t('projects.draft')}
                 </div>
               </div>
             </button>
@@ -64,14 +64,13 @@ export function Layout({
             style={{ marginTop: 8, color: 'var(--color-text-secondary)' }}
           >
             <IconPlus size={16} />
-            <span>New Project</span>
+            <span>{t('app.newProject')}</span>
           </button>
         </div>
 
         {sidebarFooter && <div className={styles.sidebarFooter}>{sidebarFooter}</div>}
       </aside>
 
-      {/* ─── Content ─── */}
       <div className={styles.content}>
         {headerExtra && (
           <div className={styles.contentHeader}>

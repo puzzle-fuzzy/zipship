@@ -1,4 +1,5 @@
 import { IconBox, IconFolderOpen, IconPlus, IconRefresh } from '@tabler/icons-react';
+import { useTranslation } from '../../i18n';
 import { Badge } from '../../shared/ui/Badge';
 import { Button } from '../../shared/ui/Button';
 import { Card } from '../../shared/ui/Card';
@@ -22,8 +23,10 @@ interface ProjectListProps {
 }
 
 export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }: ProjectListProps) {
+  const { t } = useTranslation();
+
   if (loading) {
-    return <Card title="Projects">Loading...</Card>;
+    return <Card title={t('projects.title')}>{t('common.loading')}</Card>;
   }
 
   if (projects.length === 0) {
@@ -31,13 +34,13 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
       <Card>
         <div style={{ textAlign: 'center', padding: '40px 20px' }}>
           <IconFolderOpen size={40} style={{ color: 'var(--color-text-tertiary)', marginBottom: 16 }} />
-          <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600, marginBottom: 8 }}>No projects yet</h3>
+          <h3 style={{ fontSize: 'var(--font-size-lg)', fontWeight: 600, marginBottom: 8 }}>{t('projects.empty')}</h3>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', marginBottom: 20 }}>
-            Create your first project to start deploying
+            {t('projects.emptyDesc')}
           </p>
           <Button onClick={onCreate}>
             <IconPlus size={16} />
-            New Project
+            {t('app.newProject')}
           </Button>
         </div>
       </Card>
@@ -46,7 +49,7 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
 
   return (
     <Card
-      title="Projects"
+      title={t('projects.title')}
       action={
         <div style={{ display: 'flex', gap: 8 }}>
           <Button variant="ghost" size="sm" onClick={onRefresh}>
@@ -54,7 +57,7 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
           </Button>
           <Button size="sm" onClick={onCreate}>
             <IconPlus size={14} />
-            New
+            {t('app.newProject')}
           </Button>
         </div>
       }
@@ -88,7 +91,7 @@ export function ProjectList({ projects, loading, onSelect, onCreate, onRefresh }
                   {project.name}
                 </span>
                 <Badge variant={project.currentReleaseId ? 'success' : 'outline'}>
-                  {project.currentReleaseId ? 'Live' : 'Draft'}
+                  {project.currentReleaseId ? t('projects.live') : t('projects.draft')}
                 </Badge>
               </div>
               <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)', marginTop: 2 }}>
