@@ -56,12 +56,29 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       const orgRes = await api._api.organizations.get({
         headers: { authorization: `Bearer ${refreshToken}` },
       });
-      const orgId = orgRes.data?.organizations[0]?.id;
-      if (!orgId) return;
 
-      const projRes = await api._api.organizations({ organizationId: orgId }).projects.get({
+      if (orgRes.error) {
+        console.error('Failed to fetch projects: org error', orgRes.error);
+        set({ loading: false });
+        return;
+      }
+
+      const org = orgRes.data?.organizations?.[0];
+      if (!org?.id) {
+        console.error('Failed to fetch projects: no org data', orgRes.data);
+        set({ loading: false });
+        return;
+      }
+
+      const projRes = await api._api.organizations({ organizationId: org.id }).projects.get({
         headers: { authorization: `Bearer ${refreshToken}` },
       });
+
+      if (projRes.error) {
+        console.error('Failed to fetch projects: projects error', projRes.error);
+        set({ loading: false });
+        return;
+      }
 
       if (projRes.data) {
         set({ projects: projRes.data.projects as Project[], loading: false });
@@ -74,12 +91,21 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
 
   createProject: async (apiBaseUrl, refreshToken, input) => {
     const api = createApiClient(apiBaseUrl);
+
+    // 1. Look up the user's default organization
     const orgRes = await api._api.organizations.get({
       headers: { authorization: `Bearer ${refreshToken}` },
     });
-    const orgId = orgRes.data?.organizations[0]?.id;
+
+    if (orgRes.error) {
+      const code = (orgRes.error.value as { code?: string })?.code;
+      throw new Error(code === 'UNAUTHORIZED' ? 'Session expired, please refresh' : 'Failed to get organization');
+    }
+
+    const orgId = orgRes.data?.organizations?.[0]?.id;
     if (!orgId) throw new Error('No organization found');
 
+    // 2. Create the project
     const res = await api._api.organizations({ organizationId: orgId }).projects.post(
       { name: input.name, slug: input.slug, description: input.description || null },
       { headers: { authorization: `Bearer ${refreshToken}` } },
@@ -87,7 +113,9 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
 
     if (res.error) {
       const code = (res.error.value as { code?: string })?.code;
-      throw new Error(code === 'DUPLICATE_PROJECT_SLUG' ? 'A project with this slug already exists' : 'Failed to create project');
+      throw new Error(code === 'DUPLICATE_PROJECT_SLUG'
+        ? 'A project with this slug already exists'
+        : `Failed to create project (${code ?? 'unknown'})`);
     }
   },
 
