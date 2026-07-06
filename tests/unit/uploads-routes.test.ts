@@ -697,20 +697,29 @@ describe("uploads routes", () => {
     expect((res2.error?.value as unknown)).toEqual({ code: "INVALID_UPLOAD_INPUT" });
   });
 
-  test("rejects filename that trims to '.' or '..'", async () => {
+  test("rejects filename that is only '.' or '..' after trim", async () => {
     const { api, refreshToken, project } = await registerLoginAndCreateProject();
 
+    // normalizeFilename trims, then checks for bare "." / "..",
+    // then isZipFilename checks the extension. Both guards reject these.
     const res1 = await api._api.projects({ projectId: project.id }).uploads.post(
-      { originalFilename: " .zip", size: 1024 },
+      { originalFilename: ".", size: 1024 },
       { headers: { authorization: `Bearer ${refreshToken}` } },
     );
     expect(res1.status).toBe(400);
 
     const res2 = await api._api.projects({ projectId: project.id }).uploads.post(
-      { originalFilename: " ..zip", size: 1024 },
+      { originalFilename: "..", size: 1024 },
       { headers: { authorization: `Bearer ${refreshToken}` } },
     );
     expect(res2.status).toBe(400);
+
+    // Trims to bare "." — also rejected
+    const res3 = await api._api.projects({ projectId: project.id }).uploads.post(
+      { originalFilename: " . ", size: 1024 },
+      { headers: { authorization: `Bearer ${refreshToken}` } },
+    );
+    expect(res3.status).toBe(400);
   });
 
   test("rejects size = 0 as validation error", async () => {

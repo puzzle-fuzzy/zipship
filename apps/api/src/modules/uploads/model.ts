@@ -13,8 +13,8 @@ export const uploadDetailParamsModel = t.Object({
 });
 
 export const createUploadTaskBodyModel = t.Object({
-  originalFilename: t.String({ minLength: 1 }),
-  size: t.Number({ minimum: 1 }),
+  originalFilename: t.String({ minLength: 1, maxLength: 255 }),
+  size: t.Number({ minimum: 1, maximum: 512 * 1024 * 1024 }),
 });
 
 export const uploadTaskModel = t.Object({
