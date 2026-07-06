@@ -10,15 +10,17 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@elysiajs/cors": "^1.4.2",
     "@zipship/config": "workspace:*",
     "@zipship/db": "workspace:*",
     "@zipship/shared": "workspace:*",
-    "@elysiajs/cors": "^1.4.2",
     "drizzle-orm": "catalog:",
     "elysia": "catalog:",
+    "nodemailer": "^9.0.3",
     "pg": "^8.13.0"
   },
   "devDependencies": {
+    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.11.0",
     "typescript": "catalog:"
   }
