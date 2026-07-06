@@ -1,9 +1,8 @@
-import { IconBox, IconLock, IconMail, IconRocket, IconUpload, IconUsers } from '@tabler/icons-react';
+import { Box, Lock, Mail, Rocket, Upload, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from '../i18n';
-import { Button } from '../shared/ui/Button';
-import { Input } from '../shared/ui/Input';
-import styles from './LoginPage.module.css';
+import { Button } from '../components/ui/button';
+import { Input } from '../components/ui/input';
 
 type Mode = 'login' | 'register';
 
@@ -39,85 +38,86 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   };
 
   return (
-    <div className={styles.page}>
+    <div className="flex min-h-dvh">
       {/* Left: Brand Panel */}
-      <div className={styles.brand}>
-        <div className={styles.brandLogo}>
-          <IconRocket size={28} className={styles.brandIcon} />
-          <span className={styles.brandName}>{t('app.name')}</span>
+      <div className="hidden w-1/2 flex-col justify-center gap-6 bg-muted p-12 lg:flex">
+        <div className="flex items-center gap-2">
+          <Rocket className="size-7 text-foreground" />
+          <span className="text-xl font-semibold">{t('app.name')}</span>
         </div>
-        <h1 className={styles.brandTitle}>
+        <h1 className="text-3xl font-semibold tracking-tight">
           Deploy your static sites<br />with confidence
         </h1>
-        <p className={styles.brandDesc}>
+        <p className="text-sm text-muted-foreground max-w-sm">
           Upload, version, preview, and publish your static artifacts.
           A lightweight deployment platform for your team.
         </p>
-        <div className={styles.brandFeatures}>
-          <div className={styles.feature}>
-            <IconUpload size={18} className={styles.featureIcon} />
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center gap-3 text-sm">
+            <Upload className="size-4 text-muted-foreground" />
             <span>Upload and detect your build output</span>
           </div>
-          <div className={styles.feature}>
-            <IconBox size={18} className={styles.featureIcon} />
+          <div className="flex items-center gap-3 text-sm">
+            <Box className="size-4 text-muted-foreground" />
             <span>Content-addressed versioning</span>
           </div>
-          <div className={styles.feature}>
-            <IconUsers size={18} className={styles.featureIcon} />
+          <div className="flex items-center gap-3 text-sm">
+            <Users className="size-4 text-muted-foreground" />
             <span>Team collaboration with role-based access</span>
           </div>
-          <div className={styles.feature}>
-            <IconRocket size={18} className={styles.featureIcon} />
+          <div className="flex items-center gap-3 text-sm">
+            <Rocket className="size-4 text-muted-foreground" />
             <span>One-click publish and instant rollback</span>
           </div>
         </div>
       </div>
 
       {/* Right: Form Panel */}
-      <div className={styles.formPanel}>
-        <div className={styles.formContainer}>
-          <div className={styles.formHeader}>
-            <h2 className={styles.formTitle}>
+      <div className="flex w-full items-center justify-center p-8 lg:w-1/2">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 text-center lg:text-left">
+            <h2 className="text-2xl font-semibold tracking-tight">
               {mode === 'login' ? t('auth.welcome') : t('auth.createAccount')}
             </h2>
-            <p className={styles.formSubtitle}>
+            <p className="mt-1 text-sm text-muted-foreground">
               {mode === 'login' ? t('auth.welcomeDesc') : t('auth.createAccountDesc')}
             </p>
           </div>
 
-          <form className={styles.form} onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {mode === 'register' && (
               <Input
-                label={t('auth.name')}
-                type="text"
                 placeholder="Your name"
                 value={name}
-                onChange={setName}
+                onChange={(e) => setName(e.target.value)}
               />
             )}
 
-            <Input
-              label={t('auth.email')}
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={setEmail}
-              icon={<IconMail size={16} />}
-            />
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="pl-8"
+              />
+            </div>
 
-            <Input
-              label={t('auth.password')}
-              type="password"
-              placeholder={mode === 'register' ? t('auth.passwordHint') : t('auth.password')}
-              value={password}
-              onChange={setPassword}
-              icon={<IconLock size={16} />}
-            />
+            <div className="relative">
+              <Lock className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                type="password"
+                placeholder={mode === 'register' ? t('auth.passwordHint') : t('auth.password')}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pl-8"
+              />
+            </div>
 
             <Button
               type="submit"
-              fullWidth
-              size="lg"
+              className="w-full"
               disabled={loading || !email || !password || (mode === 'register' && !name)}
             >
               {loading
@@ -128,16 +128,20 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
             </Button>
           </form>
 
-          <div className={styles.formFooter}>
+          <div className="mt-6 text-center text-sm text-muted-foreground">
             {mode === 'login' ? (
               <>
                 {t('auth.noAccount')}{' '}
-                <button type="button" onClick={toggleMode}>{t('auth.createOne')}</button>
+                <button type="button" className="text-foreground underline underline-offset-4 hover:text-primary" onClick={toggleMode}>
+                  {t('auth.createOne')}
+                </button>
               </>
             ) : (
               <>
                 {t('auth.hasAccount')}{' '}
-                <button type="button" onClick={toggleMode}>{t('auth.signInLink')}</button>
+                <button type="button" className="text-foreground underline underline-offset-4 hover:text-primary" onClick={toggleMode}>
+                  {t('auth.signInLink')}
+                </button>
               </>
             )}
           </div>

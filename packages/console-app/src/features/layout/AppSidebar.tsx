@@ -1,0 +1,110 @@
+import { Archive, Box, Ellipsis, FolderOpen, Plus } from 'lucide-react';
+import { useTranslation } from '../../i18n';
+import { Button } from '../../components/ui/button';
+import { Separator } from '../../components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+} from '../../components/ui/sidebar';
+
+interface Project {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface AppSidebarProps {
+  projects: Project[];
+  selectedProjectId: string | null;
+  onSelectProject: (project: Project) => void;
+  onShowProjects: () => void;
+  onCreateProject: () => void;
+}
+
+export function AppSidebar({
+  projects,
+  selectedProjectId,
+  onSelectProject,
+  onShowProjects,
+  onCreateProject,
+}: AppSidebarProps) {
+  const { t } = useTranslation();
+
+  return (
+    <Sidebar collapsible="none" className="hidden md:flex p-2">
+      <SidebarMenu>
+        <SidebarMenuItem className="flex items-center gap-2 pt-14">
+          <SidebarMenuButton
+            tooltip={t('app.projects')}
+            onClick={onShowProjects}
+            className="min-w-8"
+          >
+            <FolderOpen />
+            <span>{t('app.projects')}</span>
+          </SidebarMenuButton>
+          <Button
+            size="icon"
+            className="size-8 group-data-[collapsible=icon]:opacity-0"
+            variant="outline"
+            onClick={onCreateProject}
+            aria-label={t('app.newProject')}
+          >
+            <Plus />
+            <span className="sr-only">{t('app.newProject')}</span>
+          </Button>
+        </SidebarMenuItem>
+      </SidebarMenu>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu className="gap-1">
+              <SidebarGroupLabel>{t('app.projects')}</SidebarGroupLabel>
+              {projects.map((project) => (
+                <SidebarMenuItem key={project.id}>
+                  <SidebarMenuButton
+                    isActive={selectedProjectId === project.id}
+                    onClick={() => onSelectProject(project)}
+                  >
+                    <Box />
+                    <span>{project.name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              {projects.length === 0 && (
+                <SidebarMenuItem>
+                  <SidebarMenuButton disabled>
+                    <Box />
+                    <span>暂无项目</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )}
+
+              <Separator />
+
+              <SidebarGroupLabel>归档</SidebarGroupLabel>
+              <SidebarMenuItem>
+                <SidebarMenuButton disabled>
+                  <Archive />
+                  <span>已归档项目</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton className="text-sidebar-foreground/70">
+                  <Ellipsis className="text-sidebar-foreground/70" />
+                  <span>更多</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+  );
+}

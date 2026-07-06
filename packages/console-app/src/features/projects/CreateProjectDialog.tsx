@@ -1,10 +1,16 @@
-import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { type FormEvent, useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Button } from '../../shared/ui/Button';
-import { Dialog } from '../../shared/ui/Dialog';
-import { Input } from '../../shared/ui/Input';
-import styles from './CreateProjectDialog.module.css';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -56,30 +62,62 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
   };
 
   return (
-    <Dialog open={open} title={t('projects.create')} onClose={onClose} width={420}>
-      <form onSubmit={handleSubmit} className={styles.form}>
-        {error && (
-          <div className={styles.errorBanner}>
-            {error}
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>{t('projects.create')}</DialogTitle>
+            <DialogDescription>
+              {t('projects.emptyDesc')}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-4">
+            {error && (
+              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
+            <div className="grid gap-2">
+              <Label htmlFor="name">{t('projects.name')}</Label>
+              <Input
+                id="name"
+                placeholder="My Project"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="slug">{t('projects.slug')}</Label>
+              <Input
+                id="slug"
+                placeholder="my-project"
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">{t('projects.slugHint')}</p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="description">{t('projects.description')}</Label>
+              <Input
+                id="description"
+                placeholder={t('projects.descriptionPlaceholder')}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
           </div>
-        )}
-        <Input label={t('projects.name')} placeholder="My Project" value={name} onChange={handleNameChange} />
-        <Input label={t('projects.slug')} placeholder="my-project" value={slug} onChange={setSlug} hint={t('projects.slugHint')} />
-        <Input
-          label={t('projects.description')}
-          placeholder={t('projects.descriptionPlaceholder')}
-          value={description}
-          onChange={setDescription}
-        />
-        <div className={styles.actions}>
-          <Button variant="secondary" type="button" onClick={onClose}>
-            {t('projects.cancel')}
-          </Button>
-          <Button type="submit" disabled={loading || !name.trim() || !slug.trim()}>
-            {loading ? t('projects.creating') : t('projects.create')}
-          </Button>
-        </div>
-      </form>
+
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={onClose}>
+              {t('projects.cancel')}
+            </Button>
+            <Button type="submit" disabled={loading || !name.trim() || !slug.trim()}>
+              {loading ? t('projects.creating') : t('projects.create')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   );
 }

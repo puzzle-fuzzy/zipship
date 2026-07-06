@@ -9,12 +9,22 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@tabler/icons-react": "^3.31.0",
+    "@base-ui/react": "^1.6.0",
+    "@fontsource-variable/geist": "^5.2.9",
     "@zipship/api-client": "workspace:*",
     "@zipship/runtime": "workspace:*",
+    "class-variance-authority": "catalog:",
+    "clsx": "catalog:",
+    "lucide-react": "catalog:",
+    "radix-ui": "catalog:",
     "react": "catalog:",
     "react-router": "catalog:",
-    "zustand": "^5.0.4"
+    "tailwind-merge": "catalog:",
+    "shadcn": "catalog:",
+    "tw-animate-css": "catalog:",
+    "zustand": "^5.0.4",
+    "sonner": "^2.0.7",
+    "tailwindcss": "catalog:"
   },
   "devDependencies": {
     "@zipship/api": "workspace:*",

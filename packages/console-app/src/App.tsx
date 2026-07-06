@@ -2,12 +2,12 @@ import type { RuntimeAdapter } from '@zipship/runtime';
 import { useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
-import { useAuthStore, useToastStore } from './stores';
+import { useAuthStore } from './stores';
 import { useSettingsStore } from './stores/settingsStore';
 import { LoginPage } from './pages/LoginPage';
-import { ToastContainer } from './shared/ui/Toast';
-import './styles/globals.css';
-import './styles/night.css';
+import { Toaster } from './components/ui/sonner';
+import { toast } from 'sonner';
+import './index.css';
 
 export interface AppProps {
   runtime: RuntimeAdapter;
@@ -16,7 +16,6 @@ export interface AppProps {
 
 export function App({ runtime, apiBaseUrl }: AppProps) {
   const { status, initSession, login, register } = useAuthStore();
-  const { addToast } = useToastStore();
 
   // Expose base URL so AppLayout can reach it without prop drilling.
   if (typeof window !== 'undefined') {
@@ -32,7 +31,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
     try {
       await login(apiBaseUrl, email, password, runtime.kind === 'desktop' ? 'desktop' : 'web');
     } catch (err) {
-      addToast({ type: 'error', title: (err as Error).message || 'Login failed' });
+      toast.error((err as Error).message || 'Login failed');
     }
   };
 
@@ -40,7 +39,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
     try {
       await register(apiBaseUrl, name, email, password);
     } catch (err) {
-      addToast({ type: 'error', title: (err as Error).message || 'Registration failed' });
+      toast.error((err as Error).message || 'Registration failed');
     }
   };
 
@@ -64,7 +63,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
     return (
       <>
         <LoginPage onLogin={handleLogin} onRegister={handleRegister} />
-        <ToastContainer />
+        <Toaster />
       </>
     );
   }
@@ -72,7 +71,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
   return (
     <>
       <RouterProvider router={router} />
-      <ToastContainer />
+      <Toaster />
     </>
   );
 }

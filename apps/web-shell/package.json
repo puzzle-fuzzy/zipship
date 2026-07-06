@@ -9,7 +9,9 @@
   "dependencies": {
     "@zipship/console-app": "workspace:*",
     "@zipship/runtime": "workspace:*",
+    "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
+    "tailwindcss": "catalog:",
     "vite": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",

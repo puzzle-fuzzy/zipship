@@ -15,6 +15,7 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
+      "@/*": ["packages/console-app/src/*"],
       "@zipship/api-client": ["packages/api-client/src/index.ts"],
       "@zipship/api": ["apps/api/src/index.ts"],
       "@zipship/config": ["packages/config/src/index.ts"],

@@ -1,7 +1,14 @@
-import { IconUpload } from '@tabler/icons-react';
+import { Upload } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Dialog } from '../../shared/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
 
 interface UploadVersionDialogProps {
   open: boolean;
@@ -20,32 +27,28 @@ export function UploadVersionDialog({
   const [loading] = useState(false);
 
   return (
-    <Dialog open={open} title={t('versions.uploadTitle')} onClose={onClose} width={480}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16, alignItems: 'center', padding: '24px 0' }}>
-        <IconUpload size={40} style={{ color: 'var(--color-text-tertiary)' }} />
-        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
-          Select a ZIP file to upload and deploy
-        </p>
-        <label
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 20px',
-            background: 'var(--color-accent)',
-            color: 'var(--color-text-inverse)',
-            borderRadius: 'var(--radius-md)',
-            cursor: 'pointer',
-            fontWeight: 500,
-            fontSize: 'var(--font-size-sm)',
-            opacity: loading ? 0.5 : 1,
-          }}
-        >
-          <IconUpload size={16} />
-          {loading ? t('versions.uploading') : t('versions.chooseFile')}
-          <input type="file" accept=".zip" style={{ display: 'none' }} />
-        </label>
-      </div>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t('versions.uploadTitle')}</DialogTitle>
+          <DialogDescription>
+            Select a ZIP file to upload and deploy
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col items-center gap-4 py-6">
+          <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
+            <Upload className="size-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground text-center">
+            Select a ZIP file to upload and deploy
+          </p>
+          <Button disabled={loading}>
+            <Upload className="size-4" />
+            {loading ? t('versions.uploading') : t('versions.chooseFile')}
+          </Button>
+          <input type="file" accept=".zip" className="hidden" />
+        </div>
+      </DialogContent>
     </Dialog>
   );
 }

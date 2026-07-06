@@ -1,9 +1,13 @@
-import { IconKeyboard, IconMoon, IconPalette, IconSun } from '@tabler/icons-react';
+import { Keyboard, Moon, Palette, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from '../../i18n';
-import { Dialog } from '../../shared/ui/Dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog';
 import { useSettingsStore } from '../../stores/settingsStore';
-import styles from './SettingsDialog.module.css';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -16,103 +20,111 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const [tab] = useState<'appearance'>('appearance');
 
   return (
-    <Dialog open={open} title={t('settings.title')} onClose={onClose} width={640}>
-      <div className={styles.columns}>
-        {/* Left: menu */}
-        <div className={styles.sideMenu}>
-          <button type="button" className={`${styles.menuItem} ${styles.menuItemActive}`}>
-            <IconPalette size={16} />
-            {t('settings.appearance')}
-          </button>
-          <button
-            type="button"
-            className={styles.menuItem}
-            style={{ opacity: 0.4, cursor: 'not-allowed' }}
-            disabled
-          >
-            <IconKeyboard size={16} />
-            {t('settings.shortcuts')}
-          </button>
-        </div>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('settings.title')}</DialogTitle>
+        </DialogHeader>
 
-        {/* Vertical divider */}
-        <div className={styles.divider} />
+        <div className="flex gap-6">
+          {/* Left: menu */}
+          <div className="flex shrink-0 flex-col gap-1">
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium bg-muted text-foreground"
+            >
+              <Palette className="size-4" />
+              {t('settings.appearance')}
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-muted-foreground opacity-40 cursor-not-allowed"
+              disabled
+            >
+              <Keyboard className="size-4" />
+              {t('settings.shortcuts')}
+            </button>
+          </div>
 
-        {/* Right: content */}
-        <div className={styles.content}>
-          {tab === 'appearance' && (
-            <>
-              {/* Theme */}
-              <div>
-                <h2 className={styles.sectionTitle}>{t('settings.theme')}</h2>
-                <p className={styles.sectionDesc}>{t('settings.appearance')}</p>
-                <div className={styles.radioGroup}>
-                  <button
-                    type="button"
-                    className={`${styles.radioOption}${theme === 'day' ? ` ${styles.radioActive}` : ''}`}
-                    onClick={() => setTheme('day')}
-                  >
-                    <span className={`${styles.radioDot}${theme === 'day' ? ` ${styles.radioDotActive}` : ''}`}>
-                      {theme === 'day' && <span className={styles.radioDotInner} />}
-                    </span>
-                    <IconSun size={18} />
-                    <span className={styles.radioLabel}>{t('settings.day')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`${styles.radioOption}${theme === 'night' ? ` ${styles.radioActive}` : ''}`}
-                    onClick={() => setTheme('night')}
-                  >
-                    <span className={`${styles.radioDot}${theme === 'night' ? ` ${styles.radioDotActive}` : ''}`}>
-                      {theme === 'night' && <span className={styles.radioDotInner} />}
-                    </span>
-                    <IconMoon size={18} />
-                    <span className={styles.radioLabel}>{t('settings.night')}</span>
-                  </button>
+          {/* Divider */}
+          <div className="w-px bg-border" />
+
+          {/* Right: content */}
+          <div className="flex-1 min-w-0">
+            {tab === 'appearance' && (
+              <div className="flex flex-col gap-6">
+                {/* Theme */}
+                <div>
+                  <h3 className="text-sm font-medium mb-1">{t('settings.theme')}</h3>
+                  <p className="text-xs text-muted-foreground mb-3">{t('settings.appearance')}</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                        theme === 'day'
+                          ? 'border-primary bg-primary/5 text-foreground'
+                          : 'border-border text-muted-foreground hover:bg-muted'
+                      }`}
+                      onClick={() => setTheme('day')}
+                    >
+                      <Sun className="size-4" />
+                      {t('settings.day')}
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                        theme === 'night'
+                          ? 'border-primary bg-primary/5 text-foreground'
+                          : 'border-border text-muted-foreground hover:bg-muted'
+                      }`}
+                      onClick={() => setTheme('night')}
+                    >
+                      <Moon className="size-4" />
+                      {t('settings.night')}
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              <div className={styles.separator} />
+                <div className="h-px bg-border" />
 
-              {/* Language */}
-              <div>
-                <h2 className={styles.sectionTitle}>{t('settings.language')}</h2>
-                <p className={styles.sectionDesc}>{t('settings.language')}</p>
-                <div className={styles.radioGroup}>
-                  {(['zh', 'en'] as const).map((lang) => {
-                    const isActive = language === lang;
-                    return (
+                {/* Language */}
+                <div>
+                  <h3 className="text-sm font-medium mb-1">{t('settings.language')}</h3>
+                  <p className="text-xs text-muted-foreground mb-3">{t('settings.language')}</p>
+                  <div className="flex gap-2">
+                    {(['zh', 'en'] as const).map((lang) => (
                       <button
                         key={lang}
                         type="button"
-                        className={`${styles.radioOption}${isActive ? ` ${styles.radioActive}` : ''}`}
+                        className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors ${
+                          language === lang
+                            ? 'border-primary bg-primary/5 text-foreground'
+                            : 'border-border text-muted-foreground hover:bg-muted'
+                        }`}
                         onClick={() => setLanguage(lang)}
                       >
-                        <span className={`${styles.radioDot}${isActive ? ` ${styles.radioDotActive}` : ''}`}>
-                          {isActive && <span className={styles.radioDotInner} />}
-                        </span>
-                        <span className={styles.radioLabel}>{t(`settings.${lang}`)}</span>
+                        {t(`settings.${lang}`)}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-px bg-border" />
+
+                {/* Keyboard Shortcuts */}
+                <div>
+                  <h3 className="text-sm font-medium mb-1">{t('settings.shortcuts')}</h3>
+                  <p className="text-xs text-muted-foreground mb-3">{t('settings.shortcutsComing')}</p>
+                  <div className="flex items-center gap-2 rounded-lg bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+                    <Keyboard className="size-4" />
+                    {t('settings.shortcutsComing')}
+                  </div>
                 </div>
               </div>
-
-              <div className={styles.separator} />
-
-              {/* Keyboard Shortcuts */}
-              <div>
-                <h2 className={styles.sectionTitle}>{t('settings.shortcuts')}</h2>
-                <p className={styles.sectionDesc}>{t('settings.shortcutsComing')}</p>
-                <div className={styles.comingSoon}>
-                  <IconKeyboard size={18} />
-                  {t('settings.shortcutsComing')}
-                </div>
-              </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      </DialogContent>
     </Dialog>
   );
 }

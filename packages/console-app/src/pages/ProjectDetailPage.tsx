@@ -1,30 +1,43 @@
-import { IconUpload, IconUserPlus } from '@tabler/icons-react';
+import { Code2, MoreHorizontal, Plus, Settings, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useParams } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../stores';
 import { useTranslation } from '../i18n';
-import { Button } from '../shared/ui/Button';
-import { Breadcrumb } from '../shared/ui/Breadcrumb';
-import { Card } from '../shared/ui/Card';
-import { Tabs } from '../shared/ui/Tabs';
+import { Avatar, AvatarFallback } from '../components/ui/avatar';
+import { Button } from '../components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '../components/ui/card';
+import { Checkbox } from '../components/ui/checkbox';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
+import { Input } from '../components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { Separator } from '../components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Textarea } from '../components/ui/textarea';
 import { UploadVersionDialog } from '../features/versions/UploadVersionDialog';
-import styles from './ProjectDetailPage.module.css';
-
-const BADGE_CLASSES: Record<string, string> = {
-  active: 'statusBadgeActive',
-  ready: 'statusBadgeReady',
-};
-
-function statusBadgeClass(status: string): string {
-  return BADGE_CLASSES[status] ?? 'statusBadgeDefault';
-}
 
 export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const { refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases } = useProjectsStore();
-  const navigate = useNavigate();
   const [showUpload, setShowUpload] = useState(false);
 
   const apiBaseUrl =
@@ -41,174 +54,243 @@ export function ProjectDetailPage() {
   }, [projectId, refreshToken]);
 
   if (!project) {
-    return <p className={styles.loadingState}>{t('common.loading')}</p>;
+    return (
+      <div className="flex items-center justify-center py-16">
+        <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
+      </div>
+    );
   }
 
   const activeRelease = projectReleases.find((r) => r.status === 'active');
 
-  return (
-    <div className={styles.page}>
-      <Breadcrumb
-        items={[
-          { label: t('projects.title'), onClick: () => navigate('/app') },
-          { label: project.name },
-        ]}
-      />
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      active: t('versions.status.active'),
+      ready: t('versions.status.ready'),
+      uploading: t('versions.status.uploading'),
+      processing: t('versions.status.processing'),
+      failed: t('versions.status.failed'),
+    };
+    return map[status] ?? status;
+  };
 
-      <Tabs
-        tabs={[
-          {
-            id: 'versions',
-            label: t('versions.title'),
-            content: (
-              <Card title={t('versions.title')} description={t('versions.total', { count: projectReleases.length })}
-                action={
-                  <Button size="sm" onClick={() => setShowUpload(true)}>
-                    <IconUpload size={14} />
-                    {t('versions.upload')}
-                  </Button>
-                }>
-                {loading ? (
-                  <p className={styles.loadingText}>{t('common.loading')}</p>
-                ) : projectReleases.length === 0 ? (
-                  <p className={styles.emptyText}>{t('versions.empty')}</p>
-                ) : (
-                  <div className={styles.releaseList}>
-                    {projectReleases.map((release) => {
-                      return (
-                        <div key={release.id} className={styles.releaseRow}>
-                          <div>
-                            <div className={styles.releaseInfo}>
-                              v{release.versionNumber}
-                              {release.releaseHash && ` (${release.releaseHash})`}
-                            </div>
-                            <div className={styles.releaseMeta}>
-                              {t('versions.files', { count: release.fileCount })} · {t('versions.size', { size: Math.round(release.totalSize / 1024) })}
-                            </div>
-                          </div>
-                          <span className={styles[statusBadgeClass(release.status)]}>
-                            {release.status === 'active'
-                              ? t('versions.status.active')
-                              : release.status === 'ready'
-                                ? t('versions.status.ready')
-                                : release.status === 'failed'
-                                  ? t('versions.status.failed')
-                                  : release.status}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Card>
-            ),
-          },
-          {
-            id: 'members',
-            label: t('members.title'),
-            content: (
-              <Card
-                title={t('members.title')}
-                action={
-                  <Button size="sm">
-                    <IconUserPlus size={14} />
-                    {t('members.invite')}
-                  </Button>
-                }
-              >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {[1, 2, 3].map((i) => {
-                    const roles: Record<number, string> = { 1: 'owner', 2: 'admin', 3: 'developer' };
-                    const role = roles[i] ?? 'viewer';
-                    return (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '10px 12px',
-                          borderRadius: 6,
-                        }}
+  const statusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'border-primary/20 bg-primary/10 text-primary';
+      case 'ready':
+        return 'border-border bg-muted text-muted-foreground';
+      case 'failed':
+        return 'border-destructive/30 bg-destructive/10 text-destructive';
+      default:
+        return 'border-border bg-background text-muted-foreground';
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-4 py-6">
+      {/* ─── Project Header ─── */}
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{project.name}</h1>
+          <p className="text-sm text-muted-foreground">/{project.slug}</p>
+        </div>
+        <Button onClick={() => setShowUpload(true)}>
+          <Plus className="size-4" />
+          {t('versions.upload')}
+        </Button>
+      </div>
+
+      {/* ─── Tabs (line variant, with icons) ─── */}
+      <Tabs defaultValue="versions">
+        <TabsList variant="line">
+          <TabsTrigger value="versions">
+            <Code2 className="size-4" />
+            {t('versions.title')}
+          </TabsTrigger>
+          <TabsTrigger value="members">
+            <Users className="size-4" />
+            {t('members.title')}
+          </TabsTrigger>
+          <TabsTrigger value="settings">
+            <Settings className="size-4" />
+            {t('settings.title')}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ────── Versions Tab ────── */}
+        <TabsContent value="versions" className="pt-3">
+          {loading ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              {t('common.loading')}
+            </div>
+          ) : projectReleases.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+              {t('versions.empty')}
+            </div>
+          ) : (
+            <div className="rounded-xl border bg-card">
+              {projectReleases.map((release, index) => (
+                <div key={release.id}>
+                  <div className="flex w-full items-center justify-between gap-4 px-3 py-3.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="shrink-0 text-xs font-medium text-muted-foreground">Ver.</span>
+                      <span className="truncate font-mono text-xs tracking-tight">
+                        v{release.versionNumber}
+                        {release.releaseHash && (
+                          <span className="text-muted-foreground ml-1">({release.releaseHash})</span>
+                        )}
+                      </span>
+                      <span
+                        className={`inline-flex shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-medium leading-none ${statusBadgeClass(release.status)}`}
                       >
-                        <div
-                          style={{
-                            width: 32,
-                            height: 32,
-                            borderRadius: '50%',
-                            background: 'var(--color-bg-tertiary)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 'var(--font-size-xs)',
-                            fontWeight: 500,
-                            color: 'var(--color-text-secondary)',
-                          }}
+                        {statusLabel(release.status)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{t('versions.files', { count: release.fileCount })}</span>
+                      <span>·</span>
+                      <span>{t('versions.size', { size: Math.round(release.totalSize / 1024) })}</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={<Button variant="ghost" size="icon-sm" />}
                         >
-                          U{i}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 'var(--font-size-sm)', fontWeight: 500 }}>
-                            User {i}
-                          </div>
-                          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--color-text-tertiary)' }}>
-                            user{i}@example.com
-                          </div>
-                        </div>
-                        <span
-                          style={{
-                            fontSize: 'var(--font-size-xs)',
-                            color: 'var(--color-text-secondary)',
-                            background: 'var(--color-bg-tertiary)',
-                            padding: '2px 8px',
-                            borderRadius: 999,
-                          }}
-                        >
-                          {t(`members.${role}`)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            ),
-          },
-          {
-            id: 'settings',
-            label: t('settings.title'),
-            content: (
-              <Card title={t('settings.title')}>
-                <div className={styles.settingsSection}>
-                  <div className={styles.settingsField}>
-                    <div className={styles.settingsLabel}>{t('projects.name')}</div>
-                    <div className={styles.settingsValue}>{project.name}</div>
-                  </div>
-                  <div className={styles.settingsField}>
-                    <div className={styles.settingsLabel}>{t('projects.slug')}</div>
-                    <div className={styles.settingsValue}>{project.slug}</div>
-                  </div>
-                  <div className={styles.settingsField}>
-                    <div className={styles.settingsLabel}>{t('projects.description')}</div>
-                    <div className={styles.settingsValue}>{project.description ?? '—'}</div>
-                  </div>
-                  <div className={styles.settingsField}>
-                    <div className={styles.settingsLabel}>{t('settings.deployUrl')}</div>
-                    <div className={styles.settingsValue}>
-                      {activeRelease ? (
-                        <code className={styles.settingsCode}>
-                          /{project.slug}/{activeRelease.releaseHash}/
-                        </code>
-                      ) : (
-                        <span className={styles.settingsMuted}>{t('settings.noDeployed')}</span>
-                      )}
+                          <MoreHorizontal className="size-4" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" sideOffset={6} className="min-w-40">
+                          <DropdownMenuItem disabled>
+                            {t('versions.status.preview') || '预览'}
+                          </DropdownMenuItem>
+                          {release.status !== 'active' && (
+                            <DropdownMenuItem disabled>
+                              发布
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem disabled className="text-destructive">
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
+                  {index < projectReleases.length - 1 && <Separator />}
                 </div>
-              </Card>
-            ),
-          },
-        ]}
-      />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ────── Members Tab ────── */}
+        <TabsContent value="members" className="pt-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('members.title')}</CardTitle>
+              <CardDescription>{t('members.title')}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              {[1, 2, 3].map((i) => {
+                const roles: Record<number, string> = { 1: 'owner', 2: 'admin', 3: 'developer' };
+                const role = roles[i] ?? 'viewer';
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Avatar size="sm">
+                        <AvatarFallback>U{i}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">User {i}</div>
+                        <div className="text-xs text-muted-foreground">user{i}@example.com</div>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+                      {t(`members.${role}`)}
+                    </span>
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ────── Settings Tab ────── */}
+        <TabsContent value="settings" className="pt-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('settings.title')}</CardTitle>
+              <CardDescription>{t('settings.title')}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 text-sm font-medium">
+                    {t('projects.name')}
+                    <Input defaultValue={project.name} disabled />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-sm font-medium">
+                    {t('projects.slug')}
+                    <Input defaultValue={project.slug} className="font-mono" disabled />
+                  </label>
+                </div>
+
+                <label className="flex flex-col gap-1.5 text-sm font-medium">
+                  {t('projects.description')}
+                  <Textarea
+                    defaultValue={project.description ?? ''}
+                    placeholder={t('projects.descriptionPlaceholder')}
+                    className="field-sizing-fixed"
+                    rows={4}
+                    disabled
+                  />
+                </label>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <Checkbox defaultChecked={false} disabled />
+                    SPA 模式
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-sm font-medium">
+                    路由方式
+                    <Select defaultValue="path" disabled>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          <SelectItem value="path">Path (/about)</SelectItem>
+                          <SelectItem value="hash">Hash (#/about)</SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </label>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-sm font-medium">{t('settings.deployUrl')}</span>
+                  {activeRelease ? (
+                    <code className="w-fit rounded-md bg-muted px-2 py-1 font-mono text-xs">
+                      /{project.slug}/{activeRelease.releaseHash}/
+                    </code>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">{t('settings.noDeployed')}</span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-2">
+                  <Button type="button" variant="destructive" disabled>
+                    删除项目
+                  </Button>
+                  <Button type="submit" disabled>
+                    保存
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <UploadVersionDialog
         open={showUpload}
@@ -218,6 +300,6 @@ export function ProjectDetailPage() {
         apiBaseUrl={apiBaseUrl}
         onUploaded={() => fetchReleases(apiBaseUrl, refreshToken!, project.id)}
       />
-    </div>
+    </section>
   );
 }
