@@ -6,7 +6,7 @@
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
-    "start": "bun ../../scripts/kill-port.ts 5174 && electron-forge start",
+    "start": "bun ../../scripts/kill-port.ts 5174 --electron && electron-forge start",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
@@ -39,15 +39,20 @@
     "eslint": "catalog:",
     "eslint-plugin-import": "catalog:",
     "typescript": "catalog:",
+    "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "vite": "catalog:"
   },
   "dependencies": {
-    "@zipship/console-app": "workspace:*",
+    "@zipship/console-core": "workspace:*",
     "@zipship/runtime": "workspace:*",
     "electron-squirrel-startup": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "scheduler": "catalog:"
+    "react-router": "catalog:",
+    "cookie": "catalog:",
+    "set-cookie-parser": "catalog:",
+    "scheduler": "catalog:",
+    "tailwindcss": "catalog:"
   }
 }

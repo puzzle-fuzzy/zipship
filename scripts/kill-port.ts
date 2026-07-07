@@ -1,9 +1,11 @@
 import { spawnSync } from "bun";
 
-const ports = process.argv.slice(2);
+const args = process.argv.slice(2);
+const killElectron = args.includes("--electron");
+const ports = args.filter((a) => a !== "--electron");
 
-if (ports.length === 0) {
-  console.error("Usage: bun scripts/kill-port.ts <port> [port...]");
+if (ports.length === 0 && !killElectron) {
+  console.error("Usage: bun scripts/kill-port.ts <port> [port...] [--electron]");
   process.exit(1);
 }
 
@@ -64,6 +66,29 @@ for (const port of ports) {
   for (const pid of pids) {
     if (killPid(pid)) {
       console.log(`Killed process ${pid} on port ${port}`);
+    }
+  }
+}
+
+if (killElectron) {
+  // Kill orphaned Electron processes from a previous dev run.
+  // In development, Electron runs as raw "electron.exe" (not a packaged app),
+  // so killing by image name is safe here — packaged apps have their own names.
+  if (isWindows) {
+    const result = spawnSync(["taskkill", "/F", "/IM", "electron.exe", "/T"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode === 0) {
+      console.log("Killed orphaned Electron process(es)");
+    }
+  } else {
+    const result = spawnSync(["pkill", "-f", "electron"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    if (result.exitCode === 0) {
+      console.log("Killed orphaned Electron process(es)");
     }
   }
 }

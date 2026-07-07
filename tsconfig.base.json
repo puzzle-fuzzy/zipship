@@ -15,16 +15,17 @@
     "types": ["bun"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["packages/console-app/src/*"],
+      "@/*": ["packages/console-core/src/*"],
       "@zipship/api-client": ["packages/api-client/src/index.ts"],
       "@zipship/api": ["apps/api/src/index.ts"],
       "@zipship/config": ["packages/config/src/index.ts"],
-      "@zipship/console-app": ["packages/console-app/src/index.tsx"],
+      "@zipship/console-core": ["packages/console-core/src/index.tsx"],
       "@zipship/db": ["packages/db/src/index.ts"],
       "@zipship/deploy-core": ["packages/deploy-core/src/index.ts"],
       "@zipship/runtime": ["packages/runtime/src/index.ts"],
       "@zipship/shared": ["packages/shared/src/index.ts"],
-      "@zipship/storage": ["packages/storage/src/index.ts"]
+      "@zipship/storage": ["packages/storage/src/index.ts"],
+      "@zipship/ui": ["packages/ui/src/index.ts"]
     }
   }
 }

@@ -7,15 +7,18 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@zipship/console-app": "workspace:*",
+    "@zipship/console-core": "workspace:*",
     "@zipship/runtime": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "tailwindcss": "catalog:",
-    "vite": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "scheduler": "catalog:"
+    "react-router": "catalog:",
+    "cookie": "catalog:",
+    "set-cookie-parser": "catalog:",
+    "scheduler": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:"
   },
   "devDependencies": {
     "typescript": "catalog:"

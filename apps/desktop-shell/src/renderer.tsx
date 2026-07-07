@@ -1,21 +1,16 @@
-import './index.css';
-import { ConsoleApp } from '@zipship/console-app';
-import type { RuntimeAdapter } from '@zipship/runtime';
-import { createRoot } from 'react-dom/client';
+import "./index.css";
+import { ConsoleApp } from "@zipship/console-core";
+import { createRoot } from "react-dom/client";
+import { createDesktopRuntime } from "@zipship/runtime";
 
-const desktopRuntime: RuntimeAdapter = {
-  kind: 'desktop',
-  async openExternal(url) {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  },
-};
-
-const root = document.getElementById('root');
+const root = document.getElementById("root");
 
 if (!root) {
-  throw new Error('Missing #root element');
+  throw new Error("Missing #root element");
 }
 
-const apiBaseUrl = 'http://localhost:3001';
+const apiBaseUrl = "http://localhost:3001";
 
-createRoot(root).render(<ConsoleApp runtime={desktopRuntime} apiBaseUrl={apiBaseUrl} />);
+createRoot(root).render(
+  <ConsoleApp runtime={createDesktopRuntime(apiBaseUrl)} routerMode="hash" />,
+);

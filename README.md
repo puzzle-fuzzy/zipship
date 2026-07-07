@@ -33,3 +33,6 @@ packages/storage      文件系统与未来对象存储抽象
 环境变量统一从仓库根目录 `.env` 读取，模板见 `.env.example`。前端只使用 `VITE_` 前缀变量；数据库、存储路径和服务端密钥只给后端与脚本读取。
 
 Drizzle 配置位于 `packages/db/drizzle.config.ts`，根目录的 `db:generate`、`db:migrate` 脚本会显式指向这个配置文件。
+
+
+userid 52801783301561791
