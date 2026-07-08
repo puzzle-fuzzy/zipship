@@ -57,7 +57,7 @@ export function AppLayout() {
 
   return (
     <>
-      <SidebarProvider className="mx-auto h-svh w-full max-w-6xl items-start">
+      <SidebarProvider className="mx-auto h-svh w-full items-start">
         <AppSidebar
           projects={projects}
           selectedProjectId={selectedProjectId}

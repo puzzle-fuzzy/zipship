@@ -175,11 +175,11 @@ export function UploadVersionDialog({
   };
 
   const stepLabels: Record<UploadStep, string> = {
-    zipping: '打包中',
-    creating_task: '创建上传任务',
-    uploading_raw: '上传文件',
-    processing: '解压分析中',
-    done: '完成',
+    zipping: t('upload.stepZipping'),
+    creating_task: t('upload.stepCreatingTask'),
+    uploading_raw: t('upload.stepUploading'),
+    processing: t('upload.stepProcessing'),
+    done: t('upload.stepDone'),
     select: '',
     error: '',
   };
@@ -291,7 +291,7 @@ export function UploadVersionDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {upload.step === 'done' ? '上传完成' : upload.step === 'error' ? '上传失败' : '正在上传...'}
+            {upload.step === 'done' ? t('upload.statusDone') : upload.step === 'error' ? t('upload.statusFailed') : t('upload.statusUploading')}
           </DialogTitle>
           <DialogDescription>{upload.message}</DialogDescription>
         </DialogHeader>
@@ -355,9 +355,9 @@ export function UploadVersionDialog({
           {upload.step === 'error' && (
             <>
               <Button variant="outline" onClick={handleClose}>
-                关闭
+                {t('upload.close')}
               </Button>
-              <Button onClick={handleReset}>重试</Button>
+              <Button onClick={handleReset}>{t('upload.retry')}</Button>
             </>
           )}
         </div>
