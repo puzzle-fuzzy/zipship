@@ -83,6 +83,7 @@ export const en = {
   upload: {
     folder: 'Folder',
     singleFile: 'Single file',
+    zip: 'ZIP',
     chooseZipFolderFile: 'Upload a ZIP file, folder, or single HTML file',
     chooseZipDesc: 'Select a built ZIP file to upload',
     chooseFolderDesc: 'Select a built dist folder; auto-packaged as ZIP',
@@ -99,6 +100,20 @@ export const en = {
     stepUploading: 'Uploading',
     stepProcessing: 'Extracting',
     stepDone: 'Done',
+    desc: {
+      zipping: 'Packaging files...',
+      creatingTask: 'Creating upload task...',
+      uploading: 'Uploading file...',
+      processing: 'Extracting and analyzing...',
+      done: 'Upload complete!',
+    },
+    failure: {
+      create_failed: 'Could not create the upload task',
+      upload_failed: 'Could not upload the file',
+      processing_failed: 'Processing failed',
+      release_rejected: 'Release detection did not pass',
+      unknown: 'Upload failed',
+    },
   },
   settings: {
     title: 'Settings',
@@ -118,6 +133,7 @@ export const en = {
     routingHash: 'Hash (#/about)',
     routingPath: 'Path (/about)',
     deleteProject: 'Delete project',
+    projectPreferences: 'Adjust project preferences',
   },
   activity: {
     title: 'Activity',

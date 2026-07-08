@@ -1,7 +1,6 @@
 import { CheckCircle2, Circle, FileCode, FileUp, FolderOpen, Loader2, Upload, XCircle } from 'lucide-react';
 import { useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { getApi, authHeaders } from '../../api/client';
 import { useTranslation } from '../../i18n';
 import { Button } from '../../components/ui/button';
 import {
@@ -13,22 +12,21 @@ import {
 } from '../../components/ui/dialog';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import {
+  runUploadPipeline,
+  UploadPipelineError,
+  type UploadFailureReason,
+  type UploadStep,
+} from './uploadPipeline';
 
 type UploadMode = 'zip' | 'folder' | 'file';
 
-type UploadStep =
-  | 'select'
-  | 'zipping'
-  | 'creating_task'
-  | 'uploading_raw'
-  | 'processing'
-  | 'done'
-  | 'error';
-
 interface UploadState {
   step: UploadStep;
-  message: string;
-  errorMessage?: string;
+  /** Stable reason when step === 'error'; the UI maps it to a message. */
+  failureReason?: UploadFailureReason;
+  /** Server-provided detail (e.g. why release detection failed). */
+  errorDetail?: string;
 }
 
 interface UploadVersionDialogProps {
@@ -36,47 +34,6 @@ interface UploadVersionDialogProps {
   onClose: () => void;
   projectId: string;
   onUploaded: () => void;
-}
-
-/** Execute the full upload pipeline: create task → raw upload → complete. */
-async function runUploadPipeline(
-  projectId: string,
-  file: File,
-  onState: (s: UploadState) => void,
-) {
-  const api = getApi();
-
-  // 1. Create upload task
-  onState({ step: 'creating_task', message: '正在创建上传任务...' });
-  const createRes = await api._api.projects({ projectId }).uploads.post(
-    { originalFilename: file.name, size: file.size },
-    { headers: authHeaders() },
-  );
-  if (createRes.error) throw new Error('创建上传任务失败');
-  const uploadTask = createRes.data!.uploadTask;
-
-  // 2. Upload raw bytes
-  onState({ step: 'uploading_raw', message: '正在上传文件...' });
-  const rawRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
-    { file },
-    { headers: authHeaders() },
-  );
-  if (rawRes.error) throw new Error('上传文件失败');
-
-  // 3. Complete & process
-  onState({ step: 'processing', message: '正在解压分析...' });
-  const completeRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
-    headers: authHeaders(),
-  });
-  if (completeRes.error) throw new Error('处理失败');
-
-  const finalTask = completeRes.data!.uploadTask;
-
-  if (finalTask.status === 'failed') {
-    throw new Error(finalTask.errorMessage || '发布检测未通过');
-  }
-
-  onState({ step: 'done', message: '上传完成！' });
 }
 
 export function UploadVersionDialog({
@@ -87,7 +44,7 @@ export function UploadVersionDialog({
 }: UploadVersionDialogProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<UploadMode>('zip');
-  const [upload, setUpload] = useState<UploadState>({ step: 'select', message: '' });
+  const [upload, setUpload] = useState<UploadState>({ step: 'select' });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const singleFileInputRef = useRef<HTMLInputElement>(null);
@@ -100,22 +57,21 @@ export function UploadVersionDialog({
     upload.step === 'done' ? 100 :
     0;
 
+  /** Drive the pipeline, translating any failure into a stable reason. */
   async function runAndNotify(file: File) {
     try {
       await runUploadPipeline(projectId, file, setUpload);
       onUploaded();
     } catch (err) {
-      setUpload({
-        step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
-      });
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      const detail = err instanceof UploadPipelineError ? err.detail : undefined;
+      setUpload({ step: 'error', failureReason: reason, errorDetail: detail });
     }
   }
 
-  const startUpload = async (file: File) => {
-    setUpload({ step: 'zipping', message: file.name.endsWith('.zip') ? '' : '正在打包...' });
-    await runAndNotify(file);
+  const startUpload = (file: File) => {
+    setUpload({ step: 'zipping' });
+    void runAndNotify(file);
   };
 
   const handleZipFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -129,7 +85,7 @@ export function UploadVersionDialog({
     const fileList = Array.from(files);
     const folderName = fileList[0].webkitRelativePath.split('/')[0] || 'upload';
 
-    setUpload({ step: 'zipping', message: '正在打包文件夹...' });
+    setUpload({ step: 'zipping' });
     try {
       const zip = new JSZip();
       for (const f of fileList) {
@@ -138,11 +94,8 @@ export function UploadVersionDialog({
       const blob = await zip.generateAsync({ type: 'blob' });
       await runAndNotify(new File([blob], `${folderName}.zip`, { type: 'application/zip' }));
     } catch (err) {
-      setUpload({
-        step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
-      });
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      setUpload({ step: 'error', failureReason: reason });
     }
   };
 
@@ -150,25 +103,19 @@ export function UploadVersionDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUpload({ step: 'zipping', message: '正在包装文件...' });
+    setUpload({ step: 'zipping' });
     try {
       const zip = new JSZip();
       zip.file(file.name, await file.arrayBuffer());
       const blob = await zip.generateAsync({ type: 'blob' });
       await runAndNotify(new File([blob], 'upload.zip', { type: 'application/zip' }));
     } catch (err) {
-      setUpload({
-        step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
-      });
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      setUpload({ step: 'error', failureReason: reason });
     }
   };
 
-  const handleReset = () => {
-    setUpload({ step: 'select', message: '' });
-  };
-
+  const handleReset = () => setUpload({ step: 'select' });
   const handleClose = () => {
     handleReset();
     onClose();
@@ -184,31 +131,44 @@ export function UploadVersionDialog({
     error: '',
   };
 
-  /** If the user is selecting, show the file picker UI */
+  const titleKey =
+    upload.step === 'done' ? 'upload.statusDone'
+    : upload.step === 'error' ? 'upload.statusFailed'
+    : 'upload.statusUploading';
+
+  const descriptionKey: Record<UploadStep, string> = {
+    zipping: 'upload.desc.zipping',
+    creating_task: 'upload.desc.creatingTask',
+    uploading_raw: 'upload.desc.uploading',
+    processing: 'upload.desc.processing',
+    done: 'upload.desc.done',
+    select: '',
+    error: '',
+  };
+
+  /** ─── File-picker view ─── */
   if (upload.step === 'select') {
     return (
       <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t('versions.uploadTitle')}</DialogTitle>
-            <DialogDescription>
-              选择 ZIP 文件、文件夹或单个 HTML 文件上传
-            </DialogDescription>
+            <DialogDescription>{t('upload.chooseZipFolderFile')}</DialogDescription>
           </DialogHeader>
 
           <Tabs value={mode} onValueChange={(v) => setMode(v as UploadMode)}>
             <TabsList className="w-full">
               <TabsTrigger value="zip" className="flex-1 gap-1.5">
                 <FileUp className="size-4" />
-                ZIP
+                {t('upload.zip')}
               </TabsTrigger>
               <TabsTrigger value="folder" className="flex-1 gap-1.5">
                 <FolderOpen className="size-4" />
-                文件夹
+                {t('upload.folder')}
               </TabsTrigger>
               <TabsTrigger value="file" className="flex-1 gap-1.5">
                 <FileCode className="size-4" />
-                单个文件
+                {t('upload.singleFile')}
               </TabsTrigger>
             </TabsList>
 
@@ -218,7 +178,7 @@ export function UploadVersionDialog({
                   <Upload className="size-6 text-muted-foreground" />
                 </div>
                 <p className="text-center text-sm text-muted-foreground">
-                  选择已构建的 ZIP 文件上传
+                  {t('upload.chooseZipDesc')}
                 </p>
                 <Button onClick={() => fileInputRef.current?.click()}>
                   <Upload className="size-4" />
@@ -240,11 +200,11 @@ export function UploadVersionDialog({
                   <FolderOpen className="size-6 text-muted-foreground" />
                 </div>
                 <p className="text-center text-sm text-muted-foreground">
-                  选择已构建的 dist 文件夹，自动打包为 ZIP 上传
+                  {t('upload.chooseFolderDesc')}
                 </p>
                 <Button onClick={() => folderInputRef.current?.click()}>
                   <FolderOpen className="size-4" />
-                  选择文件夹
+                  {t('upload.chooseFolder')}
                 </Button>
                 <input
                   ref={folderInputRef}
@@ -262,11 +222,11 @@ export function UploadVersionDialog({
                   <FileCode className="size-6 text-muted-foreground" />
                 </div>
                 <p className="text-center text-sm text-muted-foreground">
-                  选择单个 HTML 文件，自动包装为 ZIP 上传
+                  {t('upload.chooseFileDesc')}
                 </p>
                 <Button onClick={() => singleFileInputRef.current?.click()}>
                   <FileCode className="size-4" />
-                  选择文件
+                  {t('upload.chooseFile')}
                 </Button>
                 <input
                   ref={singleFileInputRef}
@@ -290,25 +250,21 @@ export function UploadVersionDialog({
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>
-            {upload.step === 'done' ? t('upload.statusDone') : upload.step === 'error' ? t('upload.statusFailed') : t('upload.statusUploading')}
-          </DialogTitle>
-          <DialogDescription>{upload.message}</DialogDescription>
+          <DialogTitle>{t(titleKey)}</DialogTitle>
+          {descriptionKey[upload.step] && (
+            <DialogDescription>{t(descriptionKey[upload.step])}</DialogDescription>
+          )}
         </DialogHeader>
 
         <div className="flex flex-col gap-3 py-2">
-          {/* Progress bar */}
           <Progress value={progressPercent} className="h-2" />
 
-          {/* Step list */}
           <div className="flex flex-col gap-2">
             {flowSteps.map((step) => {
               const idx = flowSteps.indexOf(step);
               const curIdx = flowSteps.indexOf(upload.step === 'zipping' ? 'creating_task' : upload.step);
               const isCompleted = upload.step === 'done' || idx < curIdx;
-              const isCurrent = upload.step === 'done'
-                ? false
-                : idx === curIdx;
+              const isCurrent = upload.step === 'done' ? false : idx === curIdx;
               const isErrored = upload.step === 'error' && !isCompleted && idx === (curIdx >= 0 ? curIdx : 0);
 
               return (
@@ -340,10 +296,12 @@ export function UploadVersionDialog({
             })}
           </div>
 
-          {/* Error detail */}
-          {upload.step === 'error' && upload.errorMessage && (
+          {upload.step === 'error' && (
             <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-              {upload.errorMessage}
+              {upload.failureReason && t(`upload.failure.${upload.failureReason}`)}
+              {upload.errorDetail && (
+                <span className="mt-1 block opacity-80">{upload.errorDetail}</span>
+              )}
             </div>
           )}
         </div>

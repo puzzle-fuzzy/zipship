@@ -83,6 +83,7 @@ export const zh = {
   upload: {
     folder: '文件夹',
     singleFile: '单个文件',
+    zip: 'ZIP',
     chooseZipFolderFile: '选择 ZIP 文件、文件夹或单个 HTML 文件上传',
     chooseZipDesc: '选择已构建的 ZIP 文件上传',
     chooseFolderDesc: '选择已构建的 dist 文件夹，自动打包为 ZIP 上传',
@@ -99,6 +100,20 @@ export const zh = {
     stepUploading: '上传文件',
     stepProcessing: '解压分析中',
     stepDone: '完成',
+    desc: {
+      zipping: '正在打包文件...',
+      creatingTask: '正在创建上传任务...',
+      uploading: '正在上传文件...',
+      processing: '正在解压分析...',
+      done: '上传完成！',
+    },
+    failure: {
+      create_failed: '创建上传任务失败',
+      upload_failed: '上传文件失败',
+      processing_failed: '处理失败',
+      release_rejected: '发布检测未通过',
+      unknown: '上传失败',
+    },
   },
   settings: {
     title: '设置',
@@ -118,6 +133,7 @@ export const zh = {
     routingHash: 'Hash (#/about)',
     routingPath: 'Path (/about)',
     deleteProject: '删除项目',
+    projectPreferences: '调整项目偏好',
   },
   activity: {
     title: '活动',
