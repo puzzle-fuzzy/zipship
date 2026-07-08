@@ -72,6 +72,13 @@ export const en = {
     joined: 'Joined {{date}}',
     you: 'You',
     empty: 'No members yet',
+    inviteCreatedToast: 'Invitation created',
+    linkCopiedToast: 'Link copied to clipboard',
+    inviteCreatedTitle: 'Invitation created',
+    inviteCreatedDesc: 'Share this link with {{email}}. They can join the team once they open it.',
+    inviteLinkNote: 'This link is valid for 7 days. In development, invitation links are also logged to the server console.',
+    copyLink: 'Copy link',
+    done: 'Done',
   },
   settings: {
     title: 'Settings',

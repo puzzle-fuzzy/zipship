@@ -72,6 +72,13 @@ export const zh = {
     joined: '加入于 {{date}}',
     you: '你',
     empty: '暂无成员',
+    inviteCreatedToast: '邀请已创建',
+    linkCopiedToast: '链接已复制到剪贴板',
+    inviteCreatedTitle: '邀请已创建',
+    inviteCreatedDesc: '将下面的链接发送给 {{email}}，对方打开后即可加入团队',
+    inviteLinkNote: '此链接 7 天内有效。在开发环境中，邀请链接会同时输出到服务器控制台。',
+    copyLink: '复制链接',
+    done: '完成',
   },
   settings: {
     title: '设置',
