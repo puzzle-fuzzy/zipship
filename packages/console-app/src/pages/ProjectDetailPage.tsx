@@ -26,7 +26,8 @@ export function ProjectDetailPage() {
   const { user, refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases, publishRelease, deleteProject, updateProject } =
     useProjectsStore();
-  const { members, fetchMembers, loading: membersLoading } = useMembersStore();
+  const { members, fetchMembers, loading: membersLoading, updateMemberRole, removeMember } =
+    useMembersStore();
   const { logs: auditLogs, loading: auditLoading, error: auditError, fetchAudit } =
     useAuditStore();
   const [showUpload, setShowUpload] = useState(false);
@@ -115,7 +116,13 @@ export function ProjectDetailPage() {
           <ProjectMembersTab
             members={members}
             loading={membersLoading}
+            canManage={canManage}
+            currentUserId={user?.id ?? null}
             onInviteClick={() => setShowInvite(true)}
+            onChangeRole={(member, role) =>
+              updateMemberRole(project.organizationId, member.userId, role)
+            }
+            onRemove={(member) => removeMember(project.organizationId, member.userId)}
           />
         </TabsContent>
 

@@ -22,6 +22,8 @@ interface MembersState {
     email: string,
     role: string,
   ) => Promise<{ inviteUrl: string }>;
+  updateMemberRole: (organizationId: string, userId: string, role: string) => Promise<void>;
+  removeMember: (organizationId: string, userId: string) => Promise<void>;
 }
 
 export const useMembersStore = create<MembersState>((set) => ({
@@ -67,5 +69,47 @@ export const useMembersStore = create<MembersState>((set) => ({
       });
     }
     return res.data as { inviteUrl: string };
+  },
+
+  updateMemberRole: async (organizationId, userId, role) => {
+    const api = getApi();
+    const res = await api._api.organizations({ organizationId }).members({ userId }).patch(
+      { role: role as 'admin' | 'developer' | 'deployer' | 'viewer' },
+      { headers: authHeaders() },
+    );
+    if (res.error) {
+      throw mapApiError(res, {
+        codes: {
+          LAST_OWNER: API_ERROR_MESSAGES.LAST_OWNER,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          NOT_FOUND: API_ERROR_MESSAGES.NOT_FOUND,
+        },
+        fallback: 'Failed to update role',
+      });
+    }
+    set((state) => ({
+      members: state.members.map((m) => (m.userId === userId ? { ...m, role } : m)),
+    }));
+  },
+
+  removeMember: async (organizationId, userId) => {
+    const api = getApi();
+    const res = await api._api
+      .organizations({ organizationId })
+      .members({ userId })
+      .delete({ headers: authHeaders() });
+    if (res.error) {
+      throw mapApiError(res, {
+        codes: {
+          LAST_OWNER: API_ERROR_MESSAGES.LAST_OWNER,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          NOT_FOUND: API_ERROR_MESSAGES.NOT_FOUND,
+        },
+        fallback: 'Failed to remove member',
+      });
+    }
+    set((state) => ({
+      members: state.members.filter((m) => m.userId !== userId),
+    }));
   },
 }));

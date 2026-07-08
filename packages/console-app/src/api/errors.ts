@@ -54,4 +54,5 @@ export const API_ERROR_MESSAGES: Record<string, string> = {
   USER_NOT_FOUND: "No user found with this email",
   ALREADY_MEMBER: "This user is already a member",
   INVITATION_PENDING: "An invitation is already pending for this email",
+  LAST_OWNER: "Can't remove or demote the last owner",
 } as const;

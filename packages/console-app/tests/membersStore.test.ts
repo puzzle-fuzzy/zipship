@@ -98,3 +98,78 @@ describe("membersStore > inviteMember", () => {
     );
   });
 });
+
+describe("membersStore > updateMemberRole", () => {
+  it("patches the role and updates local state", async () => {
+    useMembersStore.setState({
+      members: [
+        { id: "m1", userId: "u1", name: "Ada", email: "a@x.com", role: "viewer", joinedAt: "" },
+      ],
+    });
+    api.verb("patch").mockResolvedValueOnce({ data: { ok: true } });
+
+    await useMembersStore.getState().updateMemberRole("org-1", "u1", "developer");
+
+    expect(api.verb("patch").mock.calls[0][0]).toEqual({ role: "developer" });
+    expect(useMembersStore.getState().members[0].role).toBe("developer");
+  });
+
+  it("maps LAST_OWNER when demoting the final owner", async () => {
+    api.verb("patch").mockResolvedValueOnce({ error: { value: { code: "LAST_OWNER" } } });
+    await expect(
+      useMembersStore.getState().updateMemberRole("org-1", "u1", "admin"),
+    ).rejects.toThrow("Can't remove or demote the last owner");
+  });
+
+  it("maps FORBIDDEN when the user lacks permission", async () => {
+    api.verb("patch").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
+    await expect(
+      useMembersStore.getState().updateMemberRole("org-1", "u1", "admin"),
+    ).rejects.toThrow("You don't have permission to do that");
+  });
+
+  it("leaves local state untouched on failure", async () => {
+    useMembersStore.setState({
+      members: [
+        { id: "m1", userId: "u1", name: "Ada", email: "a@x.com", role: "viewer", joinedAt: "" },
+      ],
+    });
+    api.verb("patch").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
+    await expect(
+      useMembersStore.getState().updateMemberRole("org-1", "u1", "admin"),
+    ).rejects.toThrow();
+    expect(useMembersStore.getState().members[0].role).toBe("viewer");
+  });
+});
+
+describe("membersStore > removeMember", () => {
+  it("deletes and removes the member from local state", async () => {
+    useMembersStore.setState({
+      members: [
+        { id: "m1", userId: "u1", name: "Ada", email: "a@x.com", role: "viewer", joinedAt: "" },
+        { id: "m2", userId: "u2", name: "Bo", email: "b@x.com", role: "developer", joinedAt: "" },
+      ],
+    });
+    api.verb("delete").mockResolvedValueOnce({ data: { ok: true } });
+
+    await useMembersStore.getState().removeMember("org-1", "u1");
+
+    expect(useMembersStore.getState().members).toEqual([
+      { id: "m2", userId: "u2", name: "Bo", email: "b@x.com", role: "developer", joinedAt: "" },
+    ]);
+  });
+
+  it("maps LAST_OWNER when removing the final owner", async () => {
+    api.verb("delete").mockResolvedValueOnce({ error: { value: { code: "LAST_OWNER" } } });
+    await expect(useMembersStore.getState().removeMember("org-1", "u1")).rejects.toThrow(
+      "Can't remove or demote the last owner",
+    );
+  });
+
+  it("maps NOT_FOUND", async () => {
+    api.verb("delete").mockResolvedValueOnce({ error: { value: { code: "NOT_FOUND" } } });
+    await expect(useMembersStore.getState().removeMember("org-1", "u1")).rejects.toThrow(
+      "Not found",
+    );
+  });
+});
