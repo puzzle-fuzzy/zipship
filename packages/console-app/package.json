@@ -11,7 +11,8 @@
     "./hooks/*": "./src/hooks/*.ts"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test tests"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

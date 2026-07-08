@@ -1,4 +1,4 @@
-import { Archive, Box, Ellipsis, FolderOpen, Plus } from 'lucide-react';
+import { Archive, Box, Ellipsis, Plus } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { Button } from '../../components/ui/button';
 import { Separator } from '../../components/ui/separator';
@@ -24,7 +24,6 @@ interface AppSidebarProps {
   projects: Project[];
   selectedProjectId: string | null;
   onSelectProject: (project: Project) => void;
-  onShowProjects: () => void;
   onCreateProject: () => void;
 }
 
