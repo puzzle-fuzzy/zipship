@@ -45,10 +45,6 @@ export function AppLayout() {
     navigate(`/app/projects/${project.id}`);
   };
 
-  const handleShowProjects = () => {
-    navigate('/app');
-  };
-
   const handleLogout = () => {
     setShowLogoutConfirm(false);
     logout();
@@ -62,7 +58,6 @@ export function AppLayout() {
           projects={projects}
           selectedProjectId={selectedProjectId}
           onSelectProject={handleSelectProject}
-          onShowProjects={handleShowProjects}
           onCreateProject={() => setShowCreate(true)}
         />
         <main className="flex h-svh flex-1 flex-col overflow-hidden">

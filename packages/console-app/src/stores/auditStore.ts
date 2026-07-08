@@ -15,6 +15,8 @@ export interface AuditLogEntry {
 interface AuditState {
   logs: AuditLogEntry[];
   loading: boolean;
+  /** Set when the last fetch failed; cleared on a successful reload. */
+  error: string | null;
   fetchAudit: (organizationId: string) => Promise<void>;
 }
 
@@ -22,20 +24,23 @@ interface AuditState {
 export const useAuditStore = create<AuditState>((set) => ({
   logs: [],
   loading: false,
+  error: null,
 
   fetchAudit: async (organizationId: string) => {
-    set({ loading: true });
+    set({ loading: true, error: null });
     try {
       const res = await getApi()._api.organizations({ organizationId }).audit.get({
         headers: authHeaders(),
       });
       if (res.data) {
-        set({ logs: res.data.auditLogs as AuditLogEntry[], loading: false });
+        set({ logs: res.data.auditLogs as AuditLogEntry[], loading: false, error: null });
       } else {
-        set({ loading: false });
+        // No data and no thrown error → treat as a failed load so the UI can
+        // surface it instead of spinning on "Loading..." forever.
+        set({ loading: false, error: 'Failed to load activity' });
       }
     } catch {
-      set({ loading: false });
+      set({ loading: false, error: 'Failed to load activity' });
     }
   },
 }));

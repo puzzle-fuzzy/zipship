@@ -119,6 +119,12 @@ export const zh = {
     routingPath: 'Path (/about)',
     deleteProject: '删除项目',
   },
+  activity: {
+    title: '活动',
+    empty: '暂无活动',
+    error: '加载活动失败',
+    retry: '重试',
+  },
   auth: {
     welcome: '欢迎回来',
     welcomeDesc: '登录您的账号继续',

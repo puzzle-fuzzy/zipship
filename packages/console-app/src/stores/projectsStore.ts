@@ -180,7 +180,13 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       headers: authHeaders(),
     });
     if (res.error) {
-      throw new Error('Failed to update project');
+      throw mapApiError(res, {
+        codes: {
+          DUPLICATE_PROJECT_SLUG: API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+        },
+        fallback: 'Failed to update project',
+      });
     }
   },
 }));

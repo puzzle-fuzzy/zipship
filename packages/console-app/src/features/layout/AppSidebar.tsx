@@ -31,7 +31,6 @@ export function AppSidebar({
   projects,
   selectedProjectId,
   onSelectProject,
-  onShowProjects,
   onCreateProject,
 }: AppSidebarProps) {
   const { t } = useTranslation();
@@ -41,24 +40,14 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="none" className="hidden md:flex p-2">
       <SidebarMenu>
-        <SidebarMenuItem className="flex items-center gap-2 pt-14">
-          <SidebarMenuButton
-            tooltip={t('app.projects')}
-            onClick={onShowProjects}
-            className="min-w-8"
-          >
-            <FolderOpen />
-            <span>{t('app.projects')}</span>
-          </SidebarMenuButton>
+        <SidebarMenuItem className="pt-14">
           <Button
-            size="icon"
-            className="size-8 group-data-[collapsible=icon]:opacity-0"
             variant="outline"
             onClick={onCreateProject}
-            aria-label={t('app.newProject')}
+            className="w-full justify-start"
           >
             <Plus />
-            <span className="sr-only">{t('app.newProject')}</span>
+            <span>{t('app.newProject')}</span>
           </Button>
         </SidebarMenuItem>
       </SidebarMenu>

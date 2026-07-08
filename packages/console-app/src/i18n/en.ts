@@ -119,6 +119,12 @@ export const en = {
     routingPath: 'Path (/about)',
     deleteProject: 'Delete project',
   },
+  activity: {
+    title: 'Activity',
+    empty: 'No activity yet',
+    error: 'Failed to load activity',
+    retry: 'Retry',
+  },
   auth: {
     welcome: 'Welcome back',
     welcomeDesc: 'Sign in to your account to continue',

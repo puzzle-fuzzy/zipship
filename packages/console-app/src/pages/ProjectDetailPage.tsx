@@ -46,7 +46,7 @@ export function ProjectDetailPage() {
   const { user, refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases, publishRelease, deleteProject, updateProject } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading } = useMembersStore();
-  const { logs: auditLogs, fetchAudit } = useAuditStore();
+  const { logs: auditLogs, loading: auditLoading, error: auditError, fetchAudit } = useAuditStore();
   const navigate = useNavigate();
   const [showUpload, setShowUpload] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -155,7 +155,7 @@ export function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="activity">
             <History className="size-4" />
-            Activity
+            {t("activity.title")}
           </TabsTrigger>
         </TabsList>
 
@@ -449,9 +449,20 @@ export function ProjectDetailPage() {
         {/* ────── Activity Tab (org audit trail) ────── */}
         <TabsContent value="activity" className="pt-3">
           <div className="rounded-xl border bg-card">
-            {auditLogs.length === 0 ? (
+            {auditLoading ? (
               <div className="p-8 text-center text-sm text-muted-foreground">
                 {t("common.loading")}
+              </div>
+            ) : auditError ? (
+              <div className="flex flex-col items-center gap-3 p-8 text-center text-sm text-muted-foreground">
+                <span className="text-destructive">{t("activity.error")}</span>
+                <Button variant="outline" size="sm" onClick={() => fetchAudit(project.organizationId)}>
+                  {t("activity.retry")}
+                </Button>
+              </div>
+            ) : auditLogs.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                {t("activity.empty")}
               </div>
             ) : (
               auditLogs.map((log) => (
