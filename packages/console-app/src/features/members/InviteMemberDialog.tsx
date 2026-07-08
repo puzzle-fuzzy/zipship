@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from '../../i18n';
 import { useMembersStore } from '../../stores';
+import { emailSchema } from '../../lib/validation';
 import { Button } from '../../components/ui/button';
 import {
   Dialog,
@@ -48,11 +49,15 @@ export function InviteMemberDialog({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const emailResult = emailSchema.safeParse(email);
+    if (!emailResult.success) {
+      toast.error(emailResult.error.issues[0].message);
+      return;
+    }
 
     setSending(true);
     try {
-      const result = await inviteMember(organizationId, email.trim(), role);
+      const result = await inviteMember(organizationId, emailResult.data, role);
       setSentUrl(result.inviteUrl);
       toast.success('邀请已创建');
     } catch (err) {

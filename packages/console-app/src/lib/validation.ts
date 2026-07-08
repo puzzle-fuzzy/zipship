@@ -19,6 +19,9 @@ export const projectSlugSchema = z
 /** Free-form project / display name, 1–160 chars. */
 export const projectNameSchema = z.string().trim().min(1, { message: "Name is required" }).max(160);
 
+/** User display name, 1–120 chars. */
+export const displayNameSchema = z.string().trim().min(1, { message: "Name is required" }).max(120);
+
 /** Email normalized to lowercase. */
 export const emailSchema = z.string().trim().toLowerCase().email({ message: "Enter a valid email" });
 

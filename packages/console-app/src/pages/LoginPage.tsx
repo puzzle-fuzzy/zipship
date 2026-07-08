@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from '../i18n';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
+import { displayNameSchema, emailSchema, passwordSchema } from '../lib/validation';
 
 type Mode = 'login' | 'register';
 
@@ -18,15 +19,36 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
+
+    const emailResult = emailSchema.safeParse(email);
+    if (!emailResult.success) {
+      setError(emailResult.error.issues[0].message);
+      return;
+    }
+    const passwordResult = passwordSchema.safeParse(password);
+    if (!passwordResult.success) {
+      setError(passwordResult.error.issues[0].message);
+      return;
+    }
+    if (mode === 'register') {
+      const nameResult = displayNameSchema.safeParse(name);
+      if (!nameResult.success) {
+        setError(nameResult.error.issues[0].message);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (mode === 'login') {
-        await onLogin(email, password);
+        await onLogin(emailResult.data, passwordResult.data);
       } else {
-        await onRegister(name, email, password);
+        await onRegister(name.trim(), emailResult.data, passwordResult.data);
       }
     } finally {
       setLoading(false);
@@ -85,6 +107,11 @@ export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
           </div>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {error}
+              </div>
+            )}
             {mode === 'register' && (
               <Input
                 placeholder="Your name"
