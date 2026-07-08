@@ -13,6 +13,11 @@ export const zh = {
     more: '更多',
     noProjects: '暂无项目',
   },
+  nav: {
+    projects: '项目',
+    logs: '日志',
+    storage: '存储',
+  },
   projects: {
     title: '项目',
     empty: '暂无项目',
@@ -145,6 +150,14 @@ export const zh = {
     error: '加载活动失败',
     retry: '重试',
   },
+  logs: {
+    title: '日志',
+    comingSoon: '组织日志功能即将推出。',
+  },
+  storage: {
+    title: '存储',
+    comingSoon: '存储管理功能即将推出。',
+  },
   auth: {
     welcome: '欢迎回来',
     welcomeDesc: '登录您的账号继续',
@@ -175,6 +188,7 @@ export const zh = {
     delete: '删除',
     confirm: '确认',
     back: '返回',
+    comingSoon: '即将推出',
   },
   help: {
     title: '帮助',

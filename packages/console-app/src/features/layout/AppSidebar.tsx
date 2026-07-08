@@ -1,100 +1,66 @@
-import { Archive, Box, Ellipsis, Plus } from 'lucide-react';
+import { Box, Database, LayoutGrid, ScrollText } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router';
 import { useTranslation } from '../../i18n';
-import { Button } from '../../components/ui/button';
-import { Separator } from '../../components/ui/separator';
 import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '../../components/ui/sidebar';
 
-interface Project {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
+interface NavItem {
+  to: string;
+  labelKey: string;
+  icon: LucideIcon;
 }
 
-interface AppSidebarProps {
-  projects: Project[];
-  selectedProjectId: string | null;
-  onSelectProject: (project: Project) => void;
-  onCreateProject: () => void;
-}
+/** Top-level navigation: the sidebar is a pure menu (no project list). */
+const NAV_ITEMS: NavItem[] = [
+  { to: '/app/projects', labelKey: 'nav.projects', icon: LayoutGrid },
+  { to: '/app/logs', labelKey: 'nav.logs', icon: ScrollText },
+  { to: '/app/storage', labelKey: 'nav.storage', icon: Database },
+];
 
-export function AppSidebar({
-  projects,
-  selectedProjectId,
-  onSelectProject,
-  onCreateProject,
-}: AppSidebarProps) {
+export function AppSidebar() {
   const { t } = useTranslation();
-  const activeProjects = projects.filter((p) => p.status !== "archived");
-  const archivedCount = projects.length - activeProjects.length;
+  const { pathname } = useLocation();
+
+  // A route is active when we're on it or a child of it (e.g. a project detail
+  // under /app/projects).
+  const isActive = (to: string) => pathname === to || pathname.startsWith(`${to}/`);
 
   return (
     <Sidebar collapsible="none" className="hidden md:flex p-2">
-      <SidebarMenu>
-        <SidebarMenuItem className="pt-14">
-          <Button
-            variant="outline"
-            onClick={onCreateProject}
-            className="w-full justify-start"
-          >
-            <Plus />
-            <span>{t('app.newProject')}</span>
-          </Button>
-        </SidebarMenuItem>
-      </SidebarMenu>
-
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupContent>
+            {/* Brand */}
+            <SidebarMenu>
+              <SidebarMenuItem className="flex items-center gap-2 px-2 pb-6 pt-4">
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                  <Box className="size-4" />
+                </div>
+                <span className="text-sm font-semibold">{t('app.name')}</span>
+              </SidebarMenuItem>
+            </SidebarMenu>
+
+            {/* Primary nav */}
             <SidebarMenu className="gap-1">
-              <SidebarGroupLabel>{t('app.projects')}</SidebarGroupLabel>
-              {projects.map((project) => (
-                <SidebarMenuItem key={project.id}>
+              {NAV_ITEMS.map((item) => (
+                <SidebarMenuItem key={item.to}>
                   <SidebarMenuButton
-                    isActive={selectedProjectId === project.id}
-                    onClick={() => onSelectProject(project)}
+                    render={<NavLink to={item.to} />}
+                    isActive={isActive(item.to)}
                   >
-                    <Box />
-                    <span>{project.name}</span>
+                    <item.icon />
+                    <span>{t(item.labelKey)}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
-              {projects.length === 0 && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton disabled>
-                    <Box />
-                    <span>{t('app.noProjects')}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              <Separator />
-
-              <SidebarGroupLabel>{t('app.archive')}</SidebarGroupLabel>
-              <SidebarMenuItem>
-                <SidebarMenuButton disabled={archivedCount === 0}>
-                  <Archive />
-                  <span>{t('app.archivedProjects')}</span>
-                  {archivedCount > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">{archivedCount}</span>
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton className="text-sidebar-foreground/70">
-                  <Ellipsis className="text-sidebar-foreground/70" />
-                  <span>{t('app.more')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

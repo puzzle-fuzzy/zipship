@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router';
+import { Outlet } from 'react-router';
 import { useAuthStore, useProjectsStore } from '../../stores';
 import { useTranslation } from '../../i18n';
 import { toast } from 'sonner';
@@ -23,9 +23,7 @@ import { AppSidebar } from './AppSidebar';
 export function AppLayout() {
   const { t } = useTranslation();
   const { user, refreshToken, logout } = useAuthStore();
-  const { projects, fetchProjects, createProject } = useProjectsStore();
-  const navigate = useNavigate();
-  const params = useParams();
+  const { fetchProjects, createProject } = useProjectsStore();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
@@ -37,14 +35,6 @@ export function AppLayout() {
     }
   }, [refreshToken, fetchProjects]);
 
-  const selectedProjectId = params.projectId ?? null;
-
-  const handleSelectProject = (
-    project: { id: string; name: string },
-  ) => {
-    navigate(`/app/projects/${project.id}`);
-  };
-
   const handleLogout = () => {
     setShowLogoutConfirm(false);
     logout();
@@ -54,16 +44,12 @@ export function AppLayout() {
   return (
     <>
       <SidebarProvider className="mx-auto h-svh w-full items-start">
-        <AppSidebar
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={handleSelectProject}
-          onCreateProject={() => setShowCreate(true)}
-        />
+        <AppSidebar />
         <main className="flex h-svh flex-1 flex-col overflow-hidden">
           <ScrollArea className="h-svh w-full">
             <AppHeader
               user={user!}
+              onNewProject={() => setShowCreate(true)}
               onLogout={() => setShowLogoutConfirm(true)}
               onOpenSettings={() => setShowSettings(true)}
               onOpenProfile={() => setShowProfile(true)}

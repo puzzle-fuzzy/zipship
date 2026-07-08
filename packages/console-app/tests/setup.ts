@@ -7,9 +7,26 @@ import { afterEach, beforeEach } from 'vitest';
  *
  * jsdom provides `window`, `document`, `sessionStorage`, and `localStorage`,
  * but NOT the browser APIs the app reaches for at boot. We stub the shell-
- * injected API base URL and isolate storage between tests so store state and
- * tokens never leak across cases.
+ * injected API base URL, the missing `matchMedia` (used by the sidebar's mobile
+ * hook), and isolate storage between tests so store state and tokens never leak
+ * across cases.
  */
+
+// jsdom does not implement matchMedia; polyfill once so any component using the
+// sidebar / responsive hooks can render.
+if (typeof window !== 'undefined' && !window.matchMedia) {
+  window.matchMedia = (query: string) =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList;
+}
 
 afterEach(() => {
   cleanup();

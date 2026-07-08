@@ -13,6 +13,11 @@ export const en = {
     more: 'More',
     noProjects: 'No projects',
   },
+  nav: {
+    projects: 'Projects',
+    logs: 'Logs',
+    storage: 'Storage',
+  },
   projects: {
     title: 'Projects',
     empty: 'No projects yet',
@@ -145,6 +150,14 @@ export const en = {
     error: 'Failed to load activity',
     retry: 'Retry',
   },
+  logs: {
+    title: 'Logs',
+    comingSoon: 'Organization logs are coming soon.',
+  },
+  storage: {
+    title: 'Storage',
+    comingSoon: 'Storage management is coming soon.',
+  },
   auth: {
     welcome: 'Welcome back',
     welcomeDesc: 'Sign in to your account to continue',
@@ -175,6 +188,7 @@ export const en = {
     delete: 'Delete',
     confirm: 'Confirm',
     back: 'Back',
+    comingSoon: 'Coming soon',
   },
   help: {
     title: 'Help',
