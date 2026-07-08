@@ -77,6 +77,10 @@ export interface DeploymentsServiceOptions {
   now: () => Date;
   permissions?: PermissionService;
   storage: DeploymentStorage;
+  /** Optional webhook dispatch (fires on publish/rollback). */
+  webhookService?: {
+    dispatch(event: string, input: { organizationId: string; payload: unknown }): Promise<void>;
+  };
 }
 
 export class DeploymentsService {
@@ -138,6 +142,15 @@ export class DeploymentsService {
       },
       ipAddress: null,
       userAgent: null,
+    });
+
+    await this.options.webhookService?.dispatch("release.published", {
+      organizationId: project.organizationId,
+      payload: {
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: result.deployment.id,
+      },
     });
 
     return result;
@@ -216,6 +229,15 @@ export class DeploymentsService {
       },
       ipAddress: null,
       userAgent: null,
+    });
+
+    await this.options.webhookService?.dispatch("release.rolled_back", {
+      organizationId: project.organizationId,
+      payload: {
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: result.deployment.id,
+      },
     });
 
     return result;

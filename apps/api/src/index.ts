@@ -37,6 +37,9 @@ import { createDrizzleMembersRepository } from "./modules/members/drizzle-reposi
 import { createDrizzleInvitationsRepository } from "./modules/invitations/drizzle-repository";
 import { createDrizzleApiTokensRepository } from "./modules/api-tokens/drizzle-repository";
 import { apiTokensModule } from "./modules/api-tokens";
+import { createDrizzleWebhooksRepository } from "./modules/webhooks/drizzle-repository";
+import { webhooksModule } from "./modules/webhooks";
+import { WebhookService } from "./modules/webhooks/service";
 
 export interface CreateAppOptions {
   storageRoot?: string;
@@ -70,6 +73,7 @@ export interface Container {
   membersRepositoryForModule: ReturnType<typeof createDrizzleMembersRepository>;
   invitationsRepository: ReturnType<typeof createDrizzleInvitationsRepository>;
   apiTokensRepository: ReturnType<typeof createDrizzleApiTokensRepository>;
+  webhooksRepository: ReturnType<typeof createDrizzleWebhooksRepository>;
   emailService: EmailService;
 }
 
@@ -97,6 +101,7 @@ export function createContainer(options: CreateAppOptions = {}): Container {
   const membersRepositoryForModule = createDrizzleMembersRepository(db);
   const invitationsRepository = createDrizzleInvitationsRepository(db);
   const apiTokensRepository = createDrizzleApiTokensRepository(db);
+  const webhooksRepository = createDrizzleWebhooksRepository(db);
   const emailService = new EmailService({ appBaseUrl: config.appUrl });
 
   return {
@@ -116,6 +121,7 @@ export function createContainer(options: CreateAppOptions = {}): Container {
     membersRepositoryForModule,
     invitationsRepository,
     apiTokensRepository,
+    webhooksRepository,
     emailService,
   };
 }
@@ -145,6 +151,7 @@ export function composeHttpApp(
     membersRepositoryForModule,
     invitationsRepository,
     apiTokensRepository,
+    webhooksRepository,
     emailService,
   } = container;
 
@@ -153,6 +160,15 @@ export function composeHttpApp(
   // while auth-only endpoints (me/logout/password-reset) keep the raw repository.
   const sessionRepository = createSessionOrApiTokenLookup(authRepository, apiTokensRepository);
   const membersRepository = organizationsRepository;
+
+  // Shared webhook service: CRUD routes + dispatch hook for deployments.
+  const webhookService = new WebhookService({
+    repository: webhooksRepository,
+    sessionRepository,
+    organizationsRepository,
+    hashRefreshToken,
+    now: () => new Date(),
+  });
 
   const api = new Elysia()
     .use(cors({
@@ -214,6 +230,7 @@ export function composeHttpApp(
     .use(deploymentsModule({
       sessionRepository, projectsRepository, membersRepository, releasesRepository,
       deploymentsRepository, auditRepository, hashRefreshToken, storage: deploymentStorage,
+      webhookService,
     }))
     .use(uploadsModule({
       sessionRepository, projectsRepository, membersRepository, uploadsRepository,
@@ -258,6 +275,12 @@ export function composeHttpApp(
       hashRefreshToken,
       hashToken: (token: string) => hashRefreshToken(token),
       randomToken: () => crypto.randomUUID(),
+    }))
+    .use(webhooksModule({
+      repository: webhooksRepository,
+      sessionRepository,
+      organizationsRepository,
+      hashRefreshToken,
     }));
 }
 

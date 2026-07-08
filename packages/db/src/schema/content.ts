@@ -153,3 +153,22 @@ export const auditLogs = pgTable(
     index("audit_logs_project_created_at_idx").on(table.projectId, table.createdAt),
   ],
 );
+
+export const webhooks = pgTable(
+  "webhooks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    /** Destination URL — POSTed a signed JSON payload on matching events. */
+    url: text("url").notNull(),
+    /** Shared secret used to HMAC-sign deliveries (X-ZipShip-Signature). */
+    secret: text("secret").notNull(),
+    /** Subscribed events, e.g. ["release.published", "release.rolled_back"]. */
+    events: text("events").array().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("webhooks_organization_id_idx").on(table.organizationId),
+  ],
+);
