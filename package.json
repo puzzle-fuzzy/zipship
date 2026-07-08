@@ -67,6 +67,7 @@
     "db:generate": "drizzle-kit generate --config packages/db/drizzle.config.ts",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "ui:add": "shadcn add -c packages/ui",
     "db:migrate": "drizzle-kit migrate --config packages/db/drizzle.config.ts",
     "db:create-test": "docker exec zipship-postgres-1 psql -U zipship -tc \"SELECT 1 FROM pg_database WHERE datname='zipship_test'\" | grep -q 1 || docker exec zipship-postgres-1 psql -U zipship -c \"CREATE DATABASE zipship_test\"",
     "pretest": "bun run db:up && bun run db:create-test && DATABASE_URL=postgres://zipship:zipship@localhost:5432/zipship_test bun run db:migrate",
@@ -84,6 +85,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "oxlint": "^1.73.0"
   }
 }

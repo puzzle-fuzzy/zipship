@@ -1,53 +1,30 @@
 {
-  "name": "@zipship/desktop-shell",
-  "productName": "ZipShip Desktop",
-  "version": "1.0.0",
-  "description": "ZipShip desktop shell for uploading static build artifacts.",
-  "main": ".vite/build/main.js",
+  "name": "desktop-shell",
   "private": true,
+  "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "start": "bun ../../scripts/kill-port.ts 5174 && electron-forge start",
-    "package": "electron-forge package",
-    "make": "electron-forge make",
-    "publish": "electron-forge publish",
-    "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json"
-  },
-  "keywords": [],
-  "author": {
-    "name": "18267094443",
-    "email": "18267094443@163.com"
-  },
-  "license": "MIT",
-  "devDependencies": {
-    "@electron-forge/cli": "catalog:",
-    "@electron-forge/maker-deb": "catalog:",
-    "@electron-forge/maker-rpm": "catalog:",
-    "@electron-forge/maker-squirrel": "catalog:",
-    "@electron-forge/maker-zip": "catalog:",
-    "@electron-forge/plugin-auto-unpack-natives": "catalog:",
-    "@electron-forge/plugin-fuses": "catalog:",
-    "@electron-forge/plugin-vite": "catalog:",
-    "@electron-forge/shared-types": "catalog:",
-    "@electron/fuses": "catalog:",
-    "@types/electron-squirrel-startup": "catalog:",
-    "@types/react": "catalog:",
-    "@types/react-dom": "catalog:",
-    "@typescript-eslint/eslint-plugin": "catalog:",
-    "@typescript-eslint/parser": "catalog:",
-    "electron": "catalog:",
-    "eslint": "catalog:",
-    "eslint-plugin-import": "catalog:",
-    "typescript": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
-    "vite": "catalog:"
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
   },
   "dependencies": {
+    "@tailwindcss/vite": "^4.3.2",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2",
     "@zipship/console-app": "workspace:*",
     "@zipship/runtime": "workspace:*",
-    "electron-squirrel-startup": "catalog:",
-    "react": "catalog:",
-    "react-dom": "catalog:",
-    "scheduler": "catalog:"
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.3.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^6.0.3",
+    "typescript": "~6.0.3",
+    "vite": "^8.1.3",
+    "@tauri-apps/cli": "^2"
   }
 }

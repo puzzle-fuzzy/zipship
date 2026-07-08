@@ -1,0 +1,4 @@
+@import "@zipship/console-app/globals.css";
+@import "tailwindcss";
+
+@source "../../../packages/console-app/src/**/*.{ts,tsx}";
