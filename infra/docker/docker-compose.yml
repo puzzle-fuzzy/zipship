@@ -1,3 +1,12 @@
+# ZipShip infrastructure stack.
+#
+# - `docker compose up -d`           → postgres only (for local dev / tests)
+# - `docker compose --profile prod up -d` → postgres + api + nginx (full stack)
+#
+# The explicit `name: zipship` makes the postgres container predictably
+# `zipship-postgres-1`, which the root `db:create-test` script depends on.
+name: zipship
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -15,5 +24,47 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
+  # ── Control-plane API (only with --profile prod) ─────────────────────────
+  api:
+    profiles: ["prod"]
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      ZIPSHIP_API_PORT: "3001"
+      DATABASE_URL: postgres://zipship:zipship@postgres:5432/zipship
+      ZIPSHIP_STORAGE_ROOT: /data/sites
+      ZIPSHIP_APP_URL: http://localhost:8080
+    volumes:
+      - sites:/data/sites
+    ports:
+      - "3001:3001"
+
+  # ── Access plane: nginx (only with --profile prod) ───────────────────────
+  nginx:
+    profiles: ["prod"]
+    image: nginx:1.27-alpine
+    depends_on:
+      - api
+    environment:
+      ZIPSHIP_LISTEN_PORT: "8080"
+      ZIPSHIP_MAX_BODY_SIZE: "500m"
+      ZIPSHIP_API_UPSTREAM: "http://api:3001"
+      ZIPSHIP_SITES_ROOT: "/data/sites"
+      ZIPSHIP_CONSOLE_ROOT: "/var/www/console"
+    volumes:
+      # template + renderer (renderer runs on container start via entrypoint.d)
+      - ../nginx/zipship.conf:/etc/nginx/zipship.conf.template:ro
+      - ../nginx/render.sh:/docker-entrypoint.d/40-render-zipship.sh:ro
+      # shared static artifacts
+      - sites:/data/sites:ro
+    ports:
+      - "8080:8080"
+
 volumes:
   pgdata:
+  sites:

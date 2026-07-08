@@ -49,10 +49,25 @@ function createTestRepositories() {
       async findDefaultOrganizationForUser() {
         return null;
       },
+      async invalidateSession(_refreshTokenHash: string, _now: Date) {
+        // registration flow does not exercise logout
+      },
+      async updateUser(_userId: string, _input: { name?: string }) {
+        // registration flow does not exercise profile updates
+      },
+      async setUserPassword() {},
+      async createPasswordResetToken() {},
+      async findPasswordResetByTokenHash() {
+        return null;
+      },
+      async markPasswordResetUsed() {},
     },
     auditRepository: {
       async createAuditLog() {
         return null as any;
+      },
+      async listAuditLogsForOrganization() {
+        return [];
       },
     },
   };

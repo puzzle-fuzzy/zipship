@@ -10,6 +10,7 @@
     "test": "bun test tests"
   },
   "dependencies": {
+    "@zipship/shared": "workspace:*",
     "yauzl": "catalog:"
   },
   "devDependencies": {

@@ -1,3 +1,4 @@
+import { parseBearerToken } from "../../lib/auth";
 import { existsSync } from "fs";
 import {
   InvalidUploadInputError,
@@ -235,14 +236,4 @@ function normalizeFilename(filename: string): string | null {
 
 function isZipFilename(filename: string): boolean {
   return filename.toLowerCase().endsWith(".zip");
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-
-  const [scheme, token] = authorization.split(" ");
-
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-
-  return token;
 }

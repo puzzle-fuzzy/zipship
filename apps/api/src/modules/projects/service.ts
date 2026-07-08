@@ -1,3 +1,5 @@
+import { parseBearerToken } from "../../lib/auth";
+import { normalizeName } from "../../lib/normalize";
 import { isValidProjectSlug } from "@zipship/deploy-core";
 import {
   DuplicateProjectSlugError,
@@ -18,7 +20,6 @@ import type {
   ProjectParams,
   UpdateProjectBody,
 } from "./model";
-import type { MemberRole } from "../permissions/model";
 import { PermissionService } from "../permissions/service";
 import type { AuthRepository } from "../auth/service";
 import type { OrganizationsRepository } from "../organizations/service";
@@ -218,11 +219,6 @@ export class ProjectsService {
   }
 }
 
-function normalizeName(name: string): string | null {
-  const normalized = name.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
 function normalizeSlug(slug: string): string | null {
   const normalized = slug.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
@@ -231,14 +227,4 @@ function normalizeSlug(slug: string): string | null {
 function normalizeDescription(description: string | null | undefined): string | null {
   const normalized = description?.trim();
   return normalized ? normalized : null;
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-
-  const [scheme, token] = authorization.split(" ");
-
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-
-  return token;
 }

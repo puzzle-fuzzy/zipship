@@ -132,4 +132,17 @@ export const zh = {
     noVersions: '上传您的第一个构建产物后，版本列表将在此显示。',
     noVersionsAction: '点击"上传"按钮，选择已构建的静态站点 ZIP 文件。',
   },
+  toast: {
+    published: '发布成功',
+    publishFailed: '发布失败',
+    settingsSaved: '项目设置已保存',
+    saveFailed: '保存失败',
+    projectDeleted: '项目已删除',
+    deleteFailed: '删除失败',
+    deleteVersionSoon: '删除版本功能即将推出',
+    deleting: '删除中...',
+    saving: '保存中...',
+    publishVersion: '发布版本',
+    deleteProjectConfirm: '确定要删除项目「{{name}}」吗？此操作不可撤销。',
+  },
 };

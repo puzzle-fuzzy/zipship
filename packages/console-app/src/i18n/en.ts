@@ -132,4 +132,17 @@ export const en = {
     noVersions: 'Upload your first build to see versions here.',
     noVersionsAction: 'Click "Upload" to upload a ZIP file of your built static site.',
   },
+  toast: {
+    published: 'Published',
+    publishFailed: 'Publish failed',
+    settingsSaved: 'Settings saved',
+    saveFailed: 'Save failed',
+    projectDeleted: 'Project deleted',
+    deleteFailed: 'Delete failed',
+    deleteVersionSoon: 'Deleting a version is coming soon',
+    deleting: 'Deleting...',
+    saving: 'Saving...',
+    publishVersion: 'Publish version',
+    deleteProjectConfirm: 'Delete the project "{{name}}"? This cannot be undone.',
+  },
 };

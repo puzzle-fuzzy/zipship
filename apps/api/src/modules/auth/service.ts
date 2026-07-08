@@ -1,7 +1,10 @@
-import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, UnauthorizedError } from "./model";
-import type { AuthServiceError, LoginBody, LoginSuccess, LogoutHeaders, LogoutSuccess, MeHeaders, MeSuccess, RegisterBody, RegisterSuccess, UpdateProfileBody } from "./model";
+import { parseBearerToken } from "../../lib/auth";
+import { normalizeName, normalizeEmail } from "../../lib/normalize";
+import { DuplicateEmailError, InvalidCredentialsError, InvalidRegistrationInputError, InvalidTokenError, ExpiredTokenError, UnauthorizedError } from "./model";
+import type { AuthServiceError, LoginBody, LoginSuccess, LogoutHeaders, LogoutSuccess, MeHeaders, MeSuccess, PasswordResetRequestBody, PasswordResetConfirmBody, RegisterBody, RegisterSuccess, UpdateProfileBody } from "./model";
 import { AuditService } from "../audit/service";
 import type { AuditRepository } from "../audit/service";
+import type { EmailService } from "../email/service";
 
 const refreshTokenTtlMs = 1000 * 60 * 60 * 24 * 7;
 
@@ -58,6 +61,18 @@ export interface AuthRepository {
     id: string;
   } | null>;
   updateUser(userId: string, input: { name?: string }): Promise<void>;
+  setUserPassword(userId: string, passwordHash: string): Promise<void>;
+  createPasswordResetToken(input: {
+    userId: string;
+    tokenHash: string;
+    expiresAt: Date;
+  }): Promise<void>;
+  findPasswordResetByTokenHash(tokenHash: string): Promise<{
+    userId: string;
+    expiresAt: Date;
+    usedAt: Date | null;
+  } | null>;
+  markPasswordResetUsed(tokenHash: string, now: Date): Promise<void>;
 }
 
 export interface AuthServiceOptions {
@@ -69,6 +84,11 @@ export interface AuthServiceOptions {
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
   audit?: AuditService;
+  emailService?: EmailService;
+  /** Required to serve password-reset routes; optional so non-auth tests can omit it. */
+  hashToken?: (token: string) => Promise<string>;
+  randomToken?: () => string;
+  appBaseUrl?: string;
 }
 
 export class AuthService {
@@ -237,22 +257,59 @@ export class AuthService {
     return session;
   }
 
+  /**
+   * Request a password reset. Always returns ok (even for unknown emails) so
+   * the endpoint can't be used to enumerate accounts. When the email exists, a
+   * single-use reset token is created and emailed.
+   */
+  async requestPasswordReset(input: PasswordResetRequestBody): Promise<{ ok: true }> {
+    const email = normalizeEmail(input.email);
+    if (!email) return { ok: true };
+
+    const user = await this.options.authRepository.findUserByEmail(email);
+    if (!user) return { ok: true };
+
+    const token = this.options.randomToken!();
+    const tokenHash = await this.options.hashToken!(token);
+    const expiresAt = new Date(this.options.now().getTime() + 30 * 60 * 1000); // 30 minutes
+    await this.options.authRepository.createPasswordResetToken({
+      userId: user.id,
+      tokenHash,
+      expiresAt,
+    });
+
+    if (this.options.emailService) {
+      await this.options.emailService.sendPasswordReset({
+        to: email,
+        resetUrl: `${(this.options.appBaseUrl ?? "").replace(/\/$/, "")}/reset-password/${token}`,
+      });
+    }
+    return { ok: true };
+  }
+
+  /** Confirm a password reset: verify the token, set the new password, consume the token. */
+  async confirmPasswordReset(
+    input: PasswordResetConfirmBody,
+  ): Promise<{ ok: true } | AuthServiceError> {
+    const tokenHash = await this.options.hashToken!(input.token);
+    const record = await this.options.authRepository.findPasswordResetByTokenHash(tokenHash);
+    if (!record || record.usedAt !== null) return new InvalidTokenError();
+
+    const now = this.options.now();
+    if (record.expiresAt <= now) return new ExpiredTokenError();
+
+    const passwordHash = await this.options.hashPassword(input.password);
+    await this.options.authRepository.setUserPassword(record.userId, passwordHash);
+    await this.options.authRepository.markPasswordResetUsed(tokenHash, now);
+    return { ok: true };
+  }
+
   private async resolveSession(headers: MeHeaders) {
     const token = parseBearerToken(headers.authorization);
     if (!token) return null;
     const hash = await this.options.hashRefreshToken(token);
     return this.options.authRepository.findSessionByRefreshTokenHash(hash, this.options.now());
   }
-}
-
-function normalizeName(name: string): string | null {
-  const normalized = name.trim();
-  return normalized.length > 0 ? normalized : null;
-}
-
-function normalizeEmail(email: string): string | null {
-  const normalized = email.trim().toLowerCase();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? normalized : null;
 }
 
 function createDefaultOrganizationSlug(email: string): string {
@@ -270,14 +327,4 @@ function createDefaultOrganizationSlug(email: string): string {
   }
 
   return slug;
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-
-  const [scheme, token] = authorization.split(" ");
-
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-
-  return token;
 }

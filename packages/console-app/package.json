@@ -30,7 +30,8 @@
     "zustand": "^5.0.4",
     "jszip": "catalog:",
     "sonner": "^2.0.7",
-    "tailwindcss": "catalog:"
+    "tailwindcss": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@zipship/api": "workspace:*",

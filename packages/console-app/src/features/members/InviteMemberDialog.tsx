@@ -25,16 +25,12 @@ import {
 interface InviteMemberDialogProps {
   open: boolean;
   onClose: () => void;
-  apiBaseUrl: string;
-  refreshToken: string;
   organizationId: string;
 }
 
 export function InviteMemberDialog({
   open,
   onClose,
-  apiBaseUrl,
-  refreshToken,
   organizationId,
 }: InviteMemberDialogProps) {
   const { t } = useTranslation();
@@ -56,7 +52,7 @@ export function InviteMemberDialog({
 
     setSending(true);
     try {
-      const result = await inviteMember(apiBaseUrl, refreshToken, organizationId, email.trim(), role);
+      const result = await inviteMember(organizationId, email.trim(), role);
       setSentUrl(result.inviteUrl);
       toast.success('邀请已创建');
     } catch (err) {

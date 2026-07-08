@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven/setup-bun@v2
+      - run: bun install
+      - run: bun run lint
+      - run: bun run typecheck:workspaces
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    # PostgreSQL as a service container so integration/e2e tests have a real DB.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: zipship
+          POSTGRES_PASSWORD: zipship
+          POSTGRES_DB: zipship
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zipship"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://zipship:zipship@localhost:5432/zipship_test
+      ZIPSHIP_STORAGE_ROOT: /tmp/zipship-storage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven/setup-bun@v2
+      - run: bun install
+      - name: Create test database
+        run: PGPASSWORD=zipship psql -h localhost -U zipship -d postgres -c "CREATE DATABASE zipship_test;"
+      - name: Run migrations against test database
+        run: DATABASE_URL=$TEST_DATABASE_URL bun run db:migrate
+      - name: Ensure storage root exists
+        run: mkdir -p "$ZIPSHIP_STORAGE_ROOT"
+      - name: Unit tests (no DB)
+        run: bun run test:unit
+      - name: Integration & e2e tests
+        run: bun run test:integration
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven/setup-bun@v2
+      - run: bun install
+      - name: Build all packages that define a build script
+        run: bun run build

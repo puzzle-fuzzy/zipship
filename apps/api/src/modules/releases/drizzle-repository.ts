@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@zipship/db";
 import type { ReleasesRepository } from "./service";

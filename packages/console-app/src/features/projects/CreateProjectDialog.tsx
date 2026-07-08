@@ -11,6 +11,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { projectNameSchema, projectSlugSchema } from '../../lib/validation';
 
 interface CreateProjectDialogProps {
   open: boolean;
@@ -30,18 +31,20 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
     e.preventDefault();
     setError('');
 
-    if (!name.trim()) {
-      setError('Project name is required');
+    const nameResult = projectNameSchema.safeParse(name);
+    if (!nameResult.success) {
+      setError(nameResult.error.issues[0].message);
       return;
     }
-    if (!slug.trim()) {
-      setError('Project slug is required');
+    const slugResult = projectSlugSchema.safeParse(slug);
+    if (!slugResult.success) {
+      setError(slugResult.error.issues[0].message);
       return;
     }
 
     setLoading(true);
     try {
-      await onCreated({ name: name.trim(), slug: slug.trim(), description: description.trim() });
+      await onCreated({ name: nameResult.data, slug: slugResult.data, description: description.trim() });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : t('projects.createFailed'));

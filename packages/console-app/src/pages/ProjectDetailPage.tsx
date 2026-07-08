@@ -1,8 +1,9 @@
-import { Code2, MoreHorizontal, Plus, Settings, Upload, UserPlus, Users } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Code2, History, MoreHorizontal, Plus, Settings, UserPlus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { toast } from "sonner";
-import { useAuthStore, useMembersStore, useProjectsStore } from "../stores";
+import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
+import { getApiBaseUrl } from "../api/client";
 import { useTranslation } from "../i18n";
 import { Button } from "../components/ui/button";
 import {
@@ -45,6 +46,7 @@ export function ProjectDetailPage() {
   const { user, refreshToken } = useAuthStore();
   const { projects, releases, fetchReleases, publishRelease, deleteProject, updateProject } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading } = useMembersStore();
+  const { logs: auditLogs, fetchAudit } = useAuditStore();
   const navigate = useNavigate();
   const [showUpload, setShowUpload] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
@@ -54,17 +56,13 @@ export function ProjectDetailPage() {
   const [editingDesc, setEditingDesc] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const apiBaseUrl =
-    (typeof window !== "undefined" && (window as any).__ZIPSHIP_API_BASE_URL) ??
-    "http://localhost:3001";
-
   const project = projects.find((p) => p.id === projectId) ?? null;
   const projectReleases = projectId ? (releases[projectId] ?? []) : [];
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (projectId && refreshToken) {
-      fetchReleases(apiBaseUrl, refreshToken, projectId).finally(() =>
+      fetchReleases(projectId).finally(() =>
         setLoading(false),
       );
     }
@@ -72,7 +70,8 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     if (project && refreshToken) {
-      fetchMembers(apiBaseUrl, refreshToken, project.organizationId);
+      fetchMembers(project.organizationId);
+      fetchAudit(project.organizationId);
     }
   }, [projectId, refreshToken]);
 
@@ -135,7 +134,7 @@ export function ProjectDetailPage() {
         </div>
         <Button onClick={() => setShowUpload(true)}>
           <Plus className="size-4" />
-          发布版本
+          {t('toast.publishVersion')}
         </Button>
       </div>
 
@@ -154,6 +153,10 @@ export function ProjectDetailPage() {
             <Settings className="size-4" />
             {t("settings.title")}
           </TabsTrigger>
+          <TabsTrigger value="activity">
+            <History className="size-4" />
+            Activity
+          </TabsTrigger>
         </TabsList>
 
         {/* ────── Versions Tab ────── */}
@@ -168,7 +171,7 @@ export function ProjectDetailPage() {
               <div>
                 <Button onClick={() => setShowUpload(true)}>
                   <Plus className="size-4" />
-                  发布版本
+                  {t('toast.publishVersion')}
                 </Button>
               </div>
             </div>
@@ -217,7 +220,7 @@ export function ProjectDetailPage() {
                           className="min-w-40"
                         >
                           <DropdownMenuItem onClick={() => {
-                            const base = apiBaseUrl.replace(/\/+$/, '');
+                            const base = getApiBaseUrl().replace(/\/+$/, '');
                             const url = `${base}/_sites/${project.slug}/${release.releaseHash}/`;
                             window.open(url, '_blank');
                           }}>
@@ -228,10 +231,10 @@ export function ProjectDetailPage() {
                               disabled={!canManage}
                               onClick={async () => {
                                 try {
-                                  await publishRelease(apiBaseUrl, refreshToken!, project.id, release.id);
-                                  toast.success('发布成功');
+                                  await publishRelease(project.id, release.id);
+                                  toast.success(t('toast.published'));
                                 } catch (err) {
-                                  toast.error(err instanceof Error ? err.message : '发布失败');
+                                  toast.error(err instanceof Error ? err.message : t('toast.publishFailed'));
                                 }
                               }}
                             >
@@ -242,7 +245,7 @@ export function ProjectDetailPage() {
                             disabled={!canManage}
                             className="text-destructive"
                             onClick={() => {
-                              toast.info('删除版本功能即将推出');
+                              toast.info(t('toast.deleteVersionSoon'));
                             }}
                           >
                             {t("versions.delete")}
@@ -327,15 +330,15 @@ export function ProjectDetailPage() {
                   if (!canManage) return;
                   setSaving(true);
                   try {
-                    await updateProject(apiBaseUrl, refreshToken!, project.id, {
+                    await updateProject(project.id, {
                       name: editingName,
                       slug: editingSlug,
                       description: editingDesc || null,
                     });
-                    await fetchReleases(apiBaseUrl, refreshToken!, project.id);
-                    toast.success('项目设置已保存');
+                    await fetchReleases(project.id);
+                    toast.success(t('toast.settingsSaved'));
                   } catch (err) {
-                    toast.error(err instanceof Error ? err.message : '保存失败');
+                    toast.error(err instanceof Error ? err.message : t('toast.saveFailed'));
                   } finally {
                     setSaving(false);
                   }
@@ -419,28 +422,57 @@ export function ProjectDetailPage() {
                     variant="destructive"
                     disabled={!canManage || deleting}
                     onClick={async () => {
-                      if (!confirm(`确定要删除项目「${project.name}」吗？此操作不可撤销。`)) return;
+                      if (!confirm(t('toast.deleteProjectConfirm', { name: project.name }))) return;
                       setDeleting(true);
                       try {
-                        await deleteProject(apiBaseUrl, refreshToken!, project.id);
-                        toast.success('项目已删除');
+                        await deleteProject(project.id);
+                        toast.success(t('toast.projectDeleted'));
                         navigate('/app');
                       } catch (err) {
-                        toast.error(err instanceof Error ? err.message : '删除失败');
+                        toast.error(err instanceof Error ? err.message : t('toast.deleteFailed'));
                       } finally {
                         setDeleting(false);
                       }
                     }}
                   >
-                    {deleting ? '删除中...' : t("settings.deleteProject")}
+                    {deleting ? t('toast.deleting') : t("settings.deleteProject")}
                   </Button>
                   <Button type="submit" disabled={!canManage || saving}>
-                    {saving ? '保存中...' : t("common.save")}
+                    {saving ? t('toast.saving') : t("common.save")}
                   </Button>
                 </div>
               </form>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ────── Activity Tab (org audit trail) ────── */}
+        <TabsContent value="activity" className="pt-3">
+          <div className="rounded-xl border bg-card">
+            {auditLogs.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                {t("common.loading")}
+              </div>
+            ) : (
+              auditLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="flex items-center justify-between gap-4 border-b px-3 py-3.5 last:border-b-0"
+                >
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <span className="truncate font-mono text-xs">{log.action}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {log.targetType}
+                      {log.targetId ? ` · ${log.targetId.slice(0, 8)}` : ""}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -448,16 +480,12 @@ export function ProjectDetailPage() {
         open={showUpload}
         onClose={() => setShowUpload(false)}
         projectId={project.id}
-        refreshToken={refreshToken!}
-        apiBaseUrl={apiBaseUrl}
-        onUploaded={() => fetchReleases(apiBaseUrl, refreshToken!, project.id)}
+        onUploaded={() => fetchReleases(project.id)}
       />
 
       <InviteMemberDialog
         open={showInvite}
         onClose={() => setShowInvite(false)}
-        apiBaseUrl={apiBaseUrl}
-        refreshToken={refreshToken!}
         organizationId={project.organizationId}
       />
     </section>

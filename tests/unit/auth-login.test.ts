@@ -80,6 +80,18 @@ function createTestRepositories() {
           userId,
         };
       },
+      async invalidateSession(_refreshTokenHash: string, _now: Date) {
+        // login flow does not exercise logout
+      },
+      async updateUser(_userId: string, _input: { name?: string }) {
+        // login flow does not exercise profile updates
+      },
+      async setUserPassword() {},
+      async createPasswordResetToken() {},
+      async findPasswordResetByTokenHash() {
+        return null;
+      },
+      async markPasswordResetUsed() {},
     },
     auditRepository: {
       async createAuditLog(input: AuditCreateInput) {
@@ -89,6 +101,9 @@ function createTestRepositories() {
           ...input,
           createdAt: input.createdAt.toISOString(),
         };
+      },
+      async listAuditLogsForOrganization() {
+        return [];
       },
     },
   };
@@ -263,7 +278,7 @@ describe("auth login", () => {
   });
 
   test("returns unauthorized for expired session", async () => {
-    const { authRepository, auditRepository, sessions } = createTestRepositories();
+    const { authRepository, auditRepository } = createTestRepositories();
     (authRepository as any).addUser({
       id: "user-1",
       name: "Ada Lovelace",
@@ -330,7 +345,7 @@ describe("auth login", () => {
   });
 
   test("defaults clientType to web when not provided", async () => {
-    const { authRepository, auditRepository, sessions } = createTestRepositories();
+    const { authRepository, auditRepository } = createTestRepositories();
     (authRepository as any).addUser({
       id: "user-1",
       name: "Ada Lovelace",

@@ -1,7 +1,10 @@
+import { parseBearerToken } from "../../lib/auth";
 import { OrganizationUnauthorizedError } from "./model";
 import type { OrganizationList, OrganizationsHeaders, OrganizationServiceError } from "./model";
 import type { MemberRole } from "../permissions/model";
 import type { AuthRepository } from "../auth/service";
+import type { AuditLog } from "../audit/model";
+import type { AuditRepository } from "../audit/service";
 
 export interface OrganizationsRepository {
   findMembership(input: {
@@ -19,6 +22,7 @@ export interface OrganizationsServiceOptions {
   sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
   hashRefreshToken: (token: string) => Promise<string>;
   now: () => Date;
+  auditRepository: AuditRepository;
 }
 
 export class OrganizationsService {
@@ -44,14 +48,32 @@ export class OrganizationsService {
       organizations: await this.options.organizationsRepository.listOrganizationsForUser(currentSession.user.id),
     };
   }
-}
 
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
+  /**
+   * List audit logs for an organization. Any active member may read the org's
+   * audit trail; non-members get Unauthorized.
+   */
+  async listAudit(
+    input: OrganizationsHeaders,
+    organizationId: string,
+  ): Promise<{ auditLogs: AuditLog[] } | OrganizationServiceError> {
+    const refreshToken = parseBearerToken(input.authorization);
+    if (!refreshToken) return new OrganizationUnauthorizedError();
 
-  const [scheme, token] = authorization.split(" ");
+    const currentSession = await this.options.sessionRepository.findSessionByRefreshTokenHash(
+      await this.options.hashRefreshToken(refreshToken),
+      this.options.now(),
+    );
+    if (!currentSession) return new OrganizationUnauthorizedError();
 
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
+    const membership = await this.options.organizationsRepository.findMembership({
+      organizationId,
+      userId: currentSession.user.id,
+    });
+    if (!membership) return new OrganizationUnauthorizedError();
 
-  return token;
+    return {
+      auditLogs: await this.options.auditRepository.listAuditLogsForOrganization(organizationId),
+    };
+  }
 }

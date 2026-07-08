@@ -19,9 +19,6 @@ export function ProjectListPage() {
   const navigate = useNavigate();
   const { setShowCreate } = useOutletContext<{ setShowCreate: (v: boolean) => void }>();
 
-  const apiBaseUrl =
-    (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ?? 'http://localhost:3001';
-
   const liveProjectsCount = projects.filter((p) => p.currentReleaseId).length;
 
   return (
@@ -35,7 +32,7 @@ export function ProjectListPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => refreshToken && fetchProjects(apiBaseUrl, refreshToken)}>
+          <Button variant="outline" size="icon" onClick={() => refreshToken && fetchProjects()}>
             <RefreshCw className="size-4" />
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>

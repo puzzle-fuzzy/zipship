@@ -41,6 +41,7 @@
     "typescript": "^6.0.3",
     "vite": "^8.1.3",
     "yauzl": "^3.2.0",
+    "zod": "^3.24.0",
     "zustand": "^5.0.4"
   },
   "scripts": {
@@ -56,12 +57,14 @@
     "db:generate": "drizzle-kit generate --config packages/db/drizzle.config.ts",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "infra:up": "docker compose -f infra/docker/docker-compose.yml --profile prod up -d --build",
+    "infra:down": "docker compose -f infra/docker/docker-compose.yml --profile prod down",
     "ui:add": "shadcn add -c packages/ui",
     "db:migrate": "drizzle-kit migrate --config packages/db/drizzle.config.ts",
     "db:create-test": "docker exec zipship-postgres-1 psql -U zipship -tc \"SELECT 1 FROM pg_database WHERE datname='zipship_test'\" | grep -q 1 || docker exec zipship-postgres-1 psql -U zipship -c \"CREATE DATABASE zipship_test\"",
     "pretest": "bun run db:up && bun run db:create-test && DATABASE_URL=postgres://zipship:zipship@localhost:5432/zipship_test bun run db:migrate",
     "test": "TEST_DATABASE_URL=postgres://zipship:zipship@localhost:5432/zipship_test bun test",
-    "test:unit": "bun test tests/unit packages/deploy-core/tests",
+    "test:unit": "bun test tests/unit packages/deploy-core/tests packages/shared/tests packages/config/tests",
     "test:integration": "TEST_DATABASE_URL=postgres://zipship:zipship@localhost:5432/zipship_test bun test tests/integration tests/e2e"
   },
   "devDependencies": {

@@ -13,7 +13,7 @@ ZipShip is a self-hosted static artifact deployment tool — think lightweight N
 bun run dev            # API + web-shell simultaneously (Turbo)
 bun run dev:api        # API server on http://localhost:3001
 bun run dev:web        # Web shell on http://127.0.0.1:5173
-bun run dev:desktop    # Electron shell on http://127.0.0.1:5174
+bun run dev:desktop    # Tauri desktop shell (renderer on http://localhost:1420)
 # (Each dev:target kills its port before starting via scripts/kill-port.ts)
 
 # Testing
@@ -43,11 +43,11 @@ Environment variables from `.env` at repo root. Copy `.env.example` to `.env`. F
 ```
 apps/api              Bun + Elysia backend (control plane) — PostgreSQL via Drizzle
 apps/web-shell        Vite + React + Tailwind CSS v4 entry (thin shell)
-apps/desktop-shell    Electron entry (thin shell)
+apps/desktop-shell    Tauri entry (thin shell)
 packages/console-app  Shared React UI — shadcn/ui + Tailwind CSS v4 + Zustand
 packages/db           Drizzle ORM schema + migrations (PostgreSQL)
 packages/deploy-core  Unzip, detect, hash, manifest, publish, rollback
-packages/storage      File system abstraction (local filesystem, S3/MinIO later)
+packages/storage      File system abstraction (local filesystem today; StorageAdapter interface + S3/MinIO planned)
 packages/api-client   Eden Treaty client — type-safe API calls
 packages/runtime      RuntimeAdapter interface (web vs desktop capabilities)
 packages/shared       Shared types, constants, reserved slugs
@@ -72,17 +72,17 @@ Each domain in `apps/api/src/modules/:feature/` follows:
 - `service.ts` — Business logic class. Receives repository interfaces, hash functions, clock via constructor. Never touches HTTP context.
 - `drizzle-repository.ts` — Drizzle implementation of the repository interface.
 
+Shared cross-module helpers live in `apps/api/src/lib/` (e.g. `auth.ts` for bearer-token parsing + session resolution). Don't redefine these per module.
+
 **Error handling**: Services return success OR typed error objects. Controllers map errors to HTTP status codes. Error responses contain only stable `code` strings (e.g. `"DUPLICATE_EMAIL"`), never user-facing text. Frontend maps codes to i18n.
 
-**Auth**: Bearer tokens with SHA-256 hashed refresh tokens. 7-day TTL. Server-side session revocation (`POST /_api/auth/logout` sets `revokedAt`). All `parseBearerToken` functions are case-insensitive (`bearer`/`Bearer`).
+**Auth**: Bearer tokens with SHA-256 hashed refresh tokens. 7-day TTL. Server-side session revocation (`POST /_api/auth/logout` sets `revokedAt`). The shared `parseBearerToken` in `apps/api/src/lib/auth.ts` is case-insensitive (`bearer`/`Bearer`); services import it instead of redefining.
 
 **Type safety**: `apps/api` exports `type App = typeof app`. `packages/api-client` uses `treaty<App>()` for typed client.
 
 **App initialization**: `createApp({ db?, storageRoot?, exposeTestRoutes? })` assembles the full Elysia app with dependency injection. Each module receives its repository implementations, hash functions, and clock via its options object — tests replace `db` with a fresh Drizzle connection.
 
-**Auth repositories**: Two implementations of `AuthRepository`:
-- `apps/api/src/modules/auth/drizzle-repository.ts` — PostgreSQL via Drizzle (production + integration tests)
-- `apps/api/src/modules/auth/repository.ts` — In-memory map (unit-style service tests in auth-login/auth-registration)
+**Auth repository**: a single Drizzle implementation at `apps/api/src/modules/auth/drizzle-repository.ts` (production + integration tests). The old in-memory implementation was removed (it had no importers); pure service tests in `tests/unit/auth-login` / `auth-registration` inject lightweight inline stub repositories.
 
 ### Implemented API Modules
 
@@ -153,7 +153,8 @@ Frontend supports three upload modes: ZIP file, folder (webkitdirectory → JSZi
 
 Tests live in `tests/` and `packages/*/tests/`. Run with `bun test` — `pretest` auto-starts Docker PostgreSQL, creates `zipship_test` database, and runs migrations against it.
 
-- **`tests/unit/`** — Full HTTP route tests via Eden Treaty client against `createApp({ db })`. Each test creates a fresh PostgreSQL connection and uses `beforeEach` with `truncateAllTables()`. Database must be running. ~16 test files covering all API modules.
+- **`tests/unit/`** — Pure-logic tests (services with inline stub repos, slug/permission/storage helpers). No DB required. Run with `bun run test:unit`.
+- **`tests/integration/`** — Full HTTP route tests via Eden Treaty client against `createApp({ db })`. Each test creates a fresh PostgreSQL connection and uses `beforeEach` with `truncateAllTables()`. Database must be running. Run with `bun run test:integration`.
 - **`tests/e2e/`** — Multi-step end-to-end flows (register → login → create project → upload → deploy).
 - **`packages/deploy-core/tests/unit/`** — Pure unit tests (zip extraction, detection, manifest hashing, pipeline orchestration). Use fixtures in `packages/deploy-core/tests/fixtures/` (`.zip` files at various sizes).
 - **`packages/storage/tests/`** — Filesystem tests using `createTempStorageRoot()` + `try/finally` cleanup pattern.
@@ -162,7 +163,7 @@ Tests live in `tests/` and `packages/*/tests/`. Run with `bun test` — `pretest
 
 Testing conventions:
 - Route-level tests use the **real PostgreSQL via Drizzle** — create a Drizzle connection, pass to `createApp({ db })`, truncate all tables between tests with `truncateAllTables()`.
-- In-memory repos (`apps/api/src/modules/auth/repository.ts`) are only used for unit-style service tests (auth-login, auth-registration) that don't need the DB.
+- Pure service tests (`tests/unit/auth-login`, `auth-registration`) inject inline stub repositories; no in-memory repo ships in the source tree.
 - For filesystem tests, always use `createTempStorageRoot()` + cleanup in `try/finally`.
 - Cross-platform path handling: use `join()`, `normalizePath()` helpers.
 - Auth tests should verify error response shape is exactly `{ code: string }` (no extra fields).

@@ -1,3 +1,4 @@
+import { parseBearerToken } from "../../lib/auth";
 import {
   ReleaseForbiddenError,
   ReleaseProjectNotFoundError,
@@ -79,14 +80,4 @@ export class ReleasesService {
 
 function isPreviewableRelease(release: Release): boolean {
   return (release.status === "ready" || release.status === "active") && release.archivedAt === null;
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-
-  const [scheme, token] = authorization.split(" ");
-
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-
-  return token;
 }

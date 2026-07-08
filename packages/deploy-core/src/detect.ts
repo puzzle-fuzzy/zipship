@@ -10,7 +10,6 @@ const RESERVED_PLATFORM_PATHS = ["/_api", "/_console", "/_health", "/_assets"];
 
 function scanForRisks(files: FileEntry[]): DetectItem[] {
   const items: DetectItem[] = [];
-  const fileSet = new Set(files.map((f) => f.path));
 
   // Check for index.html
   const hasIndexHtml = files.some((f) => f.path === "index.html");

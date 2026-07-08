@@ -1,8 +1,7 @@
 import { CheckCircle2, Circle, FileCode, FileUp, FolderOpen, Loader2, Upload, XCircle } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { createApiClient } from '@zipship/api-client';
+import { getApi, authHeaders } from '../../api/client';
 import { useTranslation } from '../../i18n';
 import { Button } from '../../components/ui/button';
 import {
@@ -36,26 +35,22 @@ interface UploadVersionDialogProps {
   open: boolean;
   onClose: () => void;
   projectId: string;
-  refreshToken: string;
-  apiBaseUrl: string;
   onUploaded: () => void;
 }
 
 /** Execute the full upload pipeline: create task → raw upload → complete. */
 async function runUploadPipeline(
-  apiBaseUrl: string,
   projectId: string,
-  refreshToken: string,
   file: File,
   onState: (s: UploadState) => void,
 ) {
-  const api = createApiClient(apiBaseUrl);
+  const api = getApi();
 
   // 1. Create upload task
   onState({ step: 'creating_task', message: '正在创建上传任务...' });
   const createRes = await api._api.projects({ projectId }).uploads.post(
     { originalFilename: file.name, size: file.size },
-    { headers: { authorization: `Bearer ${refreshToken}` } },
+    { headers: authHeaders() },
   );
   if (createRes.error) throw new Error('创建上传任务失败');
   const uploadTask = createRes.data!.uploadTask;
@@ -64,14 +59,14 @@ async function runUploadPipeline(
   onState({ step: 'uploading_raw', message: '正在上传文件...' });
   const rawRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
     { file },
-    { headers: { authorization: `Bearer ${refreshToken}` } },
+    { headers: authHeaders() },
   );
   if (rawRes.error) throw new Error('上传文件失败');
 
   // 3. Complete & process
   onState({ step: 'processing', message: '正在解压分析...' });
   const completeRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
-    headers: { authorization: `Bearer ${refreshToken}` },
+    headers: authHeaders(),
   });
   if (completeRes.error) throw new Error('处理失败');
 
@@ -88,8 +83,6 @@ export function UploadVersionDialog({
   open,
   onClose,
   projectId,
-  refreshToken,
-  apiBaseUrl,
   onUploaded,
 }: UploadVersionDialogProps) {
   const { t } = useTranslation();
@@ -109,7 +102,7 @@ export function UploadVersionDialog({
 
   async function runAndNotify(file: File) {
     try {
-      await runUploadPipeline(apiBaseUrl, projectId, refreshToken, file, setUpload);
+      await runUploadPipeline(projectId, file, setUpload);
       onUploaded();
     } catch (err) {
       setUpload({
@@ -316,7 +309,6 @@ export function UploadVersionDialog({
               const isCurrent = upload.step === 'done'
                 ? false
                 : idx === curIdx;
-              const isWaiting = !isCompleted && !isCurrent && upload.step !== 'error';
               const isErrored = upload.step === 'error' && !isCompleted && idx === (curIdx >= 0 ? curIdx : 0);
 
               return (

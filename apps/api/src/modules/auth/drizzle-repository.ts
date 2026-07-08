@@ -96,5 +96,37 @@ export function createDrizzleAuthRepository(
         .limit(1);
       return rows[0] ? { id: rows[0].organizationId } : null;
     },
+
+    async setUserPassword(userId, passwordHash) {
+      await db.update(schema.users)
+        .set({ passwordHash })
+        .where(eq(schema.users.id, userId));
+    },
+
+    async createPasswordResetToken(input) {
+      await db.insert(schema.passwordResetTokens).values({
+        userId: input.userId,
+        tokenHash: input.tokenHash,
+        expiresAt: input.expiresAt,
+      });
+    },
+
+    async findPasswordResetByTokenHash(tokenHash) {
+      const rows = await db.select({
+        userId: schema.passwordResetTokens.userId,
+        expiresAt: schema.passwordResetTokens.expiresAt,
+        usedAt: schema.passwordResetTokens.usedAt,
+      })
+        .from(schema.passwordResetTokens)
+        .where(eq(schema.passwordResetTokens.tokenHash, tokenHash))
+        .limit(1);
+      return rows[0] ?? null;
+    },
+
+    async markPasswordResetUsed(tokenHash, now) {
+      await db.update(schema.passwordResetTokens)
+        .set({ usedAt: now })
+        .where(eq(schema.passwordResetTokens.tokenHash, tokenHash));
+    },
   };
 }

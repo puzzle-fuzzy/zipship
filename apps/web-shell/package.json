@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun ../../scripts/kill-port.ts 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --port 5173 --strictPort",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {

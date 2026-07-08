@@ -6,7 +6,6 @@ import { copyDirectoryContents, createReleaseStoragePath, createUploadWorkDir } 
 import { ReleaseProcessingError } from "./model";
 import type { ReleaseProcessingResult } from "./model";
 import type { UploadTask } from "../uploads/model";
-import type { Project } from "../projects/model";
 import type { UploadsRepository } from "../uploads/service";
 import type { ProjectsRepository } from "../projects/service";
 

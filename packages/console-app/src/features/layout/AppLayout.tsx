@@ -31,15 +31,11 @@ export function AppLayout() {
   const [showProfile, setShowProfile] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  const apiBaseUrl =
-    (typeof window !== 'undefined' && (window as any).__ZIPSHIP_API_BASE_URL) ??
-    'http://localhost:3001';
-
   useEffect(() => {
     if (refreshToken) {
-      fetchProjects(apiBaseUrl, refreshToken);
+      fetchProjects();
     }
-  }, [refreshToken, fetchProjects, apiBaseUrl]);
+  }, [refreshToken, fetchProjects]);
 
   const selectedProjectId = params.projectId ?? null;
 
@@ -88,12 +84,12 @@ export function AppLayout() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreated={async ({ name, slug, description }) => {
-          await createProject(apiBaseUrl, refreshToken!, {
+          await createProject({
             name,
             slug,
             description,
           });
-          await fetchProjects(apiBaseUrl, refreshToken!);
+          await fetchProjects();
           setShowCreate(false);
         }}
       />
@@ -126,7 +122,6 @@ export function AppLayout() {
       <ProfileEditDialog
         open={showProfile}
         onClose={() => setShowProfile(false)}
-        apiBaseUrl={apiBaseUrl}
       />
     </>
   );

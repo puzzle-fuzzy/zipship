@@ -1,5 +1,6 @@
-import { createApiClient } from '@zipship/api-client';
 import { create } from 'zustand';
+import { authHeaders, getAccessToken, getApi } from '../api/client';
+import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
 
 export interface Project {
   id: string;
@@ -37,15 +38,18 @@ export interface Release {
 
 interface ProjectsState {
   projects: Project[];
-  releases: Record<string, Release[]>;  // projectId -> releases
+  releases: Record<string, Release[]>; // projectId -> releases
   loading: boolean;
 
-  fetchProjects: (apiBaseUrl: string, refreshToken: string) => Promise<void>;
-  createProject: (apiBaseUrl: string, refreshToken: string, input: { name: string; slug: string; description: string }) => Promise<void>;
-  fetchReleases: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
-  publishRelease: (apiBaseUrl: string, refreshToken: string, projectId: string, releaseId: string) => Promise<void>;
-  deleteProject: (apiBaseUrl: string, refreshToken: string, projectId: string) => Promise<void>;
-  updateProject: (apiBaseUrl: string, refreshToken: string, projectId: string, input: { name?: string; slug?: string; description?: string | null }) => Promise<void>;
+  fetchProjects: () => Promise<void>;
+  createProject: (input: { name: string; slug: string; description: string }) => Promise<void>;
+  fetchReleases: (projectId: string) => Promise<void>;
+  publishRelease: (projectId: string, releaseId: string) => Promise<void>;
+  deleteProject: (projectId: string) => Promise<void>;
+  updateProject: (
+    projectId: string,
+    input: { name?: string; slug?: string; description?: string | null },
+  ) => Promise<void>;
 }
 
 export const useProjectsStore = create<ProjectsState>((set) => ({
@@ -53,12 +57,10 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
   releases: {},
   loading: true,
 
-  fetchProjects: async (apiBaseUrl: string, refreshToken: string) => {
-    const api = createApiClient(apiBaseUrl);
+  fetchProjects: async () => {
+    const api = getApi();
     try {
-      const orgRes = await api._api.organizations.get({
-        headers: { authorization: `Bearer ${refreshToken}` },
-      });
+      const orgRes = await api._api.organizations.get({ headers: authHeaders() });
 
       if (orgRes.error) {
         console.error('Failed to fetch projects: org error', orgRes.error);
@@ -74,7 +76,7 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       }
 
       const projRes = await api._api.organizations({ organizationId: org.id }).projects.get({
-        headers: { authorization: `Bearer ${refreshToken}` },
+        headers: authHeaders(),
       });
 
       if (projRes.error) {
@@ -92,17 +94,17 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     }
   },
 
-  createProject: async (apiBaseUrl, refreshToken, input) => {
-    const api = createApiClient(apiBaseUrl);
+  createProject: async (input) => {
+    const api = getApi();
 
     // 1. Look up the user's default organization
-    const orgRes = await api._api.organizations.get({
-      headers: { authorization: `Bearer ${refreshToken}` },
-    });
+    const orgRes = await api._api.organizations.get({ headers: authHeaders() });
 
     if (orgRes.error) {
-      const code = (orgRes.error.value as { code?: string })?.code;
-      throw new Error(code === 'UNAUTHORIZED' ? 'Session expired, please refresh' : 'Failed to get organization');
+      throw mapApiError(orgRes, {
+        codes: { UNAUTHORIZED: 'Session expired, please refresh' },
+        fallback: 'Failed to get organization',
+      });
     }
 
     const orgId = orgRes.data?.organizations?.[0]?.id;
@@ -111,22 +113,22 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     // 2. Create the project
     const res = await api._api.organizations({ organizationId: orgId }).projects.post(
       { name: input.name, slug: input.slug, description: input.description || null },
-      { headers: { authorization: `Bearer ${refreshToken}` } },
+      { headers: authHeaders() },
     );
 
     if (res.error) {
-      const code = (res.error.value as { code?: string })?.code;
-      throw new Error(code === 'DUPLICATE_PROJECT_SLUG'
-        ? 'A project with this slug already exists'
-        : `Failed to create project (${code ?? 'unknown'})`);
+      throw mapApiError(res, {
+        codes: { DUPLICATE_PROJECT_SLUG: API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG },
+        fallback: 'Failed to create project',
+      });
     }
   },
 
-  fetchReleases: async (apiBaseUrl, refreshToken, projectId) => {
-    const api = createApiClient(apiBaseUrl);
+  fetchReleases: async (projectId) => {
+    const api = getApi();
     try {
       const res = await api._api.projects({ projectId }).releases.get({
-        headers: { authorization: `Bearer ${refreshToken}` },
+        headers: authHeaders(),
       });
       if (res.data) {
         set((state) => ({
@@ -138,16 +140,18 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     }
   },
 
-  publishRelease: async (apiBaseUrl, refreshToken, projectId, releaseId) => {
-    const api = createApiClient(apiBaseUrl);
-    const res = await api._api.projects({ projectId }).releases({ releaseId }).publish.post({ message: null }, {
-      headers: { authorization: `Bearer ${refreshToken}` },
-    });
-    if (res.error) throw new Error('发布失败');
+  publishRelease: async (projectId, releaseId) => {
+    const api = getApi();
+    const headers = authHeaders();
+    const res = await api._api.projects({ projectId }).releases({ releaseId }).publish.post(
+      { message: null },
+      { headers },
+    );
+    if (res.error) {
+      throw mapApiError(res, { codes: {}, fallback: 'Failed to publish release' });
+    }
     // Refresh releases to get updated status
-    const refreshRes = await api._api.projects({ projectId }).releases.get({
-      headers: { authorization: `Bearer ${refreshToken}` },
-    });
+    const refreshRes = await api._api.projects({ projectId }).releases.get({ headers });
     if (refreshRes.data) {
       set((state) => ({
         releases: { ...state.releases, [projectId]: refreshRes.data!.releases as Release[] },
@@ -155,14 +159,14 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     }
   },
 
-  deleteProject: async (apiBaseUrl, refreshToken, projectId) => {
-    const api = createApiClient(apiBaseUrl);
-    const res = await api._api.projects({ projectId }).delete({
-      headers: { authorization: `Bearer ${refreshToken}` },
-    });
+  deleteProject: async (projectId) => {
+    const api = getApi();
+    const res = await api._api.projects({ projectId }).delete({ headers: authHeaders() });
     if (res.error) {
-      const code = (res.error.value as { code?: string })?.code;
-      throw new Error(code === 'FORBIDDEN' ? 'No permission to delete this project' : 'Failed to delete project');
+      throw mapApiError(res, {
+        codes: { FORBIDDEN: 'No permission to delete this project' },
+        fallback: 'Failed to delete project',
+      });
     }
     // Remove from local state
     set((state) => ({
@@ -170,14 +174,17 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
     }));
   },
 
-  updateProject: async (apiBaseUrl, refreshToken, projectId, input) => {
-    const api = createApiClient(apiBaseUrl);
-    const res = await api._api.projects({ projectId }).patch(
-      input,
-      { headers: { authorization: `Bearer ${refreshToken}` } },
-    );
+  updateProject: async (projectId, input) => {
+    const api = getApi();
+    const res = await api._api.projects({ projectId }).patch(input, {
+      headers: authHeaders(),
+    });
     if (res.error) {
       throw new Error('Failed to update project');
     }
   },
 }));
+
+// `getAccessToken` re-exported for components (e.g. preview-link builders) that
+// need the token without going through the store.
+export { getAccessToken };
