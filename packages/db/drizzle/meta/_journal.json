@@ -22,6 +22,34 @@
       "when": 1783310323388,
       "tag": "0002_overrated_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783484722338,
+      "tag": "0003_ancient_post",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783485955719,
+      "tag": "0004_dashing_zaran",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783489505568,
+      "tag": "0005_jazzy_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783601908339,
+      "tag": "0006_eager_darkhawk",
+      "breakpoints": true
     }
   ]
 }

@@ -3,6 +3,7 @@ import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from '../../i18n';
 import { useMembersStore } from '../../stores';
+import { emailSchema } from '../../lib/validation';
 import { Button } from '../../components/ui/button';
 import {
   Dialog,
@@ -25,16 +26,12 @@ import {
 interface InviteMemberDialogProps {
   open: boolean;
   onClose: () => void;
-  apiBaseUrl: string;
-  refreshToken: string;
   organizationId: string;
 }
 
 export function InviteMemberDialog({
   open,
   onClose,
-  apiBaseUrl,
-  refreshToken,
   organizationId,
 }: InviteMemberDialogProps) {
   const { t } = useTranslation();
@@ -52,13 +49,17 @@ export function InviteMemberDialog({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    const emailResult = emailSchema.safeParse(email);
+    if (!emailResult.success) {
+      toast.error(emailResult.error.issues[0].message);
+      return;
+    }
 
     setSending(true);
     try {
-      const result = await inviteMember(apiBaseUrl, refreshToken, organizationId, email.trim(), role);
+      const result = await inviteMember(organizationId, emailResult.data, role);
       setSentUrl(result.inviteUrl);
-      toast.success('邀请已创建');
+      toast.success(t('members.inviteCreatedToast'));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to send invitation');
     } finally {
@@ -69,7 +70,7 @@ export function InviteMemberDialog({
   const copyToClipboard = async () => {
     if (sentUrl) {
       await navigator.clipboard.writeText(sentUrl);
-      toast.success('链接已复制到剪贴板');
+      toast.success(t('members.linkCopiedToast'));
     }
   };
 
@@ -121,9 +122,9 @@ export function InviteMemberDialog({
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>邀请已创建</DialogTitle>
+              <DialogTitle>{t('members.inviteCreatedTitle')}</DialogTitle>
               <DialogDescription>
-                将下面的链接发送给 {email}，对方打开后即可加入团队
+                {t('members.inviteCreatedDesc', { email })}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-3 py-4">
@@ -132,15 +133,15 @@ export function InviteMemberDialog({
                 <code className="flex-1 truncate text-xs">{sentUrl}</code>
               </div>
               <p className="text-xs text-muted-foreground">
-                此链接 7 天内有效。在开发环境中，邀请链接会同时输出到服务器控制台。
+                {t('members.inviteLinkNote')}
               </p>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={copyToClipboard}>
                 <Copy className="size-4" />
-                复制链接
+                {t('members.copyLink')}
               </Button>
-              <Button onClick={handleClose}>完成</Button>
+              <Button onClick={handleClose}>{t('members.done')}</Button>
             </DialogFooter>
           </>
         )}

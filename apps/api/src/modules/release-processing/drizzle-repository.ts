@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@zipship/db";
 import type { ReleaseProcessingRepository } from "./service";
@@ -38,6 +38,14 @@ export function createDrizzleReleaseProcessingRepository(
         .where(eq(schema.uploadTasks.id, input.uploadTaskId))
         .returning();
       return toUploadTask(task);
+    },
+
+    async attachRuntimeCheck(input) {
+      await db.update(schema.releases)
+        .set({
+          detectResult: sql`jsonb_set(${schema.releases.detectResult}, '{runtime}', ${JSON.stringify(input.runtimeCheck)}::jsonb, true)`,
+        })
+        .where(eq(schema.releases.id, input.releaseId));
     },
   };
 }

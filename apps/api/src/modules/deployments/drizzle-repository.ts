@@ -35,17 +35,17 @@ async function mutateCurrentRelease(
     action: "publish" | "rollback";
     now: Date;
   },
-): Promise<DeploymentMutationResult> {
+): Promise<DeploymentMutationResult | null> {
   return await db.transaction(async (tx) => {
     const [project] = await tx.select().from(schema.projects)
       .where(eq(schema.projects.id, input.projectId))
       .limit(1);
-    if (!project) throw new Error("Project not found");
+    if (!project) return null;
 
     const [release] = await tx.select().from(schema.releases)
       .where(eq(schema.releases.id, input.releaseId))
       .limit(1);
-    if (!release) throw new Error("Release not found");
+    if (!release) return null;
 
     const previousReleaseId = project.currentReleaseId;
 
@@ -93,6 +93,9 @@ async function mutateCurrentRelease(
         slug: project.slug,
         description: project.description,
         currentReleaseId: input.releaseId,
+        spaFallback: project.spaFallback,
+        cachePolicy: project.cachePolicy as "standard" | "aggressive",
+        customDomains: project.customDomains,
         status: "active" as const,
         visibility: "private" as const,
         createdBy: project.createdBy,

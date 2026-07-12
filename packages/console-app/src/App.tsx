@@ -5,6 +5,7 @@ import { router } from './router';
 import { useAuthStore } from './stores';
 import { useSettingsStore } from './stores/settingsStore';
 import { LoginPage } from './pages/LoginPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from './components/ui/sonner';
 import { toast } from 'sonner';
 import './index.css';
@@ -24,12 +25,12 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
 
   useEffect(() => {
     useSettingsStore.getState().init();
-    initSession(apiBaseUrl);
-  }, []);
+    initSession();
+  }, [initSession]);
 
   const handleLogin = async (email: string, password: string) => {
     try {
-      await login(apiBaseUrl, email, password, runtime.kind === 'desktop' ? 'desktop' : 'web');
+      await login(email, password, runtime.kind === 'desktop' ? 'desktop' : 'web');
     } catch (err) {
       toast.error((err as Error).message || 'Login failed');
     }
@@ -37,7 +38,7 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
 
   const handleRegister = async (name: string, email: string, password: string) => {
     try {
-      await register(apiBaseUrl, name, email, password);
+      await register(name, email, password);
     } catch (err) {
       toast.error((err as Error).message || 'Registration failed');
     }
@@ -69,9 +70,9 @@ export function App({ runtime, apiBaseUrl }: AppProps) {
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <RouterProvider router={router} />
       <Toaster />
-    </>
+    </ErrorBoundary>
   );
 }

@@ -1,6 +1,12 @@
 import { Elysia } from "elysia";
 import { MembersService, type MembersRepository } from "./service";
-import { membersModels, MembersUnauthorizedError, MembersForbiddenError } from "./model";
+import {
+  membersModels,
+  MembersUnauthorizedError,
+  MembersForbiddenError,
+  MembersNotFoundError,
+  MembersLastOwnerError,
+} from "./model";
 import type { AuthRepository } from "../auth/service";
 import type { MemberRole } from "../permissions/model";
 import type { PermissionService } from "../permissions/service";
@@ -42,6 +48,44 @@ export function membersModule(options: MembersModuleOptions) {
         200: "Members.Success",
         401: "Members.Error",
         403: "Members.Error",
+      },
+    })
+    .patch("/:userId", async ({ headers, params, body, status: setStatus }) => {
+      const result = await service.changeRole(headers as any, params as any, body as any);
+      if (result instanceof MembersUnauthorizedError) return setStatus(401, { code: "UNAUTHORIZED" as const });
+      if (result instanceof MembersForbiddenError) return setStatus(403, { code: "FORBIDDEN" as const });
+      if (result instanceof MembersNotFoundError) return setStatus(404, { code: "NOT_FOUND" as const });
+      if (result instanceof MembersLastOwnerError) return setStatus(409, { code: "LAST_OWNER" as const });
+      return result;
+    }, {
+      headers: "Members.Headers",
+      params: "Members.TargetParams",
+      body: "Members.ChangeRoleBody",
+      response: {
+        200: "Members.Ok",
+        400: "Members.Error",
+        401: "Members.Error",
+        403: "Members.Error",
+        404: "Members.Error",
+        409: "Members.Error",
+      },
+    })
+    .delete("/:userId", async ({ headers, params, status: setStatus }) => {
+      const result = await service.remove(headers as any, params as any);
+      if (result instanceof MembersUnauthorizedError) return setStatus(401, { code: "UNAUTHORIZED" as const });
+      if (result instanceof MembersForbiddenError) return setStatus(403, { code: "FORBIDDEN" as const });
+      if (result instanceof MembersNotFoundError) return setStatus(404, { code: "NOT_FOUND" as const });
+      if (result instanceof MembersLastOwnerError) return setStatus(409, { code: "LAST_OWNER" as const });
+      return result;
+    }, {
+      headers: "Members.Headers",
+      params: "Members.TargetParams",
+      response: {
+        200: "Members.Ok",
+        401: "Members.Error",
+        403: "Members.Error",
+        404: "Members.Error",
+        409: "Members.Error",
       },
     });
 }

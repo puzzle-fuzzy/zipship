@@ -1,15 +1,8 @@
 import { ConsoleApp } from '@zipship/console-app';
-import type { RuntimeAdapter } from '@zipship/runtime';
+import { createDesktopRuntime } from '@zipship/runtime';
 import { createRoot } from 'react-dom/client';
 
 import './main.css'
-
-const desktopRuntime: RuntimeAdapter = {
-  kind: 'desktop',
-  async openExternal(url) {
-    window.open(url, '_blank', 'noopener,noreferrer');
-  },
-};
 
 const root = document.getElementById('root');
 
@@ -17,6 +10,6 @@ if (!root) {
   throw new Error('Missing #root element');
 }
 
-const apiBaseUrl = 'http://localhost:3001';
+const apiBaseUrl = import.meta.env.VITE_ZIPSHIP_API_BASE_URL ?? 'http://localhost:5006';
 
-createRoot(root).render(<ConsoleApp runtime={desktopRuntime} apiBaseUrl={apiBaseUrl} />);
+createRoot(root).render(<ConsoleApp runtime={createDesktopRuntime()} apiBaseUrl={apiBaseUrl} />);

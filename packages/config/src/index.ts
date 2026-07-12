@@ -1,13 +1,48 @@
-export const config = {
-  apiPort: Number(process.env.ZIPSHIP_API_PORT ?? 3001),
-  databaseUrl: process.env.DATABASE_URL ?? "postgres://zipship:zipship@localhost:5432/zipship",
-  storageRoot: process.env.ZIPSHIP_STORAGE_ROOT ?? "/srv/zipship",
+import { z } from "zod";
+
+/**
+ * Centralized, validated environment configuration.
+ *
+ * Parsed once at module load via a zod schema: URLs are validated, ports are
+ * coerced + range-checked, required strings are non-empty. A bad value fails
+ * fast at startup with a clear error instead of surfacing as a mysterious
+ * runtime failure inside a request handler. Everything has a dev fallback so
+ * local development works with an empty `.env`.
+ */
+const ConfigSchema = z.object({
+  apiPort: z.coerce.number().int().positive().max(65535).default(5006),
+  apiUrl: z.string().url().default("http://localhost:5006"),
+  databaseUrl: z
+    .string()
+    .min(1)
+    .default("postgres://zipship:zipship@localhost:5432/zipship"),
+  storageRoot: z.string().min(1).default("/srv/zipship"),
+  /** Public base URL of the web console — invitation links, email templates. */
+  appUrl: z.string().url().default("http://localhost:4015"),
+  runtimeCheckEnabled: z.preprocess((value) => value === "true" || value === true, z.boolean()).default(false),
+  smtp: z.object({
+    host: z.string().default(""),
+    port: z.coerce.number().int().positive().max(65535).default(587),
+    user: z.string().default(""),
+    pass: z.string().default(""),
+    from: z.string().min(1).default("noreply@zipship.local"),
+  }),
+});
+
+export const config = ConfigSchema.parse({
+  apiPort: process.env.ZIPSHIP_API_PORT,
+  apiUrl: process.env.ZIPSHIP_API_URL,
+  databaseUrl: process.env.DATABASE_URL,
+  storageRoot: process.env.ZIPSHIP_STORAGE_ROOT,
+  appUrl: process.env.ZIPSHIP_APP_URL,
+  runtimeCheckEnabled: process.env.ZIPSHIP_RUNTIME_CHECK_ENABLED,
   smtp: {
-    host: process.env.ZIPSHIP_SMTP_HOST ?? "",
-    port: Number(process.env.ZIPSHIP_SMTP_PORT ?? 587),
-    user: process.env.ZIPSHIP_SMTP_USER ?? "",
-    pass: process.env.ZIPSHIP_SMTP_PASS ?? "",
-    from: process.env.ZIPSHIP_SMTP_FROM ?? "noreply@zipship.local",
+    host: process.env.ZIPSHIP_SMTP_HOST,
+    port: process.env.ZIPSHIP_SMTP_PORT,
+    user: process.env.ZIPSHIP_SMTP_USER,
+    pass: process.env.ZIPSHIP_SMTP_PASS,
+    from: process.env.ZIPSHIP_SMTP_FROM,
   },
-  appUrl: process.env.ZIPSHIP_APP_URL ?? "http://localhost:5173",
-};
+});
+
+export type Config = z.infer<typeof ConfigSchema>;

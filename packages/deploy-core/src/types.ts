@@ -24,6 +24,59 @@ export interface DetectItem {
 export interface DetectResult {
   level: "pass" | "warning" | "failed";
   items: DetectItem[];
+  insights?: ArtifactInsights;
+}
+
+export interface ArtifactAssetTypeSummary {
+  count: number;
+  totalSize: number;
+}
+
+export interface ArtifactAssetSummary {
+  totalFiles: number;
+  totalSize: number;
+  byType: {
+    html: ArtifactAssetTypeSummary;
+    javascript: ArtifactAssetTypeSummary;
+    css: ArtifactAssetTypeSummary;
+    images: ArtifactAssetTypeSummary;
+    fonts: ArtifactAssetTypeSummary;
+    maps: ArtifactAssetTypeSummary;
+    other: ArtifactAssetTypeSummary;
+  };
+  largestFiles: Array<{
+    path: string;
+    size: number;
+  }>;
+}
+
+export interface ArtifactHtmlMetadata {
+  title: string | null;
+  description: string | null;
+  hasViewport: boolean;
+  hasCanonical: boolean;
+  hasOpenGraph: boolean;
+  hasTwitterCard: boolean;
+  hasFavicon: boolean;
+  lang: string | null;
+}
+
+export interface ArtifactSeoCheck {
+  code: string;
+  status: "pass" | "warning";
+  details?: Record<string, unknown>;
+}
+
+export interface ArtifactSeoSummary {
+  score: number;
+  checks: ArtifactSeoCheck[];
+}
+
+export interface ArtifactInsights {
+  entrypoint: string | null;
+  assets: ArtifactAssetSummary;
+  html: ArtifactHtmlMetadata;
+  seo: ArtifactSeoSummary;
 }
 
 export interface ManifestEntry {

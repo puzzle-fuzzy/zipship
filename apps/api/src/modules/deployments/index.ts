@@ -17,6 +17,9 @@ export interface DeploymentsModuleOptions {
   auditRepository: AuditRepository;
   hashRefreshToken: (token: string) => Promise<string>;
   storage: DeploymentStorage;
+  webhookService?: {
+    dispatch(event: string, input: { organizationId: string; payload: unknown }): Promise<void>;
+  };
 }
 
 export function deploymentsModule(options: DeploymentsModuleOptions) {
@@ -30,6 +33,7 @@ export function deploymentsModule(options: DeploymentsModuleOptions) {
     hashRefreshToken: options.hashRefreshToken,
     now: () => new Date(),
     storage: options.storage,
+    webhookService: options.webhookService,
   });
 
   return new Elysia({ name: "deployments", prefix: "/_api/projects/:projectId" })

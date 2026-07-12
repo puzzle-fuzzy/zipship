@@ -3,9 +3,22 @@
   "globalDependencies": [".env"],
   "tasks": {
     "typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["^build"],
       "outputs": [],
-      "inputs": ["src/**/*.ts", "src/**/*.tsx"]
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "tsconfig.json"]
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**"],
+      "inputs": ["src/**/*.ts", "src/**/*.tsx", "*.json", "*.ts"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": []
     },
     "dev": {
       "cache": false,

@@ -1,5 +1,6 @@
-import { createApiClient } from '@zipship/api-client';
 import { create } from 'zustand';
+import { authHeaders, getApi } from '../api/client';
+import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
 
 export interface Member {
   id: string;
@@ -15,8 +16,14 @@ interface MembersState {
   loading: boolean;
   error: string | null;
 
-  fetchMembers: (apiBaseUrl: string, refreshToken: string, organizationId: string) => Promise<void>;
-  inviteMember: (apiBaseUrl: string, refreshToken: string, organizationId: string, email: string, role: string) => Promise<{ inviteUrl: string }>;
+  fetchMembers: (organizationId: string) => Promise<void>;
+  inviteMember: (
+    organizationId: string,
+    email: string,
+    role: string,
+  ) => Promise<{ inviteUrl: string }>;
+  updateMemberRole: (organizationId: string, userId: string, role: string) => Promise<void>;
+  removeMember: (organizationId: string, userId: string) => Promise<void>;
 }
 
 export const useMembersStore = create<MembersState>((set) => ({
@@ -24,12 +31,12 @@ export const useMembersStore = create<MembersState>((set) => ({
   loading: false,
   error: null,
 
-  fetchMembers: async (apiBaseUrl: string, refreshToken: string, organizationId: string) => {
+  fetchMembers: async (organizationId: string) => {
     set({ loading: true, error: null });
     try {
-      const api = createApiClient(apiBaseUrl);
+      const api = getApi();
       const res = await api._api.organizations({ organizationId }).members.get({
-        headers: { authorization: `Bearer ${refreshToken}` },
+        headers: authHeaders(),
       });
       if (res.error) {
         set({ loading: false, error: 'Failed to fetch members' });
@@ -44,22 +51,65 @@ export const useMembersStore = create<MembersState>((set) => ({
     }
   },
 
-  inviteMember: async (apiBaseUrl, refreshToken, organizationId, email, role) => {
-    const api = createApiClient(apiBaseUrl);
+  inviteMember: async (organizationId, email, role) => {
+    const api = getApi();
     const res = await api._api.organizations({ organizationId }).invitations.post(
       { email, role: role as any },
-      { headers: { authorization: `Bearer ${refreshToken}` } },
+      { headers: authHeaders() },
     );
     if (res.error) {
-      const code = (res.error.value as { code?: string })?.code;
-      const messages: Record<string, string> = {
-        USER_NOT_FOUND: 'User not found with this email',
-        ALREADY_MEMBER: 'This user is already a member',
-        INVITATION_PENDING: 'An invitation is already pending for this email',
-        FORBIDDEN: 'You do not have permission to invite members',
-      };
-      throw new Error(messages[code ?? ''] ?? 'Failed to send invitation');
+      throw mapApiError(res, {
+        codes: {
+          USER_NOT_FOUND: API_ERROR_MESSAGES.USER_NOT_FOUND,
+          ALREADY_MEMBER: API_ERROR_MESSAGES.ALREADY_MEMBER,
+          INVITATION_PENDING: API_ERROR_MESSAGES.INVITATION_PENDING,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+        },
+        fallback: 'Failed to send invitation',
+      });
     }
     return res.data as { inviteUrl: string };
+  },
+
+  updateMemberRole: async (organizationId, userId, role) => {
+    const api = getApi();
+    const res = await api._api.organizations({ organizationId }).members({ userId }).patch(
+      { role: role as 'admin' | 'developer' | 'deployer' | 'viewer' },
+      { headers: authHeaders() },
+    );
+    if (res.error) {
+      throw mapApiError(res, {
+        codes: {
+          LAST_OWNER: API_ERROR_MESSAGES.LAST_OWNER,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          NOT_FOUND: API_ERROR_MESSAGES.NOT_FOUND,
+        },
+        fallback: 'Failed to update role',
+      });
+    }
+    set((state) => ({
+      members: state.members.map((m) => (m.userId === userId ? { ...m, role } : m)),
+    }));
+  },
+
+  removeMember: async (organizationId, userId) => {
+    const api = getApi();
+    const res = await api._api
+      .organizations({ organizationId })
+      .members({ userId })
+      .delete({ headers: authHeaders() });
+    if (res.error) {
+      throw mapApiError(res, {
+        codes: {
+          LAST_OWNER: API_ERROR_MESSAGES.LAST_OWNER,
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          NOT_FOUND: API_ERROR_MESSAGES.NOT_FOUND,
+        },
+        fallback: 'Failed to remove member',
+      });
+    }
+    set((state) => ({
+      members: state.members.filter((m) => m.userId !== userId),
+    }));
   },
 }));

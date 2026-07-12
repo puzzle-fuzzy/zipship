@@ -1,6 +1,9 @@
 import { cp, mkdir, realpath, rm, rename, stat, symlink, unlink } from "fs/promises";
 import { dirname, extname, join, resolve, sep } from "path";
 
+export type { StorageAdapter } from "./adapter";
+export { LocalStorageAdapter } from "./adapter";
+
 export interface StoragePaths {
   uploadsRoot: string;
   tempRoot: string;

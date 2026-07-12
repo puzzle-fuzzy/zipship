@@ -79,12 +79,27 @@ export const updateProfileBodyModel = t.Object({
   name: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
 });
 
+export const passwordResetRequestBodyModel = t.Object({
+  email: t.String({ minLength: 1, maxLength: 255 }),
+});
+
+export const passwordResetConfirmBodyModel = t.Object({
+  token: t.String({ minLength: 1 }),
+  password: t.String({ minLength: 8, maxLength: 128 }),
+});
+
+export const okSuccessModel = t.Object({
+  ok: t.Literal(true),
+});
+
 export const authErrorModel = t.Object({
   code: t.Union([
     t.Literal("DUPLICATE_EMAIL"),
     t.Literal("INVALID_CREDENTIALS"),
     t.Literal("INVALID_REGISTRATION_INPUT"),
     t.Literal("UNAUTHORIZED"),
+    t.Literal("INVALID_TOKEN"),
+    t.Literal("EXPIRED_TOKEN"),
     t.Literal("VALIDATION_ERROR"),
   ]),
 });
@@ -99,6 +114,9 @@ export const authModels = {
   "Auth.MeHeaders": meHeadersModel,
   "Auth.MeSuccess": meSuccessModel,
   "Auth.UpdateProfileBody": updateProfileBodyModel,
+  "Auth.PasswordResetRequest": passwordResetRequestBodyModel,
+  "Auth.PasswordResetConfirm": passwordResetConfirmBodyModel,
+  "Auth.Ok": okSuccessModel,
   "Auth.Error": authErrorModel,
 };
 
@@ -111,6 +129,8 @@ export type MeSuccess = typeof meSuccessModel.static;
 export type LogoutHeaders = typeof logoutHeadersModel.static;
 export type LogoutSuccess = typeof logoutSuccessModel.static;
 export type UpdateProfileBody = typeof updateProfileBodyModel.static;
+export type PasswordResetRequestBody = typeof passwordResetRequestBodyModel.static;
+export type PasswordResetConfirmBody = typeof passwordResetConfirmBodyModel.static;
 export type AuthErrorCode = typeof authErrorModel.static.code;
 
 export class AuthServiceError {
@@ -138,5 +158,17 @@ export class UnauthorizedError extends AuthServiceError {
 export class InvalidRegistrationInputError extends AuthServiceError {
   constructor() {
     super("INVALID_REGISTRATION_INPUT");
+  }
+}
+
+export class InvalidTokenError extends AuthServiceError {
+  constructor() {
+    super("INVALID_TOKEN");
+  }
+}
+
+export class ExpiredTokenError extends AuthServiceError {
+  constructor() {
+    super("EXPIRED_TOKEN");
   }
 }

@@ -2,6 +2,7 @@ import type { AuditCreateInput, AuditLog, AuditRecordInput } from "./model";
 
 export interface AuditRepository {
   createAuditLog(input: AuditCreateInput): Promise<AuditLog>;
+  listAuditLogsForOrganization(organizationId: string, limit?: number): Promise<AuditLog[]>;
 }
 
 export interface AuditServiceOptions {

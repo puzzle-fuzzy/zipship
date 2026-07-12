@@ -1,8 +1,17 @@
-import { CheckCircle2, Circle, FileCode, FileUp, FolderOpen, Loader2, Upload, XCircle } from 'lucide-react';
+import {
+  Archive,
+  CheckCircle2,
+  Circle,
+  FileCode,
+  FileUp,
+  FolderOpen,
+  Loader2,
+  ShieldCheck,
+  Upload,
+  XCircle,
+} from 'lucide-react';
 import { useRef, useState } from 'react';
-import { toast } from 'sonner';
 import JSZip from 'jszip';
-import { createApiClient } from '@zipship/api-client';
 import { useTranslation } from '../../i18n';
 import { Button } from '../../components/ui/button';
 import {
@@ -12,122 +21,89 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
+import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
-
-type UploadMode = 'zip' | 'folder' | 'file';
-
-type UploadStep =
-  | 'select'
-  | 'zipping'
-  | 'creating_task'
-  | 'uploading_raw'
-  | 'processing'
-  | 'done'
-  | 'error';
+import { cn } from '../../lib/utils';
+import {
+  runUploadPipeline,
+  UploadPipelineError,
+  type UploadFailureReason,
+  type UploadStep,
+} from './uploadPipeline';
+import {
+  formatUploadSize,
+  getUploadProgressPercent,
+  getUploadStepState,
+  UPLOAD_FLOW_STEPS,
+  type SelectedArtifact,
+  type UploadMode,
+} from './uploadDialogModel';
 
 interface UploadState {
   step: UploadStep;
-  message: string;
-  errorMessage?: string;
+  failedStep?: UploadStep;
+  /** Stable reason when step === 'error'; the UI maps it to a message. */
+  failureReason?: UploadFailureReason;
+  /** Server-provided detail (e.g. why release detection failed). */
+  errorDetail?: string;
 }
 
 interface UploadVersionDialogProps {
   open: boolean;
   onClose: () => void;
   projectId: string;
-  refreshToken: string;
-  apiBaseUrl: string;
   onUploaded: () => void;
-}
-
-/** Execute the full upload pipeline: create task → raw upload → complete. */
-async function runUploadPipeline(
-  apiBaseUrl: string,
-  projectId: string,
-  refreshToken: string,
-  file: File,
-  onState: (s: UploadState) => void,
-) {
-  const api = createApiClient(apiBaseUrl);
-
-  // 1. Create upload task
-  onState({ step: 'creating_task', message: '正在创建上传任务...' });
-  const createRes = await api._api.projects({ projectId }).uploads.post(
-    { originalFilename: file.name, size: file.size },
-    { headers: { authorization: `Bearer ${refreshToken}` } },
-  );
-  if (createRes.error) throw new Error('创建上传任务失败');
-  const uploadTask = createRes.data!.uploadTask;
-
-  // 2. Upload raw bytes
-  onState({ step: 'uploading_raw', message: '正在上传文件...' });
-  const rawRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
-    { file },
-    { headers: { authorization: `Bearer ${refreshToken}` } },
-  );
-  if (rawRes.error) throw new Error('上传文件失败');
-
-  // 3. Complete & process
-  onState({ step: 'processing', message: '正在解压分析...' });
-  const completeRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
-    headers: { authorization: `Bearer ${refreshToken}` },
-  });
-  if (completeRes.error) throw new Error('处理失败');
-
-  const finalTask = completeRes.data!.uploadTask;
-
-  if (finalTask.status === 'failed') {
-    throw new Error(finalTask.errorMessage || '发布检测未通过');
-  }
-
-  onState({ step: 'done', message: '上传完成！' });
 }
 
 export function UploadVersionDialog({
   open,
   onClose,
   projectId,
-  refreshToken,
-  apiBaseUrl,
   onUploaded,
 }: UploadVersionDialogProps) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<UploadMode>('zip');
-  const [upload, setUpload] = useState<UploadState>({ step: 'select', message: '' });
+  const [upload, setUpload] = useState<UploadState>({ step: 'select' });
+  const [selectedArtifact, setSelectedArtifact] = useState<SelectedArtifact | null>(null);
+  const latestUploadStepRef = useRef<UploadStep>('select');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const singleFileInputRef = useRef<HTMLInputElement>(null);
 
-  const progressPercent =
-    upload.step === 'zipping' ? 10 :
-    upload.step === 'creating_task' ? 30 :
-    upload.step === 'uploading_raw' ? 60 :
-    upload.step === 'processing' ? 85 :
-    upload.step === 'done' ? 100 :
-    0;
+  const progressPercent = getUploadProgressPercent(upload.step);
 
+  const reportUploadState = (state: UploadState) => {
+    latestUploadStepRef.current = state.step;
+    setUpload(state);
+  };
+
+  /** Drive the pipeline, translating any failure into a stable reason. */
   async function runAndNotify(file: File) {
     try {
-      await runUploadPipeline(apiBaseUrl, projectId, refreshToken, file, setUpload);
+      await runUploadPipeline(projectId, file, reportUploadState);
       onUploaded();
     } catch (err) {
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      const detail = err instanceof UploadPipelineError ? err.detail : undefined;
       setUpload({
         step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
+        failedStep: latestUploadStepRef.current,
+        failureReason: reason,
+        errorDetail: detail,
       });
     }
   }
 
-  const startUpload = async (file: File) => {
-    setUpload({ step: 'zipping', message: file.name.endsWith('.zip') ? '' : '正在打包...' });
-    await runAndNotify(file);
+  const startUpload = (file: File, artifact: SelectedArtifact) => {
+    setSelectedArtifact(artifact);
+    reportUploadState({ step: 'zipping' });
+    void runAndNotify(file);
   };
 
   const handleZipFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) startUpload(file);
+    if (file) startUpload(file, { mode: 'zip', name: file.name, size: file.size });
   };
 
   const handleFolder = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -135,8 +111,10 @@ export function UploadVersionDialog({
     if (!files || files.length === 0) return;
     const fileList = Array.from(files);
     const folderName = fileList[0].webkitRelativePath.split('/')[0] || 'upload';
+    const totalSize = fileList.reduce((sum, file) => sum + file.size, 0);
 
-    setUpload({ step: 'zipping', message: '正在打包文件夹...' });
+    setSelectedArtifact({ mode: 'folder', name: folderName, size: totalSize });
+    reportUploadState({ step: 'zipping' });
     try {
       const zip = new JSZip();
       for (const f of fileList) {
@@ -145,11 +123,8 @@ export function UploadVersionDialog({
       const blob = await zip.generateAsync({ type: 'blob' });
       await runAndNotify(new File([blob], `${folderName}.zip`, { type: 'application/zip' }));
     } catch (err) {
-      setUpload({
-        step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
-      });
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      setUpload({ step: 'error', failedStep: latestUploadStepRef.current, failureReason: reason });
     }
   };
 
@@ -157,179 +132,277 @@ export function UploadVersionDialog({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUpload({ step: 'zipping', message: '正在包装文件...' });
+    setSelectedArtifact({ mode: 'file', name: file.name, size: file.size });
+    reportUploadState({ step: 'zipping' });
     try {
       const zip = new JSZip();
       zip.file(file.name, await file.arrayBuffer());
       const blob = await zip.generateAsync({ type: 'blob' });
       await runAndNotify(new File([blob], 'upload.zip', { type: 'application/zip' }));
     } catch (err) {
-      setUpload({
-        step: 'error',
-        message: '上传失败',
-        errorMessage: err instanceof Error ? err.message : '未知错误',
-      });
+      const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';
+      setUpload({ step: 'error', failedStep: latestUploadStepRef.current, failureReason: reason });
     }
   };
 
-  const handleReset = () => {
-    setUpload({ step: 'select', message: '' });
+  const resetFileInputs = () => {
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (folderInputRef.current) folderInputRef.current.value = '';
+    if (singleFileInputRef.current) singleFileInputRef.current.value = '';
   };
 
+  const handleReset = () => {
+    resetFileInputs();
+    setSelectedArtifact(null);
+    reportUploadState({ step: 'select' });
+  };
   const handleClose = () => {
     handleReset();
     onClose();
   };
 
   const stepLabels: Record<UploadStep, string> = {
-    zipping: '打包中',
-    creating_task: '创建上传任务',
-    uploading_raw: '上传文件',
-    processing: '解压分析中',
-    done: '完成',
+    zipping: t('upload.stepZipping'),
+    creating_task: t('upload.stepCreatingTask'),
+    uploading_raw: t('upload.stepUploading'),
+    processing: t('upload.stepProcessing'),
+    done: t('upload.stepDone'),
     select: '',
     error: '',
   };
 
-  /** If the user is selecting, show the file picker UI */
+  const modeCards: Array<{
+    mode: UploadMode;
+    icon: typeof FileUp;
+    label: string;
+    description: string;
+    actionLabel: string;
+    onSelect: () => void;
+    badge?: string;
+  }> = [
+    {
+      mode: 'zip',
+      icon: FileUp,
+      label: t('upload.zip'),
+      description: t('upload.chooseZipDesc'),
+      actionLabel: t('versions.chooseFile'),
+      onSelect: () => fileInputRef.current?.click(),
+      badge: t('upload.recommended'),
+    },
+    {
+      mode: 'folder',
+      icon: FolderOpen,
+      label: t('upload.folder'),
+      description: t('upload.chooseFolderDesc'),
+      actionLabel: t('upload.chooseFolder'),
+      onSelect: () => folderInputRef.current?.click(),
+    },
+    {
+      mode: 'file',
+      icon: FileCode,
+      label: t('upload.singleFile'),
+      description: t('upload.chooseFileDesc'),
+      actionLabel: t('upload.chooseFile'),
+      onSelect: () => singleFileInputRef.current?.click(),
+    },
+  ];
+
+  const titleKey =
+    upload.step === 'done' ? 'upload.statusDone'
+    : upload.step === 'error' ? 'upload.statusFailed'
+    : 'upload.statusUploading';
+
+  const descriptionKey: Record<UploadStep, string> = {
+    zipping: 'upload.desc.zipping',
+    creating_task: 'upload.desc.creatingTask',
+    uploading_raw: 'upload.desc.uploading',
+    processing: 'upload.desc.processing',
+    done: 'upload.desc.done',
+    select: '',
+    error: '',
+  };
+
+  /** ─── File-picker view ─── */
   if (upload.step === 'select') {
     return (
       <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
+            <div className="mb-2 flex size-10 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <Upload className="size-5" />
+            </div>
             <DialogTitle>{t('versions.uploadTitle')}</DialogTitle>
-            <DialogDescription>
-              选择 ZIP 文件、文件夹或单个 HTML 文件上传
-            </DialogDescription>
+            <DialogDescription>{t('upload.chooseZipFolderFile')}</DialogDescription>
           </DialogHeader>
 
           <Tabs value={mode} onValueChange={(v) => setMode(v as UploadMode)}>
             <TabsList className="w-full">
-              <TabsTrigger value="zip" className="flex-1 gap-1.5">
-                <FileUp className="size-4" />
-                ZIP
-              </TabsTrigger>
-              <TabsTrigger value="folder" className="flex-1 gap-1.5">
-                <FolderOpen className="size-4" />
-                文件夹
-              </TabsTrigger>
-              <TabsTrigger value="file" className="flex-1 gap-1.5">
-                <FileCode className="size-4" />
-                单个文件
-              </TabsTrigger>
+              {modeCards.map((card) => (
+                <TabsTrigger key={card.mode} value={card.mode} className="flex-1 gap-1.5">
+                  <card.icon className="size-4" />
+                  {card.label}
+                </TabsTrigger>
+              ))}
             </TabsList>
 
-            <TabsContent value="zip" className="pt-4">
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
-                  <Upload className="size-6 text-muted-foreground" />
-                </div>
-                <p className="text-center text-sm text-muted-foreground">
-                  选择已构建的 ZIP 文件上传
-                </p>
-                <Button onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="size-4" />
-                  {t('versions.chooseFile')}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".zip"
-                  className="hidden"
-                  onChange={handleZipFile}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="folder" className="pt-4">
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
-                  <FolderOpen className="size-6 text-muted-foreground" />
-                </div>
-                <p className="text-center text-sm text-muted-foreground">
-                  选择已构建的 dist 文件夹，自动打包为 ZIP 上传
-                </p>
-                <Button onClick={() => folderInputRef.current?.click()}>
-                  <FolderOpen className="size-4" />
-                  选择文件夹
-                </Button>
-                <input
-                  ref={folderInputRef}
-                  type="file"
-                  className="hidden"
-                  onChange={handleFolder}
-                  {...{ webkitdirectory: '' }}
-                />
-              </div>
-            </TabsContent>
-
-            <TabsContent value="file" className="pt-4">
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="flex size-12 items-center justify-center rounded-lg bg-muted">
-                  <FileCode className="size-6 text-muted-foreground" />
-                </div>
-                <p className="text-center text-sm text-muted-foreground">
-                  选择单个 HTML 文件，自动包装为 ZIP 上传
-                </p>
-                <Button onClick={() => singleFileInputRef.current?.click()}>
-                  <FileCode className="size-4" />
-                  选择文件
-                </Button>
-                <input
-                  ref={singleFileInputRef}
-                  type="file"
-                  accept=".html,.htm"
-                  className="hidden"
-                  onChange={handleSingleFile}
-                />
-              </div>
-            </TabsContent>
+            {modeCards.map((card) => (
+              <TabsContent key={card.mode} value={card.mode} className="pt-4">
+                <button
+                  type="button"
+                  className="group flex min-h-36 w-full flex-col items-start gap-5 rounded-lg border bg-card/90 p-4 text-left transition-colors hover:border-primary/35 hover:bg-muted/25 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                  onClick={card.onSelect}
+                >
+                  <div className="flex w-full items-start justify-between gap-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="flex size-11 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground transition-colors group-hover:text-primary">
+                        <card.icon className="size-5" />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-center gap-2 font-medium">
+                          {card.label}
+                          {card.badge ? (
+                            <Badge variant="secondary" className="rounded-md">
+                              {card.badge}
+                            </Badge>
+                          ) : null}
+                        </span>
+                        <span className="mt-1 block text-sm text-muted-foreground">
+                          {card.description}
+                        </span>
+                      </span>
+                    </div>
+                    <span className="shrink-0 rounded-lg border bg-background p-2 text-muted-foreground transition-colors group-hover:text-primary">
+                      <Upload className="size-4" />
+                    </span>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-sm font-medium text-primary">
+                    {card.actionLabel}
+                  </span>
+                </button>
+              </TabsContent>
+            ))}
           </Tabs>
+
+          <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+            <div className="rounded-lg border bg-muted/25 p-2">
+              <Archive className="mb-1 size-3.5" />
+              {t('upload.hintStatic')}
+            </div>
+            <div className="rounded-lg border bg-muted/25 p-2">
+              <ShieldCheck className="mb-1 size-3.5" />
+              {t('upload.hintDetect')}
+            </div>
+            <div className="rounded-lg border bg-muted/25 p-2">
+              <CheckCircle2 className="mb-1 size-3.5" />
+              {t('upload.hintPreview')}
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip"
+            className="hidden"
+            onChange={handleZipFile}
+          />
+          <input
+            ref={folderInputRef}
+            type="file"
+            className="hidden"
+            onChange={handleFolder}
+            {...{ webkitdirectory: '' }}
+          />
+          <input
+            ref={singleFileInputRef}
+            type="file"
+            accept=".html,.htm"
+            className="hidden"
+            onChange={handleSingleFile}
+          />
         </DialogContent>
       </Dialog>
     );
   }
 
   // ─── Progress / status view ───
-  const flowSteps: UploadStep[] = ['creating_task', 'uploading_raw', 'processing', 'done'];
-
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>
-            {upload.step === 'done' ? '上传完成' : upload.step === 'error' ? '上传失败' : '正在上传...'}
-          </DialogTitle>
-          <DialogDescription>{upload.message}</DialogDescription>
+          <div
+            className={cn(
+              'mb-2 flex size-10 items-center justify-center rounded-lg border',
+              upload.step === 'done'
+                ? 'bg-green-500/10 text-green-600'
+                : upload.step === 'error'
+                  ? 'bg-destructive/10 text-destructive'
+                  : 'bg-primary/10 text-primary',
+            )}
+          >
+            {upload.step === 'done' ? (
+              <CheckCircle2 className="size-5" />
+            ) : upload.step === 'error' ? (
+              <XCircle className="size-5" />
+            ) : (
+              <Loader2 className="size-5 animate-spin" />
+            )}
+          </div>
+          <DialogTitle>{t(titleKey)}</DialogTitle>
+          {descriptionKey[upload.step] && (
+            <DialogDescription>{t(descriptionKey[upload.step])}</DialogDescription>
+          )}
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 py-2">
-          {/* Progress bar */}
-          <Progress value={progressPercent} className="h-2" />
+        <div className="flex flex-col gap-4 py-2">
+          <div className="rounded-lg border bg-muted/25 p-3">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                  {t('upload.progress')}
+                </div>
+                {selectedArtifact ? (
+                  <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    <span className="truncate font-medium">{selectedArtifact.name}</span>
+                    <span className="text-muted-foreground">
+                      {t(`upload.modeLabel.${selectedArtifact.mode}`)} / {formatUploadSize(selectedArtifact.size)}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              <span className="text-xs text-muted-foreground">{progressPercent}%</span>
+            </div>
+            <Progress value={progressPercent} className="h-2" />
+          </div>
 
-          {/* Step list */}
-          <div className="flex flex-col gap-2">
-            {flowSteps.map((step) => {
-              const idx = flowSteps.indexOf(step);
-              const curIdx = flowSteps.indexOf(upload.step === 'zipping' ? 'creating_task' : upload.step);
-              const isCompleted = upload.step === 'done' || idx < curIdx;
-              const isCurrent = upload.step === 'done'
-                ? false
-                : idx === curIdx;
-              const isWaiting = !isCompleted && !isCurrent && upload.step !== 'error';
-              const isErrored = upload.step === 'error' && !isCompleted && idx === (curIdx >= 0 ? curIdx : 0);
+          <div className="grid gap-2">
+            {UPLOAD_FLOW_STEPS.map((step) => {
+              const { completed: isCompleted, current: isCurrent, errored: isErrored } = getUploadStepState(
+                step,
+                upload.step,
+                upload.failedStep,
+              );
 
               return (
-                <div key={step} className="flex items-center gap-3 text-sm">
-                  {isCompleted ? (
-                    <CheckCircle2 className="size-4 text-green-500" />
-                  ) : isErrored ? (
-                    <XCircle className="size-4 text-destructive" />
-                  ) : isCurrent ? (
-                    <Loader2 className="size-4 animate-spin text-primary" />
-                  ) : (
-                    <Circle className="size-4 text-muted-foreground/40" />
+                <div
+                  key={step}
+                  className={cn(
+                    'flex items-center gap-3 rounded-lg border px-3 py-2 text-sm',
+                    isCurrent && 'border-primary/30 bg-primary/5',
+                    isErrored && 'border-destructive/30 bg-destructive/10',
+                    isCompleted && 'bg-muted/20',
                   )}
+                >
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-full border bg-background">
+                    {isCompleted ? (
+                      <CheckCircle2 className="size-4 text-green-500" />
+                    ) : isErrored ? (
+                      <XCircle className="size-4 text-destructive" />
+                    ) : isCurrent ? (
+                      <Loader2 className="size-4 animate-spin text-primary" />
+                    ) : (
+                      <Circle className="size-4 text-muted-foreground/40" />
+                    )}
+                  </span>
                   <span
                     className={
                       isErrored
@@ -348,24 +421,37 @@ export function UploadVersionDialog({
             })}
           </div>
 
-          {/* Error detail */}
-          {upload.step === 'error' && upload.errorMessage && (
-            <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
-              {upload.errorMessage}
+          {upload.step === 'error' && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="font-medium">
+                {upload.failureReason && t(`upload.failure.${upload.failureReason}`)}
+              </div>
+              {upload.errorDetail && (
+                <div className="mt-1 text-xs opacity-80">{upload.errorDetail}</div>
+              )}
+            </div>
+          )}
+          {upload.step === 'done' && (
+            <div className="rounded-lg border border-green-500/25 bg-green-500/10 p-3 text-sm text-green-700">
+              {t('upload.doneNext')}
             </div>
           )}
         </div>
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {upload.step === 'done' && (
-            <Button onClick={handleClose}>{t('common.confirm')}</Button>
+            <Button className="w-full sm:w-auto" onClick={handleClose}>
+              {t('common.confirm')}
+            </Button>
           )}
           {upload.step === 'error' && (
             <>
-              <Button variant="outline" onClick={handleClose}>
-                关闭
+              <Button variant="outline" className="w-full sm:w-auto" onClick={handleClose}>
+                {t('upload.close')}
               </Button>
-              <Button onClick={handleReset}>重试</Button>
+              <Button className="w-full sm:w-auto" onClick={handleReset}>
+                {t('upload.chooseAnother')}
+              </Button>
             </>
           )}
         </div>

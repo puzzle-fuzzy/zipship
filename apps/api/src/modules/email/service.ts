@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { config } from "@zipship/config";
+import { logger } from "../../lib/logger";
 
 export interface EmailServiceOptions {
   /** Base URL of the console app, used to build invitation links */
@@ -65,21 +66,41 @@ export class EmailService {
         `,
       });
     } else {
-      // ─── Console fallback ───
-      console.log("");
-      console.log("═══════════════════════════════════════════");
-      console.log("  📧 Invitation Email (development mode)");
-      console.log("═══════════════════════════════════════════");
-      console.log(`  To:           ${input.to}`);
-      console.log(`  Invited by:   ${input.invitedBy}`);
-      console.log(`  Organization: ${input.organizationName}`);
-      console.log(`  Role:         ${input.role}`);
-      console.log(`  Link:         ${inviteLink}`);
-      console.log("───────────────────────────────────────────");
-      console.log("  To send real emails, set SMTP env vars:");
-      console.log("  ZIPSHIP_SMTP_HOST, _USER, _PASS, _FROM");
-      console.log("═══════════════════════════════════════════");
-      console.log("");
+      // SMTP not configured — emit a structured log line instead of sending.
+      // Set ZIPSHIP_SMTP_HOST/_USER/_PASS/_FROM to send real email.
+      logger.warn("invitation email not sent (smtp not configured — dev fallback)", {
+        to: input.to,
+        invitedBy: input.invitedBy,
+        organization: input.organizationName,
+        role: input.role,
+        inviteLink,
+      });
+    }
+  }
+
+  async sendPasswordReset(input: { to: string; resetUrl: string }): Promise<void> {
+    if (this.transporter) {
+      await this.transporter.sendMail({
+        from: config.smtp.from,
+        to: input.to,
+        subject: "Reset your ZipShip password",
+        html: `
+          <div style="font-family:sans-serif;max-width:480px;margin:0 auto;">
+            <h2>Reset your password</h2>
+            <p>Use the link below to set a new password. It expires in 30 minutes.</p>
+            <a href="${input.resetUrl}"
+               style="display:inline-block;padding:12px 24px;background:#000;color:#fff;border-radius:8px;text-decoration:none;margin:16px 0;">
+              Reset password
+            </a>
+            <p style="color:#888;font-size:12px;">If you didn't request this, you can ignore this email.</p>
+          </div>
+        `,
+      });
+    } else {
+      logger.warn("password reset email not sent (smtp not configured — dev fallback)", {
+        to: input.to,
+        resetUrl: input.resetUrl,
+      });
     }
   }
 }

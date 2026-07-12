@@ -1,6 +1,6 @@
 import { treaty } from "@elysia/eden";
 import { beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { createApp } from "../../apps/api/src/index";

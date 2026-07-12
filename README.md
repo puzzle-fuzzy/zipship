@@ -13,7 +13,7 @@ ZipShip 是一个面向静态产物的私有化部署工具。第一阶段聚焦
 ```txt
 apps/api              Bun + Elysia API
 apps/web-shell        Web 控制台外壳
-apps/desktop-shell    Electron 桌面外壳
+apps/desktop-shell    Tauri 桌面外壳
 packages/console-app  Web / Desktop 共用 React 页面
 packages/db           Drizzle schema / migrations
 packages/deploy-core  产物检测、hash、发布、回滚核心逻辑
@@ -24,7 +24,7 @@ packages/storage      文件系统与未来对象存储抽象
 
 - API：`http://localhost:3001`
 - Web Shell：`http://127.0.0.1:5173`
-- Desktop Shell renderer：`http://127.0.0.1:5174`
+- Desktop Shell renderer：`http://localhost:1420`（Tauri 约定端口；完整桌面开发用 `bun --filter @zipship/desktop-shell tauri dev`，需 Rust 工具链）
 
 `dev:api`、`dev:web`、`dev:desktop` 都会在启动前清理对应端口；Web 与 Desktop 的 Vite 配置使用 `strictPort`，端口被占用时不会自动漂移。
 

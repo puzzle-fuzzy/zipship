@@ -17,10 +17,9 @@ import { Label } from '../../components/ui/label';
 interface ProfileEditDialogProps {
   open: boolean;
   onClose: () => void;
-  apiBaseUrl: string;
 }
 
-export function ProfileEditDialog({ open, onClose, apiBaseUrl }: ProfileEditDialogProps) {
+export function ProfileEditDialog({ open, onClose }: ProfileEditDialogProps) {
   const { t } = useTranslation();
   const { user, updateProfile } = useAuthStore();
   const [name, setName] = useState(user?.name ?? '');
@@ -31,7 +30,7 @@ export function ProfileEditDialog({ open, onClose, apiBaseUrl }: ProfileEditDial
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await updateProfile(apiBaseUrl, name.trim());
+      await updateProfile(name.trim());
       toast.success('Profile updated');
       onClose();
     } catch (err) {

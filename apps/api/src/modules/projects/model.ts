@@ -25,6 +25,9 @@ export const projectModel = t.Object({
   slug: t.String(),
   description: t.Nullable(t.String()),
   currentReleaseId: t.Nullable(t.String()),
+  spaFallback: t.Boolean(),
+  cachePolicy: t.Union([t.Literal("standard"), t.Literal("aggressive")]),
+  customDomains: t.Array(t.String()),
   status: t.Literal("active"),
   visibility: t.Literal("private"),
   createdBy: t.String(),
@@ -48,6 +51,9 @@ export const updateProjectBodyModel = t.Object({
   name: t.Optional(t.String({ minLength: 1 })),
   slug: t.Optional(t.String({ minLength: 1 })),
   description: t.Optional(t.Nullable(t.String())),
+  spaFallback: t.Optional(t.Boolean()),
+  cachePolicy: t.Optional(t.Union([t.Literal("standard"), t.Literal("aggressive")])),
+  customDomains: t.Optional(t.Array(t.String())),
 });
 
 export const projectErrorModel = t.Object({

@@ -1,116 +1,46 @@
-import { Archive, Box, Ellipsis, FolderOpen, Plus } from 'lucide-react';
+import { Code2, Database, Eye, LayoutGrid, ScrollText, Settings } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import { NavLink, useLocation } from 'react-router';
 import { useTranslation } from '../../i18n';
-import { Button } from '../../components/ui/button';
-import { Separator } from '../../components/ui/separator';
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '../../components/ui/sidebar';
 
-interface Project {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
+interface NavItem {
+  to: string;
+  labelKey: string;
+  icon: LucideIcon;
 }
 
-interface AppSidebarProps {
-  projects: Project[];
-  selectedProjectId: string | null;
-  onSelectProject: (project: Project) => void;
-  onShowProjects: () => void;
-  onCreateProject: () => void;
-}
+/** Top-level navigation: the sidebar is a pure menu (no project list). */
+const NAV_ITEMS: NavItem[] = [
+  { to: '/app/projects', labelKey: 'nav.projects', icon: LayoutGrid },
+  { to: '/app/logs', labelKey: 'nav.logs', icon: ScrollText },
+  { to: '/app/storage', labelKey: 'nav.storage', icon: Database },
+];
 
-export function AppSidebar({
-  projects,
-  selectedProjectId,
-  onSelectProject,
-  onShowProjects,
-  onCreateProject,
-}: AppSidebarProps) {
+export function AppSidebar() {
   const { t } = useTranslation();
-  const activeProjects = projects.filter((p) => p.status !== "archived");
-  const archivedCount = projects.length - activeProjects.length;
+  const { pathname } = useLocation();
+
+  // A route is active when we're on it or a child of it (e.g. a project detail
+  // under /app/projects).
+  const isActive = (to: string) => pathname === to || pathname.startsWith(`${to}/`);
 
   return (
-    <Sidebar collapsible="none" className="hidden md:flex p-2">
-      <SidebarMenu>
-        <SidebarMenuItem className="flex items-center gap-2 pt-14">
-          <SidebarMenuButton
-            tooltip={t('app.projects')}
-            onClick={onShowProjects}
-            className="min-w-8"
-          >
-            <FolderOpen />
-            <span>{t('app.projects')}</span>
-          </SidebarMenuButton>
-          <Button
-            size="icon"
-            className="size-8 group-data-[collapsible=icon]:opacity-0"
-            variant="outline"
-            onClick={onCreateProject}
-            aria-label={t('app.newProject')}
-          >
-            <Plus />
-            <span className="sr-only">{t('app.newProject')}</span>
-          </Button>
-        </SidebarMenuItem>
-      </SidebarMenu>
-
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-1">
-              <SidebarGroupLabel>{t('app.projects')}</SidebarGroupLabel>
-              {projects.map((project) => (
-                <SidebarMenuItem key={project.id}>
-                  <SidebarMenuButton
-                    isActive={selectedProjectId === project.id}
-                    onClick={() => onSelectProject(project)}
-                  >
-                    <Box />
-                    <span>{project.name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-              {projects.length === 0 && (
-                <SidebarMenuItem>
-                  <SidebarMenuButton disabled>
-                    <Box />
-                    <span>{t('app.noProjects')}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              )}
-
-              <Separator />
-
-              <SidebarGroupLabel>{t('app.archive')}</SidebarGroupLabel>
-              <SidebarMenuItem>
-                <SidebarMenuButton disabled={archivedCount === 0}>
-                  <Archive />
-                  <span>{t('app.archivedProjects')}</span>
-                  {archivedCount > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">{archivedCount}</span>
-                  )}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton className="text-sidebar-foreground/70">
-                  <Ellipsis className="text-sidebar-foreground/70" />
-                  <span>{t('app.more')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-    </Sidebar>
+    <nav className="zip-rail" aria-label={t('app.name')}>
+      {NAV_ITEMS.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          data-active={isActive(item.to)}
+          className="zip-rail-item"
+          title={t(item.labelKey)}
+        >
+          <item.icon className="size-4" />
+        </NavLink>
+      ))}
+      <span className="my-1 h-px w-full bg-foreground/25" />
+      <span className="zip-rail-item opacity-45"><Eye className="size-4" /></span>
+      <span className="zip-rail-item opacity-45"><Code2 className="size-4" /></span>
+      <span className="zip-rail-item opacity-45"><Settings className="size-4" /></span>
+    </nav>
   );
 }

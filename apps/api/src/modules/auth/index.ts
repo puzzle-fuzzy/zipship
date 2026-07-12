@@ -3,10 +3,15 @@ import { authModels, AuthServiceError } from "./model";
 import { AuthService } from "./service";
 import type { AuthRepository } from "./service";
 import type { AuditRepository } from "../audit/service";
+import type { EmailService } from "../email/service";
 
 export interface AuthModuleOptions {
   authRepository: AuthRepository;
   auditRepository: AuditRepository;
+  emailService?: EmailService;
+  hashToken: (token: string) => Promise<string>;
+  randomToken: () => string;
+  appBaseUrl: string;
 }
 
 export function authModule(options: AuthModuleOptions) {
@@ -18,6 +23,10 @@ export function authModule(options: AuthModuleOptions) {
     createRefreshToken: () => crypto.randomUUID(),
     hashRefreshToken,
     now: () => new Date(),
+    emailService: options.emailService,
+    hashToken: options.hashToken,
+    randomToken: options.randomToken,
+    appBaseUrl: options.appBaseUrl,
   });
 
   return new Elysia({ name: "auth", prefix: "/_api/auth" })
@@ -125,6 +134,38 @@ export function authModule(options: AuthModuleOptions) {
         response: {
           200: "Auth.MeSuccess",
           401: "Auth.Error",
+        },
+      },
+    )
+    .post(
+      "/password-reset/request",
+      async ({ body }) => {
+        // Always ok — never reveals whether the email exists.
+        return auth.requestPasswordReset(body);
+      },
+      {
+        body: "Auth.PasswordResetRequest",
+        response: {
+          200: "Auth.Ok",
+        },
+      },
+    )
+    .post(
+      "/password-reset/confirm",
+      async ({ body, status }) => {
+        const result = await auth.confirmPasswordReset(body);
+        if (result instanceof AuthServiceError) {
+          const statusCode = result.code === "EXPIRED_TOKEN" ? 410 : 400;
+          return status(statusCode, { code: result.code });
+        }
+        return result;
+      },
+      {
+        body: "Auth.PasswordResetConfirm",
+        response: {
+          200: "Auth.Ok",
+          400: "Auth.Error",
+          410: "Auth.Error",
         },
       },
     );

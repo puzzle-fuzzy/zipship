@@ -1,3 +1,4 @@
+import { parseBearerToken } from "../../lib/auth";
 import { CurrentReleaseLinkError, ReleaseArtifactNotFoundError } from "@zipship/storage";
 import { AuditService } from "../audit/service";
 import type { AuditRepository } from "../audit/service";
@@ -30,18 +31,6 @@ import type {
   DeploymentResult,
 } from "./model";
 
-interface CurrentSession {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  session: {
-    id: string;
-    clientType: "web" | "desktop";
-    expiresAt: string;
-  };
-}
 
 export interface DeploymentMutationResult {
   deployment: Deployment;
@@ -67,14 +56,14 @@ export interface DeploymentsRepository {
     operatorId: string;
     message: string | null;
     now: Date;
-  }): Promise<DeploymentMutationResult>;
+  }): Promise<DeploymentMutationResult | null>;
   rollbackRelease(input: {
     projectId: string;
     releaseId: string;
     operatorId: string;
     message: string | null;
     now: Date;
-  }): Promise<DeploymentMutationResult>;
+  }): Promise<DeploymentMutationResult | null>;
 }
 
 export interface DeploymentsServiceOptions {
@@ -88,6 +77,10 @@ export interface DeploymentsServiceOptions {
   now: () => Date;
   permissions?: PermissionService;
   storage: DeploymentStorage;
+  /** Optional webhook dispatch (fires on publish/rollback). */
+  webhookService?: {
+    dispatch(event: string, input: { organizationId: string; payload: unknown }): Promise<void>;
+  };
 }
 
 export class DeploymentsService {
@@ -132,6 +125,7 @@ export class DeploymentsService {
       message: normalizeMessage(body.message),
       now: this.options.now(),
     });
+    if (!result) return new DeploymentProjectNotFoundError();
 
     await this.audit.record({
       organizationId: project.organizationId,
@@ -148,6 +142,15 @@ export class DeploymentsService {
       },
       ipAddress: null,
       userAgent: null,
+    });
+
+    await this.options.webhookService?.dispatch("release.published", {
+      organizationId: project.organizationId,
+      payload: {
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: result.deployment.id,
+      },
     });
 
     return result;
@@ -209,6 +212,7 @@ export class DeploymentsService {
       message: normalizeMessage(body.message),
       now: this.options.now(),
     });
+    if (!result) return new DeploymentProjectNotFoundError();
 
     await this.audit.record({
       organizationId: project.organizationId,
@@ -225,6 +229,15 @@ export class DeploymentsService {
       },
       ipAddress: null,
       userAgent: null,
+    });
+
+    await this.options.webhookService?.dispatch("release.rolled_back", {
+      organizationId: project.organizationId,
+      payload: {
+        projectId: project.id,
+        releaseId: release.id,
+        deploymentId: result.deployment.id,
+      },
     });
 
     return result;
@@ -260,11 +273,4 @@ export class DeploymentsService {
 function normalizeMessage(message: string | null | undefined): string | null {
   const normalized = message?.trim();
   return normalized ? normalized : null;
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(" ");
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-  return token;
 }

@@ -6,9 +6,9 @@ import { copyDirectoryContents, createReleaseStoragePath, createUploadWorkDir } 
 import { ReleaseProcessingError } from "./model";
 import type { ReleaseProcessingResult } from "./model";
 import type { UploadTask } from "../uploads/model";
-import type { Project } from "../projects/model";
 import type { UploadsRepository } from "../uploads/service";
 import type { ProjectsRepository } from "../projects/service";
+import type { RuntimeCheckResult } from "../runtime-check/service";
 
 export interface ReleaseProcessingRepository {
   completeProcessedRelease(input: {
@@ -31,6 +31,14 @@ export interface ReleaseProcessingRepository {
     detectResult: Record<string, unknown>;
     finishedAt: Date;
   }): Promise<UploadTask>;
+  attachRuntimeCheck(input: {
+    releaseId: string;
+    runtimeCheck: Record<string, unknown>;
+  }): Promise<void>;
+}
+
+export interface RuntimeCheckRunner {
+  check(url: string): Promise<RuntimeCheckResult>;
 }
 
 export interface ReleaseProcessingServiceOptions {
@@ -39,6 +47,8 @@ export interface ReleaseProcessingServiceOptions {
   releaseProcessingRepository: ReleaseProcessingRepository;
   storagePaths: StoragePaths;
   now: () => Date;
+  runtimeCheck?: RuntimeCheckRunner;
+  runtimePreviewBaseUrl?: string;
 }
 
 export class ReleaseProcessingService {
@@ -101,6 +111,12 @@ export class ReleaseProcessingService {
         finishedAt: this.options.now(),
       });
 
+      await this.attachRuntimeCheckIfConfigured({
+        releaseId: uploadTask.releaseId,
+        projectSlug: project.slug,
+        releaseHash: result.manifest.releaseHash,
+      });
+
       return {
         status: "ready",
       };
@@ -135,4 +151,59 @@ export class ReleaseProcessingService {
       await rm(workDir, { recursive: true, force: true });
     }
   }
+
+  private async attachRuntimeCheckIfConfigured(input: {
+    releaseId: string;
+    projectSlug: string;
+    releaseHash: string;
+  }): Promise<void> {
+    if (!this.options.runtimeCheck || !this.options.runtimePreviewBaseUrl) return;
+
+    const previewUrl = buildPreviewUrl(this.options.runtimePreviewBaseUrl, input.projectSlug, input.releaseHash);
+
+    try {
+      const runtimeCheck = await this.options.runtimeCheck.check(previewUrl);
+      await this.options.releaseProcessingRepository.attachRuntimeCheck({
+        releaseId: input.releaseId,
+        runtimeCheck: runtimeCheck as unknown as Record<string, unknown>,
+      });
+    } catch (error) {
+      await this.options.releaseProcessingRepository.attachRuntimeCheck({
+        releaseId: input.releaseId,
+        runtimeCheck: buildRuntimeCheckFailure(previewUrl, this.options.now(), error),
+      });
+    }
+  }
+}
+
+function buildPreviewUrl(baseUrl: string, projectSlug: string, releaseHash: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}/_sites/${projectSlug}/${releaseHash}/`;
+}
+
+function buildRuntimeCheckFailure(
+  url: string,
+  checkedAt: Date,
+  error: unknown,
+): Record<string, unknown> {
+  return {
+    level: "failed",
+    checkedAt: checkedAt.toISOString(),
+    url,
+    snapshot: {
+      finalUrl: url,
+      status: null,
+      bodyText: "",
+      consoleMessages: [],
+      failedRequests: [],
+    },
+    items: [
+      {
+        level: "failed",
+        code: "RUNTIME_CHECK_FAILED",
+        details: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      },
+    ],
+  };
 }

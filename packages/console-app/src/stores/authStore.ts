@@ -1,6 +1,12 @@
-import { createApiClient } from '@zipship/api-client';
-import type { RuntimeAdapter } from '@zipship/runtime';
 import { create } from 'zustand';
+import {
+  authHeaders,
+  clearAccessToken,
+  getAccessToken,
+  getApi,
+  setAccessToken,
+} from '../api/client';
+import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
 
 interface AuthUser {
   id: string;
@@ -15,11 +21,11 @@ interface AuthState {
   user: AuthUser | null;
   refreshToken: string | null;
 
-  initSession: (apiBaseUrl: string) => Promise<void>;
-  login: (apiBaseUrl: string, email: string, password: string, clientType: 'web' | 'desktop') => Promise<void>;
-  register: (apiBaseUrl: string, name: string, email: string, password: string) => Promise<void>;
+  initSession: () => Promise<void>;
+  login: (email: string, password: string, clientType: 'web' | 'desktop') => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (apiBaseUrl: string, name: string) => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -27,15 +33,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   refreshToken: null,
 
-  initSession: async (apiBaseUrl: string) => {
-    const saved = sessionStorage.getItem('zipship_refresh_token');
+  initSession: async () => {
+    const saved = getAccessToken();
     if (!saved) {
       set({ status: 'login' });
       return;
     }
 
     try {
-      const api = createApiClient(apiBaseUrl);
+      const api = getApi();
       const res = await api._api.auth.me.get({
         headers: { authorization: `Bearer ${saved}` },
       });
@@ -43,75 +49,74 @@ export const useAuthStore = create<AuthState>((set) => ({
       if (res.data) {
         set({ status: 'authenticated', user: res.data.user, refreshToken: saved });
       } else {
-        sessionStorage.removeItem('zipship_refresh_token');
+        clearAccessToken();
         set({ status: 'login' });
       }
     } catch {
-      sessionStorage.removeItem('zipship_refresh_token');
+      clearAccessToken();
       set({ status: 'login' });
     }
   },
 
-  login: async (apiBaseUrl, email, password, clientType) => {
-    const api = createApiClient(apiBaseUrl);
+  login: async (email, password, clientType) => {
+    const api = getApi();
     const res = await api._api.auth.login.post({ email, password, clientType });
 
     if (res.error) {
-      const status = res.status;
-      const errPayload = res.error.value as Record<string, unknown> | undefined;
-      const code = errPayload?.code as string | undefined;
-      console.error('Login failed', { status, code, errPayload, error: res.error });
-      const messages: Record<string, string> = {
-        INVALID_CREDENTIALS: 'Invalid email or password',
-        UNAUTHORIZED: 'Invalid email or password',
-        VALIDATION_ERROR: 'Validation failed — check your input',
-      };
-      throw new Error(messages[code ?? ''] ?? `Login failed (${code ?? `HTTP ${status}`})`);
+      throw mapApiError(res, {
+        codes: {
+          INVALID_CREDENTIALS: API_ERROR_MESSAGES.INVALID_CREDENTIALS,
+          UNAUTHORIZED: API_ERROR_MESSAGES.INVALID_CREDENTIALS,
+          VALIDATION_ERROR: API_ERROR_MESSAGES.VALIDATION_ERROR,
+        },
+        fallback: 'Login failed',
+      });
     }
 
     if (!res.data) {
       throw new Error('Login failed — empty response');
     }
 
-    const data = res.data!;
-    sessionStorage.setItem('zipship_refresh_token', data.session.refreshToken);
+    const data = res.data;
+    setAccessToken(data.session.refreshToken);
     set({ status: 'authenticated', user: data.user, refreshToken: data.session.refreshToken });
   },
 
-  register: async (apiBaseUrl, name, email, password) => {
-    const api = createApiClient(apiBaseUrl);
+  register: async (name, email, password) => {
+    const api = getApi();
     const res = await api._api.auth.register.post({ name, email, password, clientType: 'web' });
 
     if (res.error) {
-      const code = (res.error.value as { code?: string })?.code;
-      const messages: Record<string, string> = {
-        DUPLICATE_EMAIL: 'An account with this email already exists',
-        INVALID_INPUT: 'Please check your input and try again',
-      };
-      throw new Error(messages[code ?? ''] ?? 'Registration failed');
+      throw mapApiError(res, {
+        codes: {
+          DUPLICATE_EMAIL: API_ERROR_MESSAGES.DUPLICATE_EMAIL,
+          INVALID_INPUT: API_ERROR_MESSAGES.INVALID_INPUT,
+        },
+        fallback: 'Registration failed',
+      });
     }
 
     // Registration already returns a session — no separate login call needed.
-    sessionStorage.setItem('zipship_refresh_token', res.data!.session.refreshToken);
+    setAccessToken(res.data.session.refreshToken);
     set({
       status: 'authenticated',
-      user: res.data!.user,
-      refreshToken: res.data!.session.refreshToken,
+      user: res.data.user,
+      refreshToken: res.data.session.refreshToken,
     });
   },
 
   logout: () => {
-    sessionStorage.removeItem('zipship_refresh_token');
+    clearAccessToken();
     set({ status: 'login', user: null, refreshToken: null });
   },
 
-  updateProfile: async (apiBaseUrl, name) => {
-    const { refreshToken } = useAuthStore.getState();
-    if (!refreshToken) throw new Error('Not authenticated');
-    const api = createApiClient(apiBaseUrl);
+  updateProfile: async (name) => {
+    const token = getAccessToken();
+    if (!token) throw new Error('Not authenticated');
+    const api = getApi();
     const res = await api._api.auth.me.patch(
       { name },
-      { headers: { authorization: `Bearer ${refreshToken}` } },
+      { headers: { authorization: `Bearer ${token}` } },
     );
     if (res.error) throw new Error('Failed to update profile');
     if (res.data) {
@@ -119,3 +124,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 }));
+
+// Re-exported for components that still want a typed header builder.
+export { authHeaders };

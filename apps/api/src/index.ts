@@ -1,6 +1,10 @@
 import { cors } from "@elysiajs/cors";
 import { Elysia } from "elysia";
+import { sql } from "drizzle-orm";
+import { stat } from "fs/promises";
 import { config } from "@zipship/config";
+import { logger } from "./lib/logger";
+import { createSessionOrApiTokenLookup } from "./lib/auth";
 import {
   createProjectSitePath,
   createStoragePaths,
@@ -10,7 +14,7 @@ import {
 import { authModule, hashRefreshToken } from "./modules/auth";
 import { EmailService } from "./modules/email/service";
 import { membersModule } from "./modules/members";
-import { invitationsModule } from "./modules/invitations";
+import { invitationAcceptModule, invitationsModule } from "./modules/invitations";
 import { deploymentsModule } from "./modules/deployments";
 import { organizationsModule } from "./modules/organizations";
 import { projectDetailsModule, projectsModule } from "./modules/projects";
@@ -31,6 +35,13 @@ import { createDrizzleDeploymentsRepository } from "./modules/deployments/drizzl
 import { createDrizzleReleaseProcessingRepository } from "./modules/release-processing/drizzle-repository";
 import { createDrizzleMembersRepository } from "./modules/members/drizzle-repository";
 import { createDrizzleInvitationsRepository } from "./modules/invitations/drizzle-repository";
+import { createDrizzleApiTokensRepository } from "./modules/api-tokens/drizzle-repository";
+import { apiTokensModule } from "./modules/api-tokens";
+import { createDrizzleWebhooksRepository } from "./modules/webhooks/drizzle-repository";
+import { webhooksModule } from "./modules/webhooks";
+import { WebhookService } from "./modules/webhooks/service";
+import { RuntimeCheckService } from "./modules/runtime-check/service";
+import { PlaywrightPageProbe } from "./modules/runtime-check/playwright-probe";
 
 export interface CreateAppOptions {
   storageRoot?: string;
@@ -38,24 +49,44 @@ export interface CreateAppOptions {
   db?: NodePgDatabase<any>;
 }
 
-export function createApp(options: CreateAppOptions = {}) {
-  const db = options.db ?? getDb();
-  const storagePaths = createStoragePaths(options.storageRoot ?? config.storageRoot);
+/**
+ * Dependency container — all repositories, services, and storage handles bound
+ * to a single DB connection. Extracted from the HTTP app so tests (and future
+ * background jobs) can use the wired services without spinning up Elysia.
+ */
+export interface Container {
+  db: NodePgDatabase<any>;
+  storageRoot: string;
+  storagePaths: ReturnType<typeof createStoragePaths>;
+  deploymentStorage: {
+    createProjectSitePath: (projectSlug: string) => string;
+    ensureReleaseArtifactReady: typeof ensureReleaseArtifactReady;
+    switchCurrentReleaseLink: typeof switchCurrentReleaseLink;
+  };
+  authRepository: ReturnType<typeof createDrizzleAuthRepository>;
+  auditRepository: ReturnType<typeof createDrizzleAuditRepository>;
+  organizationsRepository: ReturnType<typeof createDrizzleOrganizationsRepository>;
+  projectsRepository: ReturnType<typeof createDrizzleProjectsRepository>;
+  releasesRepository: ReturnType<typeof createDrizzleReleasesRepository>;
+  uploadsRepository: ReturnType<typeof createDrizzleUploadsRepository>;
+  sitePreviewRepository: ReturnType<typeof createDrizzleSitePreviewRepository>;
+  deploymentsRepository: ReturnType<typeof createDrizzleDeploymentsRepository>;
+  releaseProcessingRepository: ReturnType<typeof createDrizzleReleaseProcessingRepository>;
+  membersRepositoryForModule: ReturnType<typeof createDrizzleMembersRepository>;
+  invitationsRepository: ReturnType<typeof createDrizzleInvitationsRepository>;
+  apiTokensRepository: ReturnType<typeof createDrizzleApiTokensRepository>;
+  webhooksRepository: ReturnType<typeof createDrizzleWebhooksRepository>;
+  emailService: EmailService;
+}
 
-  const api = new Elysia()
-    .use(cors({
-      origin: /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization"],
-      maxAge: 86400,
-    }))
-    .get("/_health", () => ({
-      status: "ok",
-      service: "zipship-api",
-    }));
+export function createContainer(options: CreateAppOptions = {}): Container {
+  const db = options.db ?? getDb();
+  const storageRoot = options.storageRoot ?? config.storageRoot;
+  const storagePaths = createStoragePaths(storageRoot);
 
   const deploymentStorage = {
-    createProjectSitePath: (projectSlug: string) => createProjectSitePath(storagePaths, projectSlug),
+    createProjectSitePath: (projectSlug: string) =>
+      createProjectSitePath(storagePaths, projectSlug),
     ensureReleaseArtifactReady,
     switchCurrentReleaseLink,
   };
@@ -71,10 +102,107 @@ export function createApp(options: CreateAppOptions = {}) {
   const releaseProcessingRepository = createDrizzleReleaseProcessingRepository(db);
   const membersRepositoryForModule = createDrizzleMembersRepository(db);
   const invitationsRepository = createDrizzleInvitationsRepository(db);
-  const emailService = new EmailService({ appBaseUrl: "http://localhost:5173" });
+  const apiTokensRepository = createDrizzleApiTokensRepository(db);
+  const webhooksRepository = createDrizzleWebhooksRepository(db);
+  const emailService = new EmailService({ appBaseUrl: config.appUrl });
 
-  const sessionRepository = authRepository;
+  return {
+    db,
+    storageRoot,
+    storagePaths,
+    deploymentStorage,
+    authRepository,
+    auditRepository,
+    organizationsRepository,
+    projectsRepository,
+    releasesRepository,
+    uploadsRepository,
+    sitePreviewRepository,
+    deploymentsRepository,
+    releaseProcessingRepository,
+    membersRepositoryForModule,
+    invitationsRepository,
+    apiTokensRepository,
+    webhooksRepository,
+    emailService,
+  };
+}
+
+/**
+ * Compose the full Elysia control-plane app from a wired container.
+ * Return type is intentionally inferred so `type App = typeof app` carries the
+ * full route contract for the Eden Treaty client.
+ */
+export function composeHttpApp(
+  container: Container,
+  options: { exposeTestRoutes?: boolean } = {},
+) {
+  const {
+    db,
+    storageRoot,
+    deploymentStorage,
+    authRepository,
+    auditRepository,
+    organizationsRepository,
+    projectsRepository,
+    releasesRepository,
+    uploadsRepository,
+    sitePreviewRepository,
+    deploymentsRepository,
+    releaseProcessingRepository,
+    membersRepositoryForModule,
+    invitationsRepository,
+    apiTokensRepository,
+    webhooksRepository,
+    emailService,
+  } = container;
+
+  // `authRepository` backs sessions; `organizationsRepository` backs membership.
+  // Resource modules get a composite that also accepts API tokens (CLI/CI),
+  // while auth-only endpoints (me/logout/password-reset) keep the raw repository.
+  const sessionRepository = createSessionOrApiTokenLookup(authRepository, apiTokensRepository);
   const membersRepository = organizationsRepository;
+
+  // Shared webhook service: CRUD routes + dispatch hook for deployments.
+  const webhookService = new WebhookService({
+    repository: webhooksRepository,
+    sessionRepository,
+    organizationsRepository,
+    hashRefreshToken,
+    now: () => new Date(),
+  });
+  const runtimeCheck = config.runtimeCheckEnabled
+    ? new RuntimeCheckService({
+        probe: new PlaywrightPageProbe(),
+        now: () => new Date(),
+      })
+    : undefined;
+
+  const api = new Elysia()
+    .use(cors({
+      origin: /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+      maxAge: 86400,
+    }))
+    .get("/_health", async ({ set }) => {
+      const checks: Record<string, "ok" | "fail"> = {};
+      try {
+        await db.execute(sql`SELECT 1`);
+        checks.db = "ok";
+      } catch {
+        checks.db = "fail";
+      }
+      try {
+        await stat(storageRoot);
+        checks.storage = "ok";
+      } catch {
+        checks.storage = "fail";
+      }
+      const ok = Object.values(checks).every((v) => v === "ok");
+      set.status = ok ? 200 : 503;
+      return { status: ok ? "ok" : "degraded", service: "zipship-api", checks };
+    });
 
   if (options.exposeTestRoutes) {
     api.get("/_api/__test/auditLogs", async () => ({
@@ -95,22 +223,32 @@ export function createApp(options: CreateAppOptions = {}) {
   }
 
   return api
-    .use(authModule({ authRepository, auditRepository }))
-    .use(organizationsModule({ organizationsRepository, sessionRepository, hashRefreshToken }))
+    .use(authModule({
+      authRepository,
+      auditRepository,
+      emailService,
+      hashToken: (token: string) => hashRefreshToken(token),
+      randomToken: () => crypto.randomUUID(),
+      appBaseUrl: config.appUrl,
+    }))
+    .use(organizationsModule({ organizationsRepository, sessionRepository, hashRefreshToken, auditRepository }))
     .use(projectsModule({ sessionRepository, membersRepository, projectsRepository, hashRefreshToken }))
     .use(projectDetailsModule({ sessionRepository, membersRepository, projectsRepository, hashRefreshToken }))
     .use(releasesModule({ sessionRepository, projectsRepository, membersRepository, releasesRepository, hashRefreshToken }))
     .use(deploymentsModule({
       sessionRepository, projectsRepository, membersRepository, releasesRepository,
       deploymentsRepository, auditRepository, hashRefreshToken, storage: deploymentStorage,
+      webhookService,
     }))
     .use(uploadsModule({
       sessionRepository, projectsRepository, membersRepository, uploadsRepository,
-      hashRefreshToken, storagePaths,
+      hashRefreshToken, storagePaths: container.storagePaths,
     }))
     .use(uploadDetailsModule({
       sessionRepository, projectsRepository, membersRepository, uploadsRepository,
-      releaseProcessingRepository, hashRefreshToken, storagePaths,
+      releaseProcessingRepository, hashRefreshToken, storagePaths: container.storagePaths,
+      runtimeCheck,
+      runtimePreviewBaseUrl: config.apiUrl,
     }))
     .use(sitePreviewModule({ repository: sitePreviewRepository }))
     .use(membersModule({
@@ -125,11 +263,42 @@ export function createApp(options: CreateAppOptions = {}) {
       organizationsRepository,
       invitationsRepository,
       emailService,
-      invitationBaseUrl: "http://localhost:5173",
+      invitationBaseUrl: config.appUrl,
       hashRefreshToken,
       hashToken: (token: string) => hashRefreshToken(token),
       randomToken: () => crypto.randomUUID(),
+    }))
+    .use(invitationAcceptModule({
+      sessionRepository,
+      authRepository,
+      organizationsRepository,
+      invitationsRepository,
+      emailService,
+      invitationBaseUrl: config.appUrl,
+      hashRefreshToken,
+      hashToken: (token: string) => hashRefreshToken(token),
+      randomToken: () => crypto.randomUUID(),
+    }))
+    .use(apiTokensModule({
+      sessionRepository,
+      apiTokensRepository,
+      hashRefreshToken,
+      hashToken: (token: string) => hashRefreshToken(token),
+      randomToken: () => crypto.randomUUID(),
+    }))
+    .use(webhooksModule({
+      repository: webhooksRepository,
+      sessionRepository,
+      organizationsRepository,
+      hashRefreshToken,
     }));
+}
+
+/** Build the default app: wire a container, then compose HTTP over it. */
+export function createApp(options: CreateAppOptions = {}) {
+  return composeHttpApp(createContainer(options), {
+    exposeTestRoutes: options.exposeTestRoutes,
+  });
 }
 
 export const app = createApp();
@@ -138,5 +307,5 @@ export type App = typeof app;
 
 if (import.meta.main) {
   app.listen(config.apiPort);
-  console.log(`ZipShip API listening on http://localhost:${config.apiPort}`);
+  logger.info("zipship api listening", { port: config.apiPort });
 }

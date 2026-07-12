@@ -11,3 +11,12 @@ export function createWebRuntime(): RuntimeAdapter {
     },
   };
 }
+
+export function createDesktopRuntime(): RuntimeAdapter {
+  return {
+    kind: "desktop",
+    async openExternal(url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    },
+  };
+}

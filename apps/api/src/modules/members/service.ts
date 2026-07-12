@@ -1,5 +1,18 @@
-import type { MembersHeaders, MembersParams, MemberList } from "./model";
-import { MembersUnauthorizedError, MembersForbiddenError } from "./model";
+import { parseBearerToken } from "../../lib/auth";
+import type {
+  MembersHeaders,
+  MembersParams,
+  MemberTargetParams,
+  ChangeRoleBody,
+  MemberList,
+} from "./model";
+import {
+  MembersUnauthorizedError,
+  MembersForbiddenError,
+  MembersNotFoundError,
+  MembersLastOwnerError,
+  type MembersServiceError,
+} from "./model";
 import type { AuthRepository } from "../auth/service";
 import { PermissionService } from "../permissions/service";
 import type { MemberRole } from "../permissions/model";
@@ -13,6 +26,13 @@ export interface MembersRepository {
     role: string;
     joinedAt: string;
   }>>;
+  updateMemberRole(input: {
+    organizationId: string;
+    userId: string;
+    role: string;
+  }): Promise<void>;
+  removeMember(input: { organizationId: string; userId: string }): Promise<void>;
+  countOwners(organizationId: string): Promise<number>;
 }
 
 export interface MembersServiceOptions {
@@ -36,7 +56,7 @@ export class MembersService {
   async list(
     headers: MembersHeaders,
     params: MembersParams,
-  ): Promise<MemberList | MembersUnauthorizedError | MembersForbiddenError> {
+  ): Promise<MemberList | MembersServiceError> {
     const session = await this.findSession(headers);
     if (!session) return new MembersUnauthorizedError();
 
@@ -51,6 +71,75 @@ export class MembersService {
     return { members };
   }
 
+  /** Change a member's role. Owner/admin only; demoting the last owner is blocked. */
+  async changeRole(
+    headers: MembersHeaders,
+    params: MemberTargetParams,
+    body: ChangeRoleBody,
+  ): Promise<{ ok: true } | MembersServiceError> {
+    const session = await this.findSession(headers);
+    if (!session) return new MembersUnauthorizedError();
+
+    const actor = await this.options.organizationsRepository.findMembership({
+      organizationId: params.organizationId,
+      userId: session.user.id,
+    });
+    if (!actor) return new MembersForbiddenError();
+    if (!this.permissions.can(actor.role, "manage_member")) return new MembersForbiddenError();
+
+    const target = await this.options.organizationsRepository.findMembership({
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+    if (!target) return new MembersNotFoundError();
+
+    // Never strip the org of its last owner. (body.role can't be "owner".)
+    if (target.role === "owner") {
+      const owners = await this.options.membersRepository.countOwners(params.organizationId);
+      if (owners <= 1) return new MembersLastOwnerError();
+    }
+
+    await this.options.membersRepository.updateMemberRole({
+      organizationId: params.organizationId,
+      userId: params.userId,
+      role: body.role,
+    });
+    return { ok: true };
+  }
+
+  /** Remove a member. Owner/admin only; removing the last owner is blocked. */
+  async remove(
+    headers: MembersHeaders,
+    params: MemberTargetParams,
+  ): Promise<{ ok: true } | MembersServiceError> {
+    const session = await this.findSession(headers);
+    if (!session) return new MembersUnauthorizedError();
+
+    const actor = await this.options.organizationsRepository.findMembership({
+      organizationId: params.organizationId,
+      userId: session.user.id,
+    });
+    if (!actor) return new MembersForbiddenError();
+    if (!this.permissions.can(actor.role, "manage_member")) return new MembersForbiddenError();
+
+    const target = await this.options.organizationsRepository.findMembership({
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+    if (!target) return new MembersNotFoundError();
+
+    if (target.role === "owner") {
+      const owners = await this.options.membersRepository.countOwners(params.organizationId);
+      if (owners <= 1) return new MembersLastOwnerError();
+    }
+
+    await this.options.membersRepository.removeMember({
+      organizationId: params.organizationId,
+      userId: params.userId,
+    });
+    return { ok: true };
+  }
+
   private async findSession(headers: MembersHeaders) {
     const token = parseBearerToken(headers.authorization);
     if (!token) return null;
@@ -60,11 +149,4 @@ export class MembersService {
       this.options.now(),
     );
   }
-}
-
-function parseBearerToken(authorization: string | undefined): string | null {
-  if (!authorization) return null;
-  const [scheme, token] = authorization.split(" ");
-  if (scheme.toLowerCase() !== "bearer" || !token) return null;
-  return token;
 }
