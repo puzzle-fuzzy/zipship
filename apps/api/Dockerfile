@@ -31,10 +31,10 @@ FROM oven/bun:1-debian AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 # Bun reads these from the environment; the compose file / orchestrator sets them.
-ENV ZIPSHIP_API_PORT=3001
+ENV ZIPSHIP_API_PORT=5006
 
 COPY --from=build /app/apps/api/dist/index.js ./index.js
 
-EXPOSE 3001
+EXPOSE 5006
 # The bundled entry is self-contained; no node_modules needed at runtime.
 CMD ["bun", "run", "index.js"]

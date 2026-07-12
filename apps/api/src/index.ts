@@ -40,6 +40,8 @@ import { apiTokensModule } from "./modules/api-tokens";
 import { createDrizzleWebhooksRepository } from "./modules/webhooks/drizzle-repository";
 import { webhooksModule } from "./modules/webhooks";
 import { WebhookService } from "./modules/webhooks/service";
+import { RuntimeCheckService } from "./modules/runtime-check/service";
+import { PlaywrightPageProbe } from "./modules/runtime-check/playwright-probe";
 
 export interface CreateAppOptions {
   storageRoot?: string;
@@ -169,6 +171,12 @@ export function composeHttpApp(
     hashRefreshToken,
     now: () => new Date(),
   });
+  const runtimeCheck = config.runtimeCheckEnabled
+    ? new RuntimeCheckService({
+        probe: new PlaywrightPageProbe(),
+        now: () => new Date(),
+      })
+    : undefined;
 
   const api = new Elysia()
     .use(cors({
@@ -239,6 +247,8 @@ export function composeHttpApp(
     .use(uploadDetailsModule({
       sessionRepository, projectsRepository, membersRepository, uploadsRepository,
       releaseProcessingRepository, hashRefreshToken, storagePaths: container.storagePaths,
+      runtimeCheck,
+      runtimePreviewBaseUrl: config.apiUrl,
     }))
     .use(sitePreviewModule({ repository: sitePreviewRepository }))
     .use(membersModule({

@@ -21,7 +21,7 @@ import {
   InvitationsWrongUserError,
 } from "./model";
 import type { AuthRepository } from "../auth/service";
-import { EmailService } from "../email/service";
+import type { EmailService } from "../email/service";
 import { PermissionService } from "../permissions/service";
 import type { MemberRole } from "../permissions/model";
 
@@ -70,7 +70,7 @@ export interface InvitationsServiceOptions {
     findOrganizationById(organizationId: string): Promise<{ name: string } | null>;
   };
   invitationsRepository: InvitationsRepository;
-  emailService?: EmailService;
+  emailService?: Pick<EmailService, "sendInvitation">;
   hashRefreshToken: (token: string) => Promise<string>;
   hashToken: (token: string) => Promise<string>;
   randomToken: () => string;

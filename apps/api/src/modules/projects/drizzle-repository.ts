@@ -37,6 +37,9 @@ export function createDrizzleProjectsRepository(
         slug: project.slug,
         description: project.description,
         currentReleaseId: project.currentReleaseId,
+        spaFallback: project.spaFallback,
+        cachePolicy: project.cachePolicy as "standard" | "aggressive",
+        customDomains: project.customDomains,
         status: "active" as const,
         visibility: "private" as const,
         createdBy: project.createdBy,
@@ -75,6 +78,9 @@ export function createDrizzleProjectsRepository(
       if (input.name !== undefined) updates.name = input.name;
       if (input.slug !== undefined) updates.slug = input.slug;
       if (input.description !== undefined) updates.description = input.description;
+      if (input.spaFallback !== undefined) updates.spaFallback = input.spaFallback;
+      if (input.cachePolicy !== undefined) updates.cachePolicy = input.cachePolicy;
+      if (input.customDomains !== undefined) updates.customDomains = input.customDomains;
 
       const [project] = await db.update(schema.projects)
         .set(updates)
@@ -99,6 +105,9 @@ function toProject(record: typeof schema.projects.$inferSelect) {
     slug: record.slug,
     description: record.description,
     currentReleaseId: record.currentReleaseId,
+    spaFallback: record.spaFallback,
+    cachePolicy: record.cachePolicy as "standard" | "aggressive",
+    customDomains: record.customDomains,
     status: "active" as const,
     visibility: "private" as const,
     createdBy: record.createdBy,

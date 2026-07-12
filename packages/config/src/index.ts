@@ -10,14 +10,16 @@ import { z } from "zod";
  * local development works with an empty `.env`.
  */
 const ConfigSchema = z.object({
-  apiPort: z.coerce.number().int().positive().max(65535).default(3001),
+  apiPort: z.coerce.number().int().positive().max(65535).default(5006),
+  apiUrl: z.string().url().default("http://localhost:5006"),
   databaseUrl: z
     .string()
     .min(1)
     .default("postgres://zipship:zipship@localhost:5432/zipship"),
   storageRoot: z.string().min(1).default("/srv/zipship"),
   /** Public base URL of the web console — invitation links, email templates. */
-  appUrl: z.string().url().default("http://localhost:5173"),
+  appUrl: z.string().url().default("http://localhost:4015"),
+  runtimeCheckEnabled: z.preprocess((value) => value === "true" || value === true, z.boolean()).default(false),
   smtp: z.object({
     host: z.string().default(""),
     port: z.coerce.number().int().positive().max(65535).default(587),
@@ -29,9 +31,11 @@ const ConfigSchema = z.object({
 
 export const config = ConfigSchema.parse({
   apiPort: process.env.ZIPSHIP_API_PORT,
+  apiUrl: process.env.ZIPSHIP_API_URL,
   databaseUrl: process.env.DATABASE_URL,
   storageRoot: process.env.ZIPSHIP_STORAGE_ROOT,
   appUrl: process.env.ZIPSHIP_APP_URL,
+  runtimeCheckEnabled: process.env.ZIPSHIP_RUNTIME_CHECK_ENABLED,
   smtp: {
     host: process.env.ZIPSHIP_SMTP_HOST,
     port: process.env.ZIPSHIP_SMTP_PORT,

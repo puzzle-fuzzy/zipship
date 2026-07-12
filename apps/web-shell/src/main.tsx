@@ -8,6 +8,6 @@ if (!root) {
   throw new Error("Missing #root element");
 }
 
-const apiBaseUrl = import.meta.env.VITE_ZIPSHIP_API_BASE_URL ?? 'http://localhost:3001';
+const apiBaseUrl = import.meta.env.VITE_ZIPSHIP_API_BASE_URL ?? 'http://localhost:5006';
 
 createRoot(root).render(<ConsoleApp runtime={createWebRuntime()} apiBaseUrl={apiBaseUrl} />);

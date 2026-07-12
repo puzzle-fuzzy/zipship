@@ -6,6 +6,7 @@ import type { StoragePaths } from "@zipship/storage";
 import { ReleaseProcessingError } from "../release-processing/model";
 import { ReleaseProcessingService } from "../release-processing/service";
 import type { ReleaseProcessingRepository } from "../release-processing/service";
+import type { RuntimeCheckRunner } from "../release-processing/service";
 import type { AuthRepository } from "../auth/service";
 import type { ProjectsRepository } from "../projects/service";
 import type { OrganizationsRepository } from "../organizations/service";
@@ -65,6 +66,8 @@ export function uploadsModule(options: UploadsModuleOptions) {
 
 export function uploadDetailsModule(options: UploadsModuleOptions & {
   releaseProcessingRepository: ReleaseProcessingRepository;
+  runtimeCheck?: RuntimeCheckRunner;
+  runtimePreviewBaseUrl?: string;
 }) {
   const uploads = new UploadsService({
     sessionRepository: options.sessionRepository,
@@ -82,6 +85,8 @@ export function uploadDetailsModule(options: UploadsModuleOptions & {
     releaseProcessingRepository: options.releaseProcessingRepository,
     storagePaths: options.storagePaths,
     now: () => new Date(),
+    runtimeCheck: options.runtimeCheck,
+    runtimePreviewBaseUrl: options.runtimePreviewBaseUrl,
   });
 
   return new Elysia({ name: "upload-details", prefix: "/_api/uploads/:uploadTaskId" })

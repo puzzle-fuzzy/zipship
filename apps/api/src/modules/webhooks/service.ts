@@ -31,6 +31,11 @@ export interface WebhooksRepository {
   ): Promise<Array<{ url: string; secret: string }>>;
 }
 
+export type WebhookFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
 export interface WebhookServiceOptions {
   repository: WebhooksRepository;
   sessionRepository: Pick<AuthRepository, "findSessionByRefreshTokenHash">;
@@ -42,7 +47,7 @@ export interface WebhookServiceOptions {
   /** HMAC sign (payload, secret) → hex. Injectable for tests. */
   sign?: (payload: string, secret: string) => string;
   /** HTTP fetch. Injectable for tests. */
-  fetch?: typeof fetch;
+  fetch?: WebhookFetch;
   randomSecret?: () => string;
   permissions?: PermissionService;
 }
@@ -54,7 +59,7 @@ export class WebhookServiceError {
 export class WebhookService {
   private readonly permissions: PermissionService;
   private readonly sign: (payload: string, secret: string) => string;
-  private readonly fetchFn: typeof fetch;
+  private readonly fetchFn: WebhookFetch;
   private readonly randomSecret: () => string;
 
   constructor(private readonly options: WebhookServiceOptions) {

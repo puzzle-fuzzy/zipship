@@ -153,6 +153,63 @@ describe("runDetection", () => {
       makeFile("assets/empty.js", ""),
     ];
     const result = await runDetection(files);
+    expect(result.insights?.seo.checks.some((i) => i.code === "SEO_TITLE_MISSING")).toBe(true);
     expect(result.level).toBe("pass");
+  });
+
+  test("extracts artifact insights from index.html", async () => {
+    const files = [
+      makeFile(
+        "index.html",
+        [
+          "<!doctype html>",
+          '<html lang="en">',
+          "<head>",
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+          "<title>ZipShip Demo</title>",
+          '<meta name="description" content="A small deployable demo site for ZipShip.">',
+          '<link rel="canonical" href="https://example.com/">',
+          '<meta property="og:title" content="ZipShip Demo">',
+          '<meta property="og:description" content="A small deployable demo site for ZipShip.">',
+          '<link rel="icon" href="./favicon.ico">',
+          "</head>",
+          '<body><div id="root"></div><script type="module" src="./assets/index.js"></script></body>',
+          "</html>",
+        ].join(""),
+      ),
+      makeFile("assets/index.js", "console.log('ok');"),
+      makeFile("assets/style.css", "body { color: #111; }"),
+      makeFile("favicon.ico", "ico"),
+    ];
+
+    const result = await runDetection(files);
+
+    expect(result.level).toBe("pass");
+    expect(result.insights?.entrypoint).toBe("index.html");
+    expect(result.insights?.html.title).toBe("ZipShip Demo");
+    expect(result.insights?.html.description).toBe("A small deployable demo site for ZipShip.");
+    expect(result.insights?.html.hasViewport).toBe(true);
+    expect(result.insights?.html.hasCanonical).toBe(true);
+    expect(result.insights?.html.hasOpenGraph).toBe(true);
+    expect(result.insights?.html.hasFavicon).toBe(true);
+    expect(result.insights?.html.lang).toBe("en");
+    expect(result.insights?.assets.byType.javascript.count).toBe(1);
+    expect(result.insights?.assets.byType.css.count).toBe(1);
+    expect(result.insights?.seo.score).toBe(100);
+    expect(result.insights?.seo.checks.every((check) => check.status === "pass")).toBe(true);
+  });
+
+  test("reports SEO warnings without downgrading deployability", async () => {
+    const files = [
+      makeFile("index.html", "<html><head><title></title></head><body>Hello</body></html>"),
+    ];
+
+    const result = await runDetection(files);
+
+    expect(result.level).toBe("pass");
+    expect(result.insights?.seo.score).toBeLessThan(100);
+    expect(result.insights?.seo.checks.some((check) => check.code === "SEO_TITLE_MISSING")).toBe(true);
+    expect(result.insights?.seo.checks.some((check) => check.code === "SEO_DESCRIPTION_MISSING")).toBe(true);
+    expect(result.insights?.seo.checks.some((check) => check.code === "SEO_VIEWPORT_MISSING")).toBe(true);
   });
 });

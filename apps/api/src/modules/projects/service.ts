@@ -43,6 +43,9 @@ export interface ProjectsRepository {
     name?: string;
     slug?: string;
     description?: string | null;
+    spaFallback?: boolean;
+    cachePolicy?: "standard" | "aggressive";
+    customDomains?: string[];
     now: Date;
   }): Promise<Project>;
   deleteProject(projectId: string): Promise<void>;
@@ -155,6 +158,9 @@ export class ProjectsService {
         name: body.name !== undefined ? normalizeName(body.name) ?? undefined : undefined,
         slug: body.slug !== undefined ? normalizeSlug(body.slug) ?? undefined : undefined,
         description: body.description !== undefined ? normalizeDescription(body.description) : undefined,
+        spaFallback: body.spaFallback,
+        cachePolicy: body.cachePolicy,
+        customDomains: body.customDomains !== undefined ? normalizeCustomDomains(body.customDomains) : undefined,
         now: this.options.now(),
       }),
     };
@@ -227,4 +233,14 @@ function normalizeSlug(slug: string): string | null {
 function normalizeDescription(description: string | null | undefined): string | null {
   const normalized = description?.trim();
   return normalized ? normalized : null;
+}
+
+function normalizeCustomDomains(domains: string[]): string[] {
+  return Array.from(
+    new Set(
+      domains
+        .map((domain) => domain.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
 }

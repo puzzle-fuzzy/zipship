@@ -1,18 +1,27 @@
-import { Code2, History, Plus, Settings, Users } from "lucide-react";
+import { Code2, History, Rocket, Settings, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
 import { getApiBaseUrl } from "../api/client";
 import { useTranslation } from "../i18n";
-import { Button } from "../components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { InviteMemberDialog } from "../features/members/InviteMemberDialog";
 import { UploadVersionDialog } from "../features/versions/UploadVersionDialog";
 import { ProjectActivityTab } from "../features/project-detail/ProjectActivityTab";
+import { ProjectDetailHeader } from "../features/project-detail/ProjectDetailHeader";
+import { ProjectDeploymentsTab } from "../features/project-detail/ProjectDeploymentsTab";
 import { ProjectMembersTab } from "../features/project-detail/ProjectMembersTab";
+import { ProjectPreviewPanel } from "../features/project-detail/ProjectPreviewPanel";
+import { ProjectProductionPanel } from "../features/project-detail/ProjectProductionPanel";
 import { ProjectSettingsTab } from "../features/project-detail/ProjectSettingsTab";
 import { ProjectVersionsTab } from "../features/project-detail/ProjectVersionsTab";
+import { buildSitePreviewUrl } from "../features/project-detail/projectPreviewUrls";
+import { getProjectRolePermissions } from "../features/project-detail/rolePermissions";
+import { findUploadedReleaseHighlight } from "../features/project-detail/uploadResultHighlight";
+import { useProjectReleasePolling } from "../features/project-detail/useProjectReleasePolling";
 import type { Release } from "../stores/projectsStore";
+
+type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "activity";
 
 /**
  * Project detail orchestrator: resolves the project from the store, fetches its
@@ -24,8 +33,19 @@ export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
   const { user, refreshToken } = useAuthStore();
-  const { projects, releases, fetchReleases, publishRelease, deleteProject, updateProject } =
-    useProjectsStore();
+  const {
+    projects,
+    releases,
+    releaseErrors,
+    deployments,
+    deploymentErrors,
+    fetchReleases,
+    fetchDeployments,
+    publishRelease,
+    rollbackRelease,
+    deleteProject,
+    updateProject,
+  } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading, updateMemberRole, removeMember } =
     useMembersStore();
   const { logs: auditLogs, loading: auditLoading, error: auditError, fetchAudit } =
@@ -33,13 +53,26 @@ export function ProjectDetailPage() {
   const [showUpload, setShowUpload] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<ProjectDetailTab>("versions");
+  const [pendingUploadAnchorId, setPendingUploadAnchorId] = useState<string | null | undefined>(undefined);
+  const [highlightedReleaseId, setHighlightedReleaseId] = useState<string | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
   const projectReleases = projectId ? releases[projectId] ?? [] : [];
+  const releaseError = projectId ? releaseErrors[projectId] ?? null : null;
+  const projectDeployments = projectId ? deployments[projectId] ?? [] : [];
+  const deploymentError = projectId ? deploymentErrors[projectId] ?? null : null;
+  const { releasePollingEnabled, startReleasePolling } = useProjectReleasePolling({
+    projectId,
+    refreshToken,
+    releases: projectReleases,
+    fetchReleases,
+  });
 
   useEffect(() => {
     if (projectId && refreshToken) {
       fetchReleases(projectId).finally(() => setLoading(false));
+      fetchDeployments(projectId);
     }
   }, [projectId, refreshToken]);
 
@@ -50,6 +83,17 @@ export function ProjectDetailPage() {
     }
   }, [projectId, refreshToken]);
 
+  useEffect(() => {
+    if (pendingUploadAnchorId === undefined) return;
+
+    const nextHighlightId = findUploadedReleaseHighlight(projectReleases, pendingUploadAnchorId);
+    if (!nextHighlightId) return;
+
+    setActiveTab("versions");
+    setHighlightedReleaseId(nextHighlightId);
+    setPendingUploadAnchorId(undefined);
+  }, [pendingUploadAnchorId, projectReleases]);
+
   if (!project) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -59,29 +103,64 @@ export function ProjectDetailPage() {
   }
 
   const currentMember = members.find((m) => m.userId === user?.id);
-  const canManage = currentMember?.role === "owner" || currentMember?.role === "admin";
+  const permissions = getProjectRolePermissions(currentMember);
   const activeRelease = projectReleases.find((r) => r.status === "active");
+  const previewRelease =
+    activeRelease ??
+    projectReleases.find((release) => release.status === "ready") ??
+    projectReleases.find((release) => release.releaseHash) ??
+    null;
+  const previewUrl = previewRelease
+    ? buildSitePreviewUrl(getApiBaseUrl(), project.slug, previewRelease.releaseHash)
+    : null;
 
   const handlePreview = (release: Release) => {
-    const base = getApiBaseUrl().replace(/\/+$/, "");
-    window.open(`${base}/_sites/${project.slug}/${release.releaseHash}/`, "_blank");
+    window.open(buildSitePreviewUrl(getApiBaseUrl(), project.slug, release.releaseHash), "_blank");
+  };
+
+  const handleRetryReleases = () => {
+    if (!projectId) return;
+    setLoading(true);
+    fetchReleases(projectId).finally(() => setLoading(false));
+  };
+
+  const handleRetryDeployments = () => {
+    if (!projectId) return;
+    fetchDeployments(projectId);
+  };
+
+  const handleUploadCompleted = () => {
+    setPendingUploadAnchorId(projectReleases[0]?.id ?? null);
+    startReleasePolling();
+    void fetchReleases(project.id);
   };
 
   return (
-    <section className="flex flex-col gap-4 py-6">
-      {/* ─── Project Header ─── */}
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">{project.name}</h1>
-          <p className="text-sm text-muted-foreground">/{project.slug}</p>
-        </div>
-        <Button onClick={() => setShowUpload(true)}>
-          <Plus className="size-4" />
-          {t("toast.publishVersion")}
-        </Button>
-      </div>
+    <section className="flex flex-col gap-5 py-6">
+      <ProjectDetailHeader
+        project={project}
+        activeRelease={activeRelease}
+        canUpload={permissions.canUploadRelease}
+        onOpenActiveRelease={handlePreview}
+        onUploadClick={() => setShowUpload(true)}
+      />
 
-      <Tabs defaultValue="versions">
+      <ProjectProductionPanel
+        projectSlug={project.slug}
+        activeRelease={activeRelease}
+        canUpload={permissions.canUploadRelease}
+        onUploadClick={() => setShowUpload(true)}
+      />
+
+      <ProjectPreviewPanel
+        release={previewRelease}
+        previewUrl={previewUrl}
+        canUpload={permissions.canUploadRelease}
+        onOpenPreview={handlePreview}
+        onUploadClick={() => setShowUpload(true)}
+      />
+
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ProjectDetailTab)}>
         <TabsList variant="line">
           <TabsTrigger value="versions">
             <Code2 className="size-4" />
@@ -90,6 +169,10 @@ export function ProjectDetailPage() {
           <TabsTrigger value="members">
             <Users className="size-4" />
             {t("members.title")}
+          </TabsTrigger>
+          <TabsTrigger value="deployments">
+            <Rocket className="size-4" />
+            {t("deployments.title")}
           </TabsTrigger>
           <TabsTrigger value="settings">
             <Settings className="size-4" />
@@ -105,10 +188,17 @@ export function ProjectDetailPage() {
           <ProjectVersionsTab
             releases={projectReleases}
             loading={loading}
-            canManage={canManage}
+            error={releaseError}
+            autoRefreshing={releasePollingEnabled}
+            highlightedReleaseId={highlightedReleaseId}
+            canUpload={permissions.canUploadRelease}
+            canDeploy={permissions.canDeployRelease}
+            canDelete={permissions.canManageProject}
             onUploadClick={() => setShowUpload(true)}
+            onRetry={handleRetryReleases}
             onPreview={handlePreview}
-            onPublish={(release) => publishRelease(project.id, release.id)}
+            onPublish={(release, message) => publishRelease(project.id, release.id, message)}
+            onRollback={(release, message) => rollbackRelease(project.id, release.id, message)}
           />
         </TabsContent>
 
@@ -116,7 +206,7 @@ export function ProjectDetailPage() {
           <ProjectMembersTab
             members={members}
             loading={membersLoading}
-            canManage={canManage}
+            canManage={permissions.canManageMembers}
             currentUserId={user?.id ?? null}
             onInviteClick={() => setShowInvite(true)}
             onChangeRole={(member, role) =>
@@ -126,11 +216,21 @@ export function ProjectDetailPage() {
           />
         </TabsContent>
 
+        <TabsContent value="deployments" className="pt-3">
+          <ProjectDeploymentsTab
+            deployments={projectDeployments}
+            releases={projectReleases}
+            loading={loading}
+            error={deploymentError}
+            onRetry={handleRetryDeployments}
+          />
+        </TabsContent>
+
         <TabsContent value="settings" className="pt-3">
           <ProjectSettingsTab
             project={project}
             activeRelease={activeRelease}
-            canManage={canManage}
+            canManage={permissions.canManageProject}
             onSave={(input) => updateProject(project.id, input).then(() => fetchReleases(project.id))}
             onDelete={() => deleteProject(project.id)}
           />
@@ -150,7 +250,7 @@ export function ProjectDetailPage() {
         open={showUpload}
         onClose={() => setShowUpload(false)}
         projectId={project.id}
-        onUploaded={() => fetchReleases(project.id)}
+        onUploaded={handleUploadCompleted}
       />
 
       <InviteMemberDialog

@@ -6,6 +6,7 @@ import {
   MembersNotFoundError,
   MembersLastOwnerError,
 } from "../../apps/api/src/modules/members/model";
+import type { MemberRole } from "../../apps/api/src/modules/permissions/model";
 
 const NOW = new Date("2026-07-05T00:00:00.000Z");
 const ORG_ID = "org-1";
@@ -27,7 +28,7 @@ function isErr(v: unknown) {
  */
 function build(overrides: {
   actorRole?: "owner" | "admin" | "developer" | "deployer" | "viewer" | null;
-  targetRole?: string | null;
+  targetRole?: MemberRole | null;
   ownerCount?: number;
 } = {}) {
   const actorRole = overrides.actorRole === undefined ? "owner" : overrides.actorRole;

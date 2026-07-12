@@ -35,14 +35,14 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      ZIPSHIP_API_PORT: "3001"
+      ZIPSHIP_API_PORT: "5006"
       DATABASE_URL: postgres://zipship:zipship@postgres:5432/zipship
       ZIPSHIP_STORAGE_ROOT: /data/sites
       ZIPSHIP_APP_URL: http://localhost:8080
     volumes:
       - sites:/data/sites
     ports:
-      - "3001:3001"
+      - "5006:5006"
 
   # ── Access plane: nginx (only with --profile prod) ───────────────────────
   nginx:
@@ -53,12 +53,14 @@ services:
     environment:
       ZIPSHIP_LISTEN_PORT: "8080"
       ZIPSHIP_MAX_BODY_SIZE: "500m"
-      ZIPSHIP_API_UPSTREAM: "http://api:3001"
+      ZIPSHIP_API_UPSTREAM: "http://api:5006"
       ZIPSHIP_SITES_ROOT: "/data/sites"
       ZIPSHIP_CONSOLE_ROOT: "/var/www/console"
+      ZIPSHIP_PROJECTS_CONF: "/etc/nginx/zipship-projects.conf"
     volumes:
       # template + renderer (renderer runs on container start via entrypoint.d)
       - ../nginx/zipship.conf:/etc/nginx/zipship.conf.template:ro
+      - ../nginx/projects.conf:/etc/nginx/zipship-projects.conf:ro
       - ../nginx/render.sh:/docker-entrypoint.d/40-render-zipship.sh:ro
       # shared static artifacts
       - sites:/data/sites:ro

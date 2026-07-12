@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { WebhookService, WebhookServiceError } from "../../apps/api/src/modules/webhooks/service";
+import type { WebhookFetch } from "../../apps/api/src/modules/webhooks/service";
 
 const NOW = new Date("2026-07-05T00:00:00.000Z");
 const ORG_ID = "org-1";
@@ -20,7 +21,7 @@ function build(overrides: {
   targets?: Array<{ url: string; secret: string }>;
   lookupThrows?: boolean;
   sign?: (payload: string, secret: string) => string;
-  fetchImpl?: typeof fetch;
+  fetchImpl?: WebhookFetch;
   randomSecret?: () => string;
 } = {}) {
   const actorRole = overrides.actorRole === undefined ? "owner" : overrides.actorRole;
@@ -41,16 +42,16 @@ function build(overrides: {
     },
   };
 
-  const defaultFetch: typeof fetch = async () => new Response("ok", { status: 200 });
+  const defaultFetch: WebhookFetch = async () => new Response("ok", { status: 200 });
   // Wrap the inner impl so we always record, even when a test overrides fetch
   // (e.g. to throw / 500) — otherwise the override bypasses recording entirely.
   const innerFetch = overrides.fetchImpl ?? defaultFetch;
-  const recordingFetch: typeof fetch = async (url, init) => {
+  const recordingFetch: WebhookFetch = async (url, init) => {
     fetchCalls.push({
-      url: url as string,
-      method: init?.method,
-      headers: init?.headers ?? {},
-      body: init?.body ?? "",
+      url: String(url),
+      method: init?.method ?? "GET",
+      headers: headersToRecord(init?.headers),
+      body: typeof init?.body === "string" ? init.body : "",
     });
     return innerFetch(url, init);
   };
@@ -308,10 +309,10 @@ describe("webhooks service > dispatch", () => {
         { url: "https://broken.example.com/hook", secret: "s1" },
         { url: "https://ok.example.com/hook", secret: "s2" },
       ],
-      fetchImpl: (async (url: any) => {
-        if (url.includes("broken")) throw new Error("network down");
+      fetchImpl: async (url) => {
+        if (String(url).includes("broken")) throw new Error("network down");
         return new Response("ok", { status: 200 });
-      }) as typeof fetch,
+      },
     });
 
     await service.dispatch("release.published", {
@@ -329,7 +330,7 @@ describe("webhooks service > dispatch", () => {
   test("treats a non-2xx response as a soft failure (no throw)", async () => {
     const { service } = build({
       targets: [{ url: "https://a.example.com/hook", secret: "s1" }],
-      fetchImpl: (async () => new Response("nope", { status: 500 })) as typeof fetch,
+      fetchImpl: async () => new Response("nope", { status: 500 }),
     });
 
     await expect(
@@ -340,3 +341,10 @@ describe("webhooks service > dispatch", () => {
     ).resolves.toBeUndefined();
   });
 });
+
+function headersToRecord(headers: HeadersInit | undefined): Record<string, string> {
+  if (!headers) return {};
+  if (headers instanceof Headers) return Object.fromEntries(headers.entries());
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return headers;
+}

@@ -2,6 +2,7 @@
 
 import { openSync, readSync, closeSync, readFileSync } from "fs";
 import type { FileEntry, DetectItem, DetectResult, DetectMode } from "./types";
+import { buildArtifactInsights } from "./insights";
 
 const SECRET_FILE_EXTENSIONS = [".pem", ".key", ".cert", ".p12", ".pfx", ".pkcs12"];
 const SECRET_FILE_NAMES = ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"];
@@ -175,6 +176,10 @@ export async function runDetection(
   // 4. Referenced assets check
   allItems.push(...checkReferencedAssets(files));
 
+  // 5. Artifact insights and static SEO checks. SEO is informational here:
+  // a missing description should not downgrade deployability.
+  const insights = await buildArtifactInsights(files);
+
   // Compute overall level
   const level: "pass" | "warning" | "failed" = allItems.some((i) => i.level === "failed")
     ? "failed"
@@ -182,5 +187,5 @@ export async function runDetection(
       ? "warning"
       : "pass";
 
-  return { level, items: allItems };
+  return { level, items: allItems, insights };
 }

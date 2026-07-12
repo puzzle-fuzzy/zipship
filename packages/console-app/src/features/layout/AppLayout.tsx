@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { ScrollArea } from '../../components/ui/scroll-area';
-import { SidebarProvider } from '../../components/ui/sidebar';
 import { ProfileEditDialog } from '../settings/ProfileEditDialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';
@@ -43,10 +42,10 @@ export function AppLayout() {
 
   return (
     <>
-      <SidebarProvider className="mx-auto h-svh w-full items-start">
+      <div className="zip-stage min-h-dvh">
         <AppSidebar />
-        <main className="flex h-svh flex-1 flex-col overflow-hidden">
-          <ScrollArea className="h-svh w-full">
+        <main className="relative z-10 flex min-h-dvh flex-1 flex-col overflow-hidden">
+          <ScrollArea className="h-dvh w-full">
             <AppHeader
               user={user!}
               onNewProject={() => setShowCreate(true)}
@@ -54,12 +53,12 @@ export function AppLayout() {
               onOpenSettings={() => setShowSettings(true)}
               onOpenProfile={() => setShowProfile(true)}
             />
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-6 pt-0">
+            <div className="flex w-full flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8 pt-0 sm:px-6">
               <Outlet context={{ setShowCreate, setShowSettings }} />
             </div>
           </ScrollArea>
         </main>
-      </SidebarProvider>
+      </div>
 
       <CreateProjectDialog
         open={showCreate}

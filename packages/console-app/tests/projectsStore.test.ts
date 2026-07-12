@@ -3,7 +3,7 @@ import { createMockApi, type MockApi } from "./helpers/mockApi";
 import { setAccessToken } from "../src/api/client";
 
 /**
- * projectsStore covers fetch/create/publish/delete/update + release listing.
+ * projectsStore covers fetch/create/publish/rollback/delete/update + release listing.
  * Only `getApi()` is mocked; real token helpers run against jsdom storage.
  */
 
@@ -29,7 +29,14 @@ beforeEach(() => {
   api = createMockApi();
   setMockApi(api._api);
   setAccessToken("rt-1");
-  useProjectsStore.setState({ projects: [], releases: {}, loading: true });
+  useProjectsStore.setState({
+    projects: [],
+    releases: {},
+    releaseErrors: {},
+    deployments: {},
+    deploymentErrors: {},
+    loading: true,
+  });
 });
 
 describe("projectsStore > fetchProjects", () => {
@@ -87,26 +94,83 @@ describe("projectsStore > fetchReleases", () => {
     api.verb("get").mockResolvedValueOnce({ data: { releases: [{ id: "r1" }] } });
     await useProjectsStore.getState().fetchReleases("p1");
     expect(useProjectsStore.getState().releases["p1"]).toEqual([{ id: "r1" }]);
+    expect(useProjectsStore.getState().releaseErrors["p1"]).toBeNull();
+  });
+
+  it("stores API errors keyed by projectId", async () => {
+    api.verb("get").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
+    await useProjectsStore.getState().fetchReleases("p1");
+    expect(useProjectsStore.getState().releaseErrors["p1"]).toBe("You don't have permission to do that");
   });
 
   it("swallows network errors without throwing", async () => {
     api.verb("get").mockRejectedValueOnce(new Error("boom"));
     await expect(useProjectsStore.getState().fetchReleases("p1")).resolves.toBeUndefined();
+    expect(useProjectsStore.getState().releaseErrors["p1"]).toBe("Failed to load releases");
+  });
+});
+
+describe("projectsStore > fetchDeployments", () => {
+  it("stores deployments keyed by projectId", async () => {
+    api.verb("get").mockResolvedValueOnce({ data: { deployments: [{ id: "d1", action: "publish" }] } });
+    await useProjectsStore.getState().fetchDeployments("p1");
+    expect(useProjectsStore.getState().deployments["p1"]).toEqual([{ id: "d1", action: "publish" }]);
+    expect(useProjectsStore.getState().deploymentErrors["p1"]).toBeNull();
+  });
+
+  it("stores deployment list errors keyed by projectId", async () => {
+    api.verb("get").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
+    await useProjectsStore.getState().fetchDeployments("p1");
+    expect(useProjectsStore.getState().deploymentErrors["p1"]).toBe("You don't have permission to do that");
+  });
+
+  it("swallows deployment history network errors without throwing", async () => {
+    api.verb("get").mockRejectedValueOnce(new Error("boom"));
+    await expect(useProjectsStore.getState().fetchDeployments("p1")).resolves.toBeUndefined();
+    expect(useProjectsStore.getState().deploymentErrors["p1"]).toBe("Failed to load deployment history");
   });
 });
 
 describe("projectsStore > publishRelease", () => {
   it("publishes then refreshes the release list", async () => {
+    useProjectsStore.setState({
+      releaseErrors: { p1: "old release error" },
+      deploymentErrors: { p1: "old deployment error" },
+    });
     api.verb("post").mockResolvedValueOnce({ data: {} });
     api.verb("get").mockResolvedValueOnce({ data: { releases: [{ id: "r1", status: "active" }] } });
-    await useProjectsStore.getState().publishRelease("p1", "r1");
+    api.verb("get").mockResolvedValueOnce({ data: { deployments: [{ id: "d1", releaseId: "r1" }] } });
+    await useProjectsStore.getState().publishRelease("p1", "r1", "Ship homepage");
+    expect(api.verb("post").mock.calls[0][0]).toEqual({ message: "Ship homepage" });
     expect(useProjectsStore.getState().releases["p1"]).toEqual([{ id: "r1", status: "active" }]);
+    expect(useProjectsStore.getState().deployments["p1"]).toEqual([{ id: "d1", releaseId: "r1" }]);
+    expect(useProjectsStore.getState().releaseErrors["p1"]).toBeNull();
+    expect(useProjectsStore.getState().deploymentErrors["p1"]).toBeNull();
   });
 
   it("rethrows a publish failure", async () => {
     api.verb("post").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
     await expect(useProjectsStore.getState().publishRelease("p1", "r1")).rejects.toThrow(
       "Failed to publish release",
+    );
+  });
+});
+
+describe("projectsStore > rollbackRelease", () => {
+  it("rolls back then refreshes the release list", async () => {
+    api.verb("post").mockResolvedValueOnce({ data: {} });
+    api.verb("get").mockResolvedValueOnce({ data: { releases: [{ id: "r1", status: "active" }] } });
+    api.verb("get").mockResolvedValueOnce({ data: { deployments: [{ id: "d1", action: "rollback" }] } });
+    await useProjectsStore.getState().rollbackRelease("p1", "r1", "Bad deploy");
+    expect(api.verb("post").mock.calls[0][0]).toEqual({ message: "Bad deploy" });
+    expect(useProjectsStore.getState().releases["p1"]).toEqual([{ id: "r1", status: "active" }]);
+    expect(useProjectsStore.getState().deployments["p1"]).toEqual([{ id: "d1", action: "rollback" }]);
+  });
+
+  it("rethrows a rollback failure", async () => {
+    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "FORBIDDEN" } } });
+    await expect(useProjectsStore.getState().rollbackRelease("p1", "r1")).rejects.toThrow(
+      "Failed to roll back release",
     );
   });
 });

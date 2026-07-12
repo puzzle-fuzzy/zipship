@@ -1,10 +1,26 @@
+import { buildAccessPlanePreview } from "@zipship/shared";
+import {
+  Globe2,
+  LockKeyhole,
+  Route,
+  Server,
+  ShieldAlert,
+  ShieldCheck,
+  TimerReset,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "../../components/ui/card";
-import { Checkbox } from "../../components/ui/checkbox";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "../../components/ui/field";
 import { Input } from "../../components/ui/input";
 import {
   Select,
@@ -14,15 +30,26 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../components/ui/select";
+import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import type { Project, Release } from "../../stores/projectsStore";
+import { buildProjectProductionPaths } from "./projectSettingsModel";
+
+type ProjectSettingsSaveInput = {
+  name?: string;
+  slug?: string;
+  description?: string | null;
+  spaFallback?: boolean;
+  cachePolicy?: "standard" | "aggressive";
+  customDomains?: string[];
+};
 
 interface ProjectSettingsTabProps {
   project: Project;
   activeRelease: Release | undefined;
   canManage: boolean;
   /** Persist the edit; resolves on success, rejects on failure. The tab toasts. */
-  onSave: (input: { name: string; slug: string; description: string | null }) => Promise<void>;
+  onSave: (input: ProjectSettingsSaveInput) => Promise<void>;
   /** Delete the project; resolves on success, rejects on failure. The tab toasts + navigates. */
   onDelete: () => Promise<void>;
 }
@@ -39,15 +66,62 @@ export function ProjectSettingsTab({
   const [editingName, setEditingName] = useState(project.name);
   const [editingSlug, setEditingSlug] = useState(project.slug);
   const [editingDesc, setEditingDesc] = useState(project.description ?? "");
+  const [editingSpaFallback, setEditingSpaFallback] = useState(project.spaFallback);
+  const [editingCachePolicy, setEditingCachePolicy] = useState(project.cachePolicy);
+  const [editingCustomDomains, setEditingCustomDomains] = useState(
+    project.customDomains.join("\n"),
+  );
+  const [customDomainsError, setCustomDomainsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [savingProduction, setSavingProduction] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const productionPaths = buildProjectProductionPaths(project.slug, activeRelease);
+  const draftDomains = parseCustomDomains(editingCustomDomains).domains;
+  const accessPreview = buildAccessPlanePreview({
+    slug: project.slug,
+    spaFallback: editingSpaFallback,
+    cachePolicy: editingCachePolicy,
+    customDomains: draftDomains,
+  });
 
   // Re-seed the form if a different project mounts into the same instance.
   useEffect(() => {
     setEditingName(project.name);
     setEditingSlug(project.slug);
     setEditingDesc(project.description ?? "");
-  }, [project.id]);
+    setEditingSpaFallback(project.spaFallback);
+    setEditingCachePolicy(project.cachePolicy);
+    setEditingCustomDomains(project.customDomains.join("\n"));
+    setCustomDomainsError(null);
+  }, [project.id, project.spaFallback, project.cachePolicy, project.customDomains]);
+
+  const handleSaveProductionAccess = async () => {
+    if (!canManage) return;
+
+    const parsedDomains = parseCustomDomains(editingCustomDomains);
+    if (parsedDomains.invalid.length > 0) {
+      setCustomDomainsError(
+        t("settings.customDomainsInvalid", { domain: parsedDomains.invalid[0] }),
+      );
+      return;
+    }
+
+    setCustomDomainsError(null);
+    setSavingProduction(true);
+    try {
+      await onSave({
+        spaFallback: editingSpaFallback,
+        cachePolicy: editingCachePolicy,
+        customDomains: parsedDomains.domains,
+      });
+      setEditingCustomDomains(parsedDomains.domains.join("\n"));
+      toast.success(t("toast.settingsSaved"));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("toast.saveFailed"));
+    } finally {
+      setSavingProduction(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!confirm(t("toast.deleteProjectConfirm", { name: project.name }))) return;
@@ -64,11 +138,12 @@ export function ProjectSettingsTab({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardDescription>{t("settings.projectPreferences")}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div className="flex flex-col gap-4">
+      <section className="rounded-lg border bg-card/92 p-4 shadow-sm">
+        <div className="mb-4">
+          <h2 className="font-semibold">{t("settings.profileTitle")}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{t("settings.projectPreferences")}</p>
+        </div>
         <form
           className="flex flex-col gap-4"
           onSubmit={async (e) => {
@@ -89,85 +164,293 @@ export function ProjectSettingsTab({
             }
           }}
         >
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              {t("projects.name")}
-              <Input
-                value={editingName}
-                onChange={(e) => setEditingName(e.target.value)}
+          <FieldGroup>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="project-name">{t("projects.name")}</FieldLabel>
+                <Input
+                  id="project-name"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  disabled={!canManage}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="project-slug">{t("projects.slug")}</FieldLabel>
+                <Input
+                  id="project-slug"
+                  value={editingSlug}
+                  onChange={(e) => setEditingSlug(e.target.value)}
+                  className="font-mono"
+                  disabled={!canManage}
+                />
+              </Field>
+            </div>
+
+            <Field>
+              <FieldLabel htmlFor="project-description">{t("projects.description")}</FieldLabel>
+              <Textarea
+                id="project-description"
+                value={editingDesc}
+                onChange={(e) => setEditingDesc(e.target.value)}
+                placeholder={t("projects.descriptionPlaceholder")}
+                className="field-sizing-fixed"
+                rows={4}
                 disabled={!canManage}
               />
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              {t("projects.slug")}
-              <Input
-                value={editingSlug}
-                onChange={(e) => setEditingSlug(e.target.value)}
-                className="font-mono"
-                disabled={!canManage}
-              />
-            </label>
-          </div>
+            </Field>
+          </FieldGroup>
 
-          <label className="flex flex-col gap-1.5 text-sm font-medium">
-            {t("projects.description")}
-            <Textarea
-              value={editingDesc}
-              onChange={(e) => setEditingDesc(e.target.value)}
-              placeholder={t("projects.descriptionPlaceholder")}
-              className="field-sizing-fixed"
-              rows={4}
-              disabled={!canManage}
-            />
-          </label>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <Checkbox defaultChecked={false} disabled={!canManage} />
-              {t("settings.spaMode")}
-            </label>
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              {t("settings.routingType")}
-              <Select defaultValue="path" disabled={!canManage}>
-                <SelectTrigger className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="path">{t("settings.routingPath")}</SelectItem>
-                    <SelectItem value="hash">{t("settings.routingHash")}</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </label>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">{t("settings.deployUrl")}</span>
-            {activeRelease ? (
-              <code className="w-fit rounded-md bg-muted px-2 py-1 font-mono text-xs">
-                /{project.slug}/{activeRelease.releaseHash}/
-              </code>
-            ) : (
-              <span className="text-sm text-muted-foreground">{t("settings.noDeployed")}</span>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-2 pt-2">
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={!canManage || deleting}
-              onClick={handleDelete}
-            >
-              {deleting ? t("toast.deleting") : t("settings.deleteProject")}
-            </Button>
+          <div className="flex justify-end pt-2">
             <Button type="submit" disabled={!canManage || saving}>
               {saving ? t("toast.saving") : t("common.save")}
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </section>
+
+      <section className="rounded-lg border bg-card/92 p-4 shadow-sm">
+        <div className="mb-4 flex items-start gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+            <Globe2 className="size-4" />
+          </span>
+          <div>
+            <h2 className="font-semibold">{t("settings.productionTitle")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("settings.productionDesc")}</p>
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <PathLine label={t("settings.livePath")} value={productionPaths.livePath} />
+          <PathLine
+            label={t("settings.pinnedPath")}
+            value={productionPaths.pinnedPath ?? t("settings.noDeployed")}
+          />
+        </div>
+
+        <form
+          className="mt-4 flex flex-col gap-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSaveProductionAccess();
+          }}
+        >
+          <FieldGroup>
+            <div className="grid gap-3 lg:grid-cols-2">
+              <Field orientation="horizontal" data-disabled={!canManage}>
+                <Switch
+                  id="spa-fallback"
+                  checked={editingSpaFallback}
+                  onCheckedChange={setEditingSpaFallback}
+                  disabled={!canManage}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="spa-fallback">{t("settings.spaFallbackTitle")}</FieldLabel>
+                  <FieldDescription>{t("settings.spaFallbackDesc")}</FieldDescription>
+                </FieldContent>
+              </Field>
+
+              <Field>
+                <FieldLabel htmlFor="cache-policy">{t("settings.cachePolicyTitle")}</FieldLabel>
+                <Select
+                  value={editingCachePolicy}
+                  onValueChange={(value) =>
+                    setEditingCachePolicy(value as "standard" | "aggressive")
+                  }
+                  disabled={!canManage}
+                >
+                  <SelectTrigger id="cache-policy" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="standard">{t("settings.cacheStandard")}</SelectItem>
+                      <SelectItem value="aggressive">{t("settings.cacheAggressive")}</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>{t("settings.cachePolicyDesc")}</FieldDescription>
+              </Field>
+            </div>
+
+            <Field data-invalid={Boolean(customDomainsError)}>
+              <FieldLabel htmlFor="custom-domains">{t("settings.customDomainsTitle")}</FieldLabel>
+              <Textarea
+                id="custom-domains"
+                value={editingCustomDomains}
+                onChange={(e) => {
+                  setEditingCustomDomains(e.target.value);
+                  setCustomDomainsError(null);
+                }}
+                placeholder={t("settings.customDomainsPlaceholder")}
+                className="field-sizing-fixed font-mono text-sm"
+                rows={4}
+                disabled={!canManage}
+                aria-invalid={Boolean(customDomainsError)}
+              />
+              <FieldDescription>{t("settings.customDomainsDesc")}</FieldDescription>
+              <FieldError>{customDomainsError}</FieldError>
+            </Field>
+          </FieldGroup>
+
+          <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 md:flex-row">
+            <PolicyItem
+              icon={Route}
+              title={t("settings.spaFallbackTitle")}
+              description={
+                accessPreview.missingAssetBehavior === "index"
+                  ? t("settings.spaFallbackOn")
+                  : t("settings.spaFallbackOff")
+              }
+              value={
+                accessPreview.missingAssetBehavior === "index"
+                  ? t("settings.enabledByAccessPlane")
+                  : t("settings.disabled")
+              }
+            />
+            <PolicyItem
+              icon={TimerReset}
+              title={t("settings.cachePolicyTitle")}
+              description={
+                editingCachePolicy === "aggressive"
+                  ? t("settings.cacheAggressiveDesc")
+                  : t("settings.cacheStandardDesc")
+              }
+              value={
+                editingCachePolicy === "aggressive"
+                  ? t("settings.cacheAggressive")
+                  : t("settings.cacheStandard")
+              }
+            />
+          </div>
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            <PolicyItem
+              icon={TimerReset}
+              title={t("settings.htmlCacheTitle")}
+              description={t("settings.htmlCacheDesc")}
+              value={accessPreview.htmlCacheControl}
+            />
+            <PolicyItem
+              icon={TimerReset}
+              title={t("settings.assetCacheTitle")}
+              description={t("settings.assetCacheDesc")}
+              value={accessPreview.assetCacheControl}
+            />
+          </div>
+
+          {accessPreview.warnings.length > 0 && (
+            <div className="flex flex-col gap-2 rounded-lg border bg-muted/20 p-3">
+              {accessPreview.warnings.map((warning) => (
+                <PolicyItem
+                  key={warning.code}
+                  icon={ShieldAlert}
+                  title={t(`settings.accessWarnings.${warning.code}.title`)}
+                  description={t(`settings.accessWarnings.${warning.code}.desc`)}
+                  value={t(`settings.warningSeverity.${warning.severity}`)}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="flex justify-end pt-1">
+            <Button type="submit" disabled={!canManage || savingProduction}>
+              {savingProduction ? t("toast.saving") : t("settings.saveProductionAccess")}
+            </Button>
+          </div>
+        </form>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <PolicyItem
+            icon={LockKeyhole}
+            title={t("settings.reservedPathsTitle")}
+            description={t("settings.reservedPathsDesc")}
+            value="/_api, /_sites"
+          />
+          <PolicyItem
+            icon={Server}
+            title={t("settings.customDomainsTitle")}
+            description={domainSummary(accessPreview.customDomains, t("settings.noCustomDomains"))}
+            value={`${accessPreview.customDomains.length}`}
+          />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-destructive/20 bg-card/92 p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-destructive">{t("settings.dangerZone")}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{t("settings.dangerZoneDesc")}</p>
+          </div>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={!canManage || deleting}
+            onClick={handleDelete}
+          >
+            {deleting ? t("toast.deleting") : t("settings.deleteProject")}
+          </Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function parseCustomDomains(input: string): { domains: string[]; invalid: string[] } {
+  const rawDomains = input
+    .split(/\r?\n|,/)
+    .map((domain) => domain.trim().toLowerCase())
+    .filter(Boolean);
+  const domains = Array.from(new Set(rawDomains));
+  const invalid = domains.filter((domain) => !isValidDomain(domain));
+  return { domains, invalid };
+}
+
+function isValidDomain(domain: string): boolean {
+  if (domain.length > 253) return false;
+  if (domain.includes("://") || domain.includes("/") || domain.includes(" ")) return false;
+  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain);
+}
+
+function domainSummary(domains: string[], emptyLabel: string): string {
+  if (domains.length === 0) return emptyLabel;
+  return domains.slice(0, 3).join(", ");
+}
+
+function PathLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border bg-muted/25 p-3">
+      <div className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <code className="mt-1 block truncate font-mono text-xs">{value}</code>
+    </div>
+  );
+}
+
+function PolicyItem({
+  icon: Icon,
+  title,
+  description,
+  value,
+}: {
+  icon: typeof ShieldCheck;
+  title: string;
+  description: string;
+  value: string;
+}) {
+  return (
+    <div className="flex min-w-0 gap-3 rounded-lg border bg-background/55 p-3">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border bg-muted text-muted-foreground">
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-sm font-medium">{title}</h3>
+          <span className="rounded-md border bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground">
+            {value}
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      </div>
+    </div>
   );
 }

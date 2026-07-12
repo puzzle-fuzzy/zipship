@@ -98,6 +98,9 @@ describe("projects routes", () => {
         name: "Marketing Site",
         slug: "marketing-site",
         description: "Launch pages",
+        spaFallback: true,
+        cachePolicy: "standard",
+        customDomains: [],
         status: "active",
         visibility: "private",
         createdBy: expect.any(String),
@@ -123,6 +126,44 @@ describe("projects routes", () => {
           visibility: "private",
         },
       ],
+    });
+  });
+
+  test("updates production access settings", async () => {
+    const { api, refreshToken, organizationId } = await registerLoginAndGetOrganization();
+    const created = await api._api.organizations({ organizationId }).projects.post(
+      {
+        name: "Marketing Site",
+        slug: "marketing-site",
+        description: null,
+      },
+      {
+        headers: {
+          authorization: `Bearer ${refreshToken}`,
+        },
+      },
+    );
+    const projectId = created.data?.project.id ?? "";
+
+    const updated = await api._api.projects({ projectId }).patch(
+      {
+        spaFallback: false,
+        cachePolicy: "aggressive",
+        customDomains: ["WWW.Example.COM", "www.example.com", "docs.example.com"],
+      },
+      {
+        headers: {
+          authorization: `Bearer ${refreshToken}`,
+        },
+      },
+    );
+
+    expect(updated.status).toBe(200);
+    expect(updated.data?.project).toMatchObject({
+      id: projectId,
+      spaFallback: false,
+      cachePolicy: "aggressive",
+      customDomains: ["www.example.com", "docs.example.com"],
     });
   });
 

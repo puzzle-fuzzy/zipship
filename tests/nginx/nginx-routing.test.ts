@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { buildNginxProjectAccessSnippet } from "@zipship/shared";
 
 const nginxAvailable = process.platform !== "win32" && await commandSucceeds(["nginx", "-v"]);
 
@@ -11,29 +12,50 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
   const sitesRoot = join(root, "sites");
   const consoleRoot = join(root, "console");
   const confPath = join(root, "zipship.conf");
+  const projectsConfPath = join(root, "zipship-projects.conf");
   const pidPath = join(root, "nginx.pid");
   const port = 18080 + Math.floor(Math.random() * 1000);
 
   beforeAll(async () => {
     await mkdir(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "assets"), { recursive: true });
     await mkdir(join(sitesRoot, "admin", "current", "assets"), { recursive: true });
+    await mkdir(join(sitesRoot, "landing", "releases", "a8f32c91abcd", "assets"), { recursive: true });
+    await mkdir(join(sitesRoot, "landing", "current", "assets"), { recursive: true });
     await mkdir(consoleRoot, { recursive: true });
 
     writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "index.html"), "release index");
     writeFileSync(join(sitesRoot, "admin", "releases", "a8f32c91abcd", "assets", "index.js"), "release asset");
     writeFileSync(join(sitesRoot, "admin", "current", "index.html"), "current index");
     writeFileSync(join(sitesRoot, "admin", "current", "assets", "index.js"), "current asset");
+    writeFileSync(join(sitesRoot, "landing", "releases", "a8f32c91abcd", "index.html"), "landing release index");
+    writeFileSync(join(sitesRoot, "landing", "releases", "a8f32c91abcd", "assets", "index.js"), "landing release asset");
+    writeFileSync(join(sitesRoot, "landing", "current", "index.html"), "landing current index");
+    writeFileSync(join(sitesRoot, "landing", "current", "assets", "index.js"), "landing current asset");
     writeFileSync(join(consoleRoot, "index.html"), "console app");
+    writeFileSync(
+      projectsConfPath,
+      buildNginxProjectAccessSnippet(
+        {
+          slug: "landing",
+          spaFallback: false,
+          cachePolicy: "standard",
+          customDomains: [],
+        },
+        { sitesRoot },
+      ).config,
+    );
 
     const template = await Bun.file(join(import.meta.dir, "../../infra/nginx/zipship.conf")).text();
     writeFileSync(
       confPath,
       template
-        .replaceAll("__ZIPSHIP_LISTEN_PORT__", String(port))
-        .replaceAll("__ZIPSHIP_SITES_ROOT__", sitesRoot)
-        .replaceAll("__ZIPSHIP_CONSOLE_ROOT__", consoleRoot)
-        .replaceAll("__ZIPSHIP_API_UPSTREAM__", "http://127.0.0.1:9")
-        .replaceAll("__ZIPSHIP_NGINX_PID__", pidPath),
+        .replaceAll("${ZIPSHIP_LISTEN_PORT}", String(port))
+        .replaceAll("${ZIPSHIP_MAX_BODY_SIZE}", "500m")
+        .replaceAll("${ZIPSHIP_SITES_ROOT}", sitesRoot)
+        .replaceAll("${ZIPSHIP_CONSOLE_ROOT}", consoleRoot)
+        .replaceAll("${ZIPSHIP_API_UPSTREAM}", "http://127.0.0.1:9")
+        .replaceAll("${ZIPSHIP_NGINX_PID}", pidPath)
+        .replaceAll("${ZIPSHIP_PROJECTS_CONF}", projectsConfPath),
     );
 
     const proc = Bun.spawn(["nginx", "-c", confPath, "-p", root], { stderr: "pipe" });
@@ -77,6 +99,12 @@ describe.skipIf(!nginxAvailable)("nginx access plane routing", () => {
 
     await expectText(`http://127.0.0.1:${port}/admin/a8f32c91/`, "current index", "no-cache");
     await expectText(`http://127.0.0.1:${port}/admin/a8f32c91/settings`, "current index", "no-cache");
+  });
+
+  test("applies generated project policy before generic slug routes", async () => {
+    await expectText(`http://127.0.0.1:${port}/landing/assets/index.js`, "landing current asset", "max-age=3600");
+    expect((await fetch(`http://127.0.0.1:${port}/landing/settings`)).status).toBe(404);
+    expect((await fetch(`http://127.0.0.1:${port}/landing/a8f32c91abcd/settings`)).status).toBe(404);
   });
 
   test("serves console and keeps unknown sites or hashes as 404", async () => {

@@ -142,6 +142,28 @@ describe("releases routes", () => {
       expect(release.fileCount).toBeGreaterThan(0);
       expect(release.totalSize).toBeGreaterThan(0);
       expect((release.detectResult as { level: string }).level).toBe("pass");
+      const detectResult = release.detectResult as {
+        insights?: {
+          entrypoint: string | null;
+          assets: {
+            totalFiles: number;
+            totalSize: number;
+          };
+          html: {
+            title: string | null;
+            hasViewport: boolean;
+          };
+          seo: {
+            score: number;
+            checks: Array<{ code: string; status: string }>;
+          };
+        };
+      };
+      expect(detectResult.insights?.entrypoint).toBe("index.html");
+      expect(detectResult.insights?.assets.totalFiles).toBe(release.fileCount);
+      expect(detectResult.insights?.assets.totalSize).toBe(release.totalSize);
+      expect(detectResult.insights?.seo.score).toEqual(expect.any(Number));
+      expect(detectResult.insights?.seo.checks.length).toBeGreaterThan(0);
       expect(release.createdAt).toBeDefined();
       expect(release.id).toBe(uploadTask.releaseId!);
       expect(release.projectId).toBe(project.id);

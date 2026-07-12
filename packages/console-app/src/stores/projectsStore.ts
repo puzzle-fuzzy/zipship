@@ -9,6 +9,9 @@ export interface Project {
   slug: string;
   description: string | null;
   currentReleaseId: string | null;
+  spaFallback: boolean;
+  cachePolicy: 'standard' | 'aggressive';
+  customDomains: string[];
   status: string;
   visibility: string;
   createdBy: string;
@@ -36,25 +39,101 @@ export interface Release {
   archivedAt: string | null;
 }
 
+export interface Deployment {
+  id: string;
+  projectId: string;
+  releaseId: string;
+  previousReleaseId: string | null;
+  action: 'publish' | 'rollback';
+  status: 'success';
+  operatorId: string;
+  message: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
 interface ProjectsState {
   projects: Project[];
   releases: Record<string, Release[]>; // projectId -> releases
+  releaseErrors: Record<string, string | null>;
+  deployments: Record<string, Deployment[]>; // projectId -> deployments
+  deploymentErrors: Record<string, string | null>;
   loading: boolean;
 
   fetchProjects: () => Promise<void>;
   createProject: (input: { name: string; slug: string; description: string }) => Promise<void>;
   fetchReleases: (projectId: string) => Promise<void>;
-  publishRelease: (projectId: string, releaseId: string) => Promise<void>;
+  fetchDeployments: (projectId: string) => Promise<void>;
+  publishRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
+  rollbackRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
   updateProject: (
     projectId: string,
-    input: { name?: string; slug?: string; description?: string | null },
+    input: {
+      name?: string;
+      slug?: string;
+      description?: string | null;
+      spaFallback?: boolean;
+      cachePolicy?: 'standard' | 'aggressive';
+      customDomains?: string[];
+    },
   ) => Promise<void>;
 }
 
-export const useProjectsStore = create<ProjectsState>((set) => ({
+export const useProjectsStore = create<ProjectsState>((set) => {
+  const projectAccessErrorCodes = {
+    FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+    PROJECT_NOT_FOUND: API_ERROR_MESSAGES.PROJECT_NOT_FOUND,
+  };
+
+  const setReleaseError = (projectId: string, error: string | null) => {
+    set((state) => ({
+      releaseErrors: { ...state.releaseErrors, [projectId]: error },
+    }));
+  };
+
+  const setDeploymentError = (projectId: string, error: string | null) => {
+    set((state) => ({
+      deploymentErrors: { ...state.deploymentErrors, [projectId]: error },
+    }));
+  };
+
+  const storeReleases = (projectId: string, releases: Release[]) => {
+    set((state) => ({
+      releases: { ...state.releases, [projectId]: releases },
+      releaseErrors: { ...state.releaseErrors, [projectId]: null },
+    }));
+  };
+
+  const storeDeployments = (projectId: string, deployments: Deployment[]) => {
+    set((state) => ({
+      deployments: { ...state.deployments, [projectId]: deployments },
+      deploymentErrors: { ...state.deploymentErrors, [projectId]: null },
+    }));
+  };
+
+  const refreshReleaseAndDeploymentState = async (
+    api: ReturnType<typeof getApi>,
+    projectId: string,
+    headers: ReturnType<typeof authHeaders>,
+  ) => {
+    const refreshRes = await api._api.projects({ projectId }).releases.get({ headers });
+    if (refreshRes.data) {
+      storeReleases(projectId, refreshRes.data.releases as Release[]);
+    }
+
+    const deploymentsRes = await api._api.projects({ projectId }).deployments.get({ headers });
+    if (deploymentsRes.data) {
+      storeDeployments(projectId, deploymentsRes.data.deployments as Deployment[]);
+    }
+  };
+
+  return ({
   projects: [],
   releases: {},
+  releaseErrors: {},
+  deployments: {},
+  deploymentErrors: {},
   loading: true,
 
   fetchProjects: async () => {
@@ -126,37 +205,76 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
 
   fetchReleases: async (projectId) => {
     const api = getApi();
+    setReleaseError(projectId, null);
     try {
       const res = await api._api.projects({ projectId }).releases.get({
         headers: authHeaders(),
       });
+      if (res.error) {
+        const error = mapApiError(res, {
+          codes: projectAccessErrorCodes,
+          fallback: 'Failed to load releases',
+        });
+        setReleaseError(projectId, error.message);
+        return;
+      }
       if (res.data) {
-        set((state) => ({
-          releases: { ...state.releases, [projectId]: res.data!.releases as Release[] },
-        }));
+        storeReleases(projectId, res.data.releases as Release[]);
       }
     } catch (err) {
       console.error('Failed to fetch releases:', err);
+      setReleaseError(projectId, 'Failed to load releases');
     }
   },
 
-  publishRelease: async (projectId, releaseId) => {
+  fetchDeployments: async (projectId) => {
+    const api = getApi();
+    setDeploymentError(projectId, null);
+    try {
+      const res = await api._api.projects({ projectId }).deployments.get({
+        headers: authHeaders(),
+      });
+      if (res.error) {
+        const error = mapApiError(res, {
+          codes: projectAccessErrorCodes,
+          fallback: 'Failed to load deployment history',
+        });
+        setDeploymentError(projectId, error.message);
+        return;
+      }
+      if (res.data) {
+        storeDeployments(projectId, res.data.deployments as Deployment[]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch deployments:', err);
+      setDeploymentError(projectId, 'Failed to load deployment history');
+    }
+  },
+
+  publishRelease: async (projectId, releaseId, message = null) => {
     const api = getApi();
     const headers = authHeaders();
     const res = await api._api.projects({ projectId }).releases({ releaseId }).publish.post(
-      { message: null },
+      { message },
       { headers },
     );
     if (res.error) {
       throw mapApiError(res, { codes: {}, fallback: 'Failed to publish release' });
     }
-    // Refresh releases to get updated status
-    const refreshRes = await api._api.projects({ projectId }).releases.get({ headers });
-    if (refreshRes.data) {
-      set((state) => ({
-        releases: { ...state.releases, [projectId]: refreshRes.data!.releases as Release[] },
-      }));
+    await refreshReleaseAndDeploymentState(api, projectId, headers);
+  },
+
+  rollbackRelease: async (projectId, releaseId, message = null) => {
+    const api = getApi();
+    const headers = authHeaders();
+    const res = await api._api.projects({ projectId }).releases({ releaseId }).rollback.post(
+      { message },
+      { headers },
+    );
+    if (res.error) {
+      throw mapApiError(res, { codes: {}, fallback: 'Failed to roll back release' });
     }
+    await refreshReleaseAndDeploymentState(api, projectId, headers);
   },
 
   deleteProject: async (projectId) => {
@@ -189,7 +307,8 @@ export const useProjectsStore = create<ProjectsState>((set) => ({
       });
     }
   },
-}));
+  });
+});
 
 // `getAccessToken` re-exported for components (e.g. preview-link builders) that
 // need the token without going through the store.

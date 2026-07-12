@@ -11,6 +11,8 @@ import {
   InvitationsAlreadyAcceptedError,
   InvitationsWrongUserError,
 } from "../../apps/api/src/modules/invitations/model";
+import type { InvitationRecord } from "../../apps/api/src/modules/invitations/service";
+import type { MemberRole } from "../../apps/api/src/modules/permissions/model";
 
 /**
  * Shared fixtures for the invitations service.
@@ -22,8 +24,8 @@ import {
  */
 const NOW = new Date("2026-07-05T00:00:00.000Z");
 const ORG_ID = "org-1";
-const ACTOR = { id: "user-owner", name: "Ada Lovelace", email: "ada@example.com" };
-const INVITED = { id: "user-guest", name: "Grace Hopper", email: "grace@example.com" };
+const ACTOR = { id: "user-owner", name: "Ada Lovelace", email: "ada@example.com", passwordHash: "hash" };
+const INVITED = { id: "user-guest", name: "Grace Hopper", email: "grace@example.com", passwordHash: "hash" };
 
 function isErr(v: unknown) {
   return v instanceof InvitationsUnauthorizedError
@@ -40,11 +42,11 @@ function isErr(v: unknown) {
 function build(overrides: {
   membership?: { role: "owner" | "admin" | "developer" | "deployer" | "viewer" } | null;
   invitedUser?: typeof INVITED | null;
-  existingMembership?: { role: string } | null;
+  existingMembership?: { role: MemberRole } | null;
   pendingInvite?: { id: string } | null;
-  invitationByToken?: unknown | null;
+  invitationByToken?: InvitationRecord | null;
   sessions?: Map<string, unknown>;
-  emails?: Array<{ to: string; token: string; organizationName: string }>;
+  emails?: Array<{ to: string; invitedBy: string; organizationName: string; role: string; token: string }>;
   createdInvitations?: unknown[];
   revoked?: boolean;
   statusUpdates?: unknown[];
@@ -115,7 +117,7 @@ function build(overrides: {
     async revokeInvitation() {
       return overrides.revoked ?? true;
     },
-    async findInvitationByTokenHash(_hash: string) {
+    async findInvitationByTokenHash(_hash: string): Promise<InvitationRecord | null> {
       return overrides.invitationByToken ?? null;
     },
     async markInvitationStatus(input: any) {
@@ -424,7 +426,7 @@ describe("invitations service > revoke", () => {
 });
 
 describe("invitations service > accept", () => {
-  function pendingInvitation(overrides: Record<string, unknown> = {}) {
+  function pendingInvitation(overrides: Partial<InvitationRecord> = {}): InvitationRecord {
     return {
       id: "inv-1",
       organizationId: ORG_ID,

@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   index,
   integer,
   jsonb,
@@ -31,6 +32,9 @@ export const projects = pgTable(
     slug: varchar("slug", { length: 80 }).notNull(),
     description: text("description"),
     currentReleaseId: uuid("current_release_id"),
+    spaFallback: boolean("spa_fallback").notNull().default(true),
+    cachePolicy: varchar("cache_policy", { length: 32 }).notNull().default("standard"),
+    customDomains: text("custom_domains").array().notNull().default([]),
     status: projectStatusEnum("status").notNull().default("active"),
     visibility: projectVisibilityEnum("visibility").notNull().default("private"),
     createdBy: uuid("created_by").notNull().references(() => users.id),

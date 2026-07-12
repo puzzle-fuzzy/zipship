@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { FolderPlus, Link2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import {
   Dialog,
@@ -11,6 +12,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
 import { projectNameSchema, projectSlugSchema } from '../../lib/validation';
 
 interface CreateProjectDialogProps {
@@ -66,9 +68,12 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
+            <div className="mb-2 flex size-10 items-center justify-center rounded-lg border bg-primary/10 text-primary">
+              <FolderPlus className="size-5" />
+            </div>
             <DialogTitle>{t('projects.create')}</DialogTitle>
             <DialogDescription>
               {t('projects.emptyDesc')}
@@ -92,17 +97,21 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
             </div>
             <div className="grid gap-2">
               <Label htmlFor="slug">{t('projects.slug')}</Label>
-              <Input
-                id="slug"
-                placeholder="my-project"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-              />
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="slug"
+                  className="pl-8 font-mono"
+                  placeholder="my-project"
+                  value={slug}
+                  onChange={(e) => setSlug(e.target.value)}
+                />
+              </div>
               <p className="text-xs text-muted-foreground">{t('projects.slugHint')}</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="description">{t('projects.description')}</Label>
-              <Input
+              <Textarea
                 id="description"
                 placeholder={t('projects.descriptionPlaceholder')}
                 value={description}
