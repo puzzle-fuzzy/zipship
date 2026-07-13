@@ -44,7 +44,7 @@
 
 **Interfaces:**
 - Produces: Vite/Vitest can compile `.vue` files while the old React tests remain runnable during the working branch.
-- Produces: `bun --filter @zipship/console-app run typecheck` checks `.ts`, temporary `.tsx`, and `.vue` sources until final cleanup.
+- Produces: `bun --filter @zipship/console-app typecheck` checks `.ts`, temporary `.tsx`, and `.vue` sources until final cleanup.
 - Produces: Turbo invalidates on `.vue`, `.css`, shell HTML, and relevant configuration changes.
 
 - [ ] **Step 1: Write the failing Vue toolchain smoke test**
@@ -88,7 +88,7 @@ Add catalog entries and console dependencies for:
   "@vitejs/plugin-vue": "catalog:",
   "@vue/test-utils": "catalog:",
   "@vueuse/core": "catalog:",
-  "lucide-vue-next": "catalog:",
+  "@lucide/vue": "catalog:",
   "pinia": "catalog:",
   "reka-ui": "catalog:",
   "vue": "catalog:",
@@ -144,7 +144,7 @@ Run: `bun --filter @zipship/console-app test -- tests/vue-toolchain.test.ts`
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS with both temporary React and new Vue sources included.
 
@@ -465,7 +465,7 @@ Run: `bun --filter @zipship/console-app test -- tests/settings-vue.test.ts tests
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -557,7 +557,7 @@ Run: `bun --filter @zipship/console-app test -- tests/ui-adapters.test.ts`
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -685,7 +685,7 @@ Run: `bun --filter @zipship/console-app test -- tests/app-factory.test.ts tests/
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -779,7 +779,7 @@ Run: `bun --filter @zipship/console-app test -- tests/projects-vue.test.ts tests
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -859,7 +859,7 @@ Run: `bun --filter @zipship/console-app test -- tests/project-detail-layout-vue.
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -929,7 +929,7 @@ Run: `bun --filter @zipship/console-app test -- tests/project-versions-vue.test.
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -1017,7 +1017,7 @@ Run: `bun --filter @zipship/console-app test -- tests/members-vue.test.ts tests/
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -1071,7 +1071,7 @@ Run: `bun --filter @zipship/console-app test -- tests/project-settings-vue.test.
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -1165,7 +1165,7 @@ Run: `bun --filter @zipship/console-app test -- tests/useArtifactSelection.test.
 
 Expected: PASS.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -1221,7 +1221,7 @@ Run: `bun --filter @zipship/console-app test`
 
 Expected: all retained React tests, pure TypeScript tests, and new Vue tests pass at this intermediate point.
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
 Expected: PASS.
 
@@ -1470,15 +1470,15 @@ Run: `bun install`
 
 Run: `bun --filter @zipship/console-app test`
 
-Run: `bun --filter @zipship/console-app run typecheck`
+Run: `bun --filter @zipship/console-app typecheck`
 
-Run: `bun --filter @zipship/web-shell run typecheck`
+Run: `bun --filter @zipship/web-shell typecheck`
 
-Run: `bun --filter @zipship/web-shell run build`
+Run: `bun --filter @zipship/web-shell build`
 
-Run: `bun --filter @zipship/desktop-shell run typecheck`
+Run: `bun --filter @zipship/desktop-shell typecheck`
 
-Run: `bun --filter @zipship/desktop-shell run build`
+Run: `bun --filter @zipship/desktop-shell build`
 
 Expected: all commands PASS.
 
@@ -1588,7 +1588,7 @@ git commit -m "docs: document Vue console architecture"
 - [ ] `rg -n "react|react-dom|react-router|zustand|@base-ui/react|lucide-react" package.json packages/console-app apps/web-shell apps/desktop-shell` returns no dependency/import matches.
 - [ ] `rg -n "__ZIPSHIP_API_BASE_URL|treaty<App>" packages/console-app/src` returns no matches.
 - [ ] `bun --filter @zipship/console-app test` passes.
-- [ ] `bun --filter @zipship/console-app run typecheck` passes.
+- [ ] `bun --filter @zipship/console-app typecheck` passes.
 - [ ] Web and desktop renderer typechecks/builds pass.
 - [ ] Workspace lint, typecheck, unit tests, and build pass.
 - [ ] Database-backed tests are run when Docker is available.

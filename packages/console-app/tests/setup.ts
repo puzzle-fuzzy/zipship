@@ -1,5 +1,6 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup as cleanupReact } from '@testing-library/react';
+import { cleanup as cleanupVue } from '@testing-library/vue';
 import { afterEach, beforeEach } from 'vitest';
 
 /**
@@ -29,7 +30,8 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 }
 
 afterEach(() => {
-  cleanup();
+  cleanupReact();
+  cleanupVue();
 });
 
 beforeEach(() => {
