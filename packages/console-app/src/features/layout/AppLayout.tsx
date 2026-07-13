@@ -1,7 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router';
-import { useAuthStore, useProjectsStore } from '../../stores';
-import { useTranslation } from '../../i18n';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
 import {
@@ -13,9 +11,11 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { ScrollArea } from '../../components/ui/scroll-area';
+import { useTranslation } from '../../i18n';
+import { useAuthStore, useProjectsStore } from '../../stores';
+import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { ProfileEditDialog } from '../settings/ProfileEditDialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
-import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { AppHeader } from './AppHeader';
 import { AppSidebar } from './AppSidebar';
 
@@ -42,22 +42,25 @@ export function AppLayout() {
 
   return (
     <>
-      <div className="zip-stage min-h-dvh">
-        <AppSidebar />
-        <main className="relative z-10 flex min-h-dvh flex-1 flex-col overflow-hidden">
-          <ScrollArea className="h-dvh w-full">
-            <AppHeader
-              user={user!}
-              onNewProject={() => setShowCreate(true)}
-              onLogout={() => setShowLogoutConfirm(true)}
-              onOpenSettings={() => setShowSettings(true)}
-              onOpenProfile={() => setShowProfile(true)}
-            />
-            <div className="flex w-full flex-1 flex-col gap-4 overflow-y-auto px-4 pb-8 pt-0 sm:px-6">
-              <Outlet context={{ setShowCreate, setShowSettings }} />
-            </div>
-          </ScrollArea>
-        </main>
+      <div className="min-h-dvh bg-background">
+        <AppHeader
+          user={user!}
+          onNewProject={() => setShowCreate(true)}
+          onLogout={() => setShowLogoutConfirm(true)}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenProfile={() => setShowProfile(true)}
+        />
+
+        <div className="mx-auto flex w-full max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:px-8">
+          <AppSidebar />
+          <main className="min-w-0 flex-1">
+            <ScrollArea className="h-[calc(100dvh-6.5rem)]">
+              <div className="pb-10">
+                <Outlet context={{ setShowCreate, setShowSettings }} />
+              </div>
+            </ScrollArea>
+          </main>
+        </div>
       </div>
 
       <CreateProjectDialog
@@ -78,15 +81,10 @@ export function AppLayout() {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{t('app.signOut')}</DialogTitle>
-            <DialogDescription>
-              {t('help.signOutDesc')}
-            </DialogDescription>
+            <DialogDescription>{t('help.signOutDesc')}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowLogoutConfirm(false)}
-            >
+            <Button variant="outline" onClick={() => setShowLogoutConfirm(false)}>
               {t('common.cancel')}
             </Button>
             <Button onClick={handleLogout}>{t('app.signOut')}</Button>
@@ -94,15 +92,9 @@ export function AppLayout() {
         </DialogContent>
       </Dialog>
 
-      <SettingsDialog
-        open={showSettings}
-        onClose={() => setShowSettings(false)}
-      />
+      <SettingsDialog open={showSettings} onClose={() => setShowSettings(false)} />
 
-      <ProfileEditDialog
-        open={showProfile}
-        onClose={() => setShowProfile(false)}
-      />
+      <ProfileEditDialog open={showProfile} onClose={() => setShowProfile(false)} />
     </>
   );
 }
