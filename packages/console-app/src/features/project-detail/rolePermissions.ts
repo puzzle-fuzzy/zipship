@@ -1,6 +1,6 @@
-import type { Member } from "../../stores/membersStore";
+import type { Member, MemberRole } from '../../domain/members';
 
-export type ProjectRole = "owner" | "admin" | "developer" | "deployer" | "viewer";
+export type ProjectRole = MemberRole;
 
 export interface ProjectRolePermissions {
   canUploadRelease: boolean;

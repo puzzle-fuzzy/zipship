@@ -657,6 +657,10 @@ export function createConsoleApp(options: ConsoleAppOptions): App<Element> {
   app.provide(consoleAppContextKey, context);
   app.use(pinia);
   app.use(router);
+  app.onUnmount(() => {
+    context.dispose();
+    disposePinia(pinia);
+  });
   return app;
 }
 ```

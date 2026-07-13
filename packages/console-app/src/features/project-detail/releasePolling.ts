@@ -1,4 +1,4 @@
-import type { Release } from "../../stores/projectsStore";
+import type { Release } from '../../domain/projects';
 
 export const RELEASE_POLLING_INTERVAL_MS = 2500;
 export const RELEASE_POLLING_MAX_ATTEMPTS = 24;

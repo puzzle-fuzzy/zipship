@@ -1,15 +1,9 @@
 import { create } from 'zustand';
 import { authHeaders, getApi } from '../api/client';
 import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
+import type { Member, MemberRole } from '../domain/members';
 
-export interface Member {
-  id: string;
-  userId: string;
-  name: string;
-  email: string;
-  role: string;
-  joinedAt: string;
-}
+export type { Member } from '../domain/members';
 
 interface MembersState {
   members: Member[];
@@ -88,7 +82,10 @@ export const useMembersStore = create<MembersState>((set) => ({
       });
     }
     set((state) => ({
-      members: state.members.map((m) => (m.userId === userId ? { ...m, role } : m)),
+      // A successful API response guarantees that the validated role is a MemberRole.
+      members: state.members.map((m) =>
+        m.userId === userId ? { ...m, role: role as MemberRole } : m,
+      ),
     }));
   },
 

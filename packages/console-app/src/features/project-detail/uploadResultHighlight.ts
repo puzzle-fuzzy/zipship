@@ -1,4 +1,4 @@
-import type { Release } from "../../stores/projectsStore";
+import type { Release } from '../../domain/projects';
 
 export function findUploadedReleaseHighlight(
   releases: Pick<Release, "id">[],
