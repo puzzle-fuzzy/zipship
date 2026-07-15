@@ -324,11 +324,13 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 ### 2026-07-15 实施进度
 
-- 第 1～6 项已完成：Workspace 与基础设施、全新数据库模型、认证、个人组织、成员/项目、流式 ZIP 接收、持久化 Job、独立 Artifact Worker 和固定 Release Preview 均已进入 Rust 实现。
+- 第 1～8 项已完成，R1 最小 Rust 纵向切片闭环：Workspace 与基础设施、全新数据库模型、认证、个人组织、成员/项目、流式 ZIP 接收、持久化 Job、独立 Artifact Worker、固定 Release Preview、Publish/Rollback 与正式访问均已进入 Rust 实现。
 - 上传采用“创建预留 → 原始 Body 流式写入 → 完成入队”三步协议；数据库 transfer lease 与文件 `.part` 生命周期允许中断后重传，`/complete` 并发或重复调用不会重复创建 Release/Job。
 - Worker 使用 `SKIP LOCKED`、heartbeat、lease sweep、指数退避和最大尝试次数实现可恢复执行；安全解压、稳定 Manifest、完整 SHA-256、不可变 Artifact 提交以及 ready/failed 状态收敛均已完成。
-- Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，仅服务 ready Release/Artifact 与 Manifest 登记文件，并支持 MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛和固定预览解析；Rust 全工作区现有 65 项常规测试和 8 项真实 PostgreSQL 集成测试。
-- 第 8 项已有真实 HTTP 上传 → PostgreSQL Job → Worker → 不可变 Blob/ready Release → 固定 Preview 链路；完整发布链路仍需第 7 项完成后再闭环。
-- 下一项进入第 7 项：实现基于数据库活动版本指针的幂等 Publish/Rollback，并验证并发操作下数据库指针与 Access Plane 响应一致。
+- 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
+- `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
+- Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放和回滚资格；Rust 全工作区现有 70 项常规测试和 9 项真实 PostgreSQL/端到端测试。
+- 真实 E2E 已贯通注册 → 项目 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A，并验证固定 B Preview 不受活动指针切换影响。
+- 下一阶段进入 R2：先固化 OpenAPI 生成的 TypeScript Client 与契约门禁，再一次性切换 Console 的 Cookie Session、项目、上传和部署 Store；不交付 Eden/Rust 双 Client 兼容运行模式。
 - 项目更新/删除暂不开放；删除必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付。

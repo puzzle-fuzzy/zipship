@@ -56,16 +56,22 @@ bun run rust:test
 - `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
 - `GET /_api/openapi.json`：当前 Rust API 契约。
 
-当前 Rust 纵向切片已经贯通注册、个人组织、项目、上传入队、异步 Artifact 处理和固定 Release 预览。上传协议为：
+当前 Rust 最小纵向切片已经贯通注册、个人组织、项目、上传入队、异步 Artifact 处理、固定 Release 预览、发布、正式访问和回滚。上传协议为：
 
 - `POST /_api/projects/{project_id}/uploads`：预留 ZIP 文件名与精确字节数。
 - `PUT /_api/uploads/{upload_id}/content`：携带 Cookie、CSRF、`Content-Length`，以原始 Body 流式写入 staging。
 - `POST /_api/uploads/{upload_id}/complete`：幂等创建 processing Release 与持久化 Artifact Job，返回 `202`。
 - `GET /_api/uploads/{upload_id}`：查询当前上传状态。
 
+发布协议为：
+
+- `POST /_api/projects/{project_id}/releases/{release_id}/publish`：携带 Cookie、CSRF、JSON Body 和必填 `Idempotency-Key`，原子切换活动版本。
+- `POST /_api/projects/{project_id}/releases/{release_id}/rollback`：回滚到曾成功激活的 ready Release，同样要求新的幂等键。
+- `GET /_api/projects/{project_id}/deployments`：查询当前成员可见的部署历史。
+
 独立 Worker 使用 PostgreSQL lease claim 任务并持续 heartbeat；过期 lease 可回收重试。Worker 对 ZIP 执行路径、类型、大小、层级、压缩率和入口目录校验，生成稳定 Manifest 与完整 SHA-256，将内容只写一次地提交到不可变 Artifact 存储，并在同一数据库事务中收敛 Upload、Release、Artifact、Job 和 Audit 状态。
 
-Access Plane 使用独立 Origin，通过 `/_sites/{project_slug}/{release_id}/` 提供固定版本预览。它只服务 ready Release/Artifact 和 Manifest 内登记的普通文件，支持 MIME、强 ETag、条件请求、单字节 Range、项目缓存策略以及仅限 HTML 导航的 SPA fallback。
+Access Plane 使用独立 Origin。`/_sites/{project_slug}/{release_id}/` 提供不可变的固定版本预览，`/{project_slug}/` 根据 PostgreSQL 中唯一的活动版本指针提供正式访问。它只服务 ready Release/Artifact 和 Manifest 内登记的普通文件，支持 MIME、强 ETag、条件请求、单字节 Range、项目缓存策略以及仅限 HTML 导航的 SPA fallback；发布和回滚不写软链接，也不产生数据库/文件系统双写窗口。
 
 ## 开发端口
 
