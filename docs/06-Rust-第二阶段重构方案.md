@@ -345,3 +345,16 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 4. 不存在或已删除的 organization、非成员 actor 统一返回 `FORBIDDEN`；合法 actor 操作不存在的 target 返回 `MEMBER_NOT_FOUND`；破坏最后 owner 约束返回 `LAST_OWNER`。
 5. 测试覆盖完整角色矩阵、主动退出、最后 owner、重复请求、角色修改与成员移除并发竞争、事务回滚、HTTP 鉴权/CSRF/路径参数，以及 OpenAPI 快照和 TypeScript Client 一致性。
 6. 本切片不处理待接受邀请、用户账号删除、项目删除或 Artifact GC；这些状态机分别实现，避免把成员关系删除扩张为数据生命周期删除。
+
+### 下一实施切片：邀请生命周期
+
+邀请不兼容旧 TypeScript 的“仅邀请已注册用户 + 非事务接受”模型，直接按最终状态机实现：
+
+1. `invitations` 保存 `pending / accepted / revoked / expired` 状态、规范化邮箱、目标角色、邀请人、接受人、过期时间和解决时间；数据库约束保证状态与时间字段一致，并以部分唯一索引保证同一组织和邮箱最多只有一个 pending 邀请。
+2. 邀请任意合法邮箱，不要求目标用户已经注册；接受者必须先登录，且当前账号的规范化邮箱必须与邀请邮箱完全一致。
+3. 邀请令牌使用 32 字节操作系统随机数和 URL-safe Base64，只在创建响应中出现一次；数据库仅保存 SHA-256 摘要并校验 32 字节长度。管理列表、审计、日志和错误都不得泄露令牌。
+4. 接受接口使用 `POST /_api/invitations/accept` 的 JSON Body 传递令牌，不把令牌放进 API 路径、查询参数或访问日志。相同用户重复接受成功结果可以安全重放，不重复写 membership 或审计。
+5. 创建、撤销、接受都先锁 organization，再锁 invitation/membership；接受时 membership、邀请状态和 `member.joined` 审计必须在一个事务提交。过期状态也必须显式落库，不能只依赖运行时判断。
+6. owner 可以邀请或撤销任意角色；admin 只能处理非 owner 邀请；其他角色不能查看或管理邀请。已有成员、活动邀请、错误收件人、过期和已撤销令牌分别返回稳定错误码。
+7. API 提供组织范围的创建、活动列表、撤销和令牌接受。创建响应返回一次性 `acceptToken` 供当前阶段人工分享；邮件发送必须在后续以可靠 Outbox/Delivery 适配器实现，不能把明文令牌持久化到普通 Job 表冒充可靠邮件。
+8. 验收覆盖并发重复创建、创建与接受竞争、撤销与接受竞争、过期后重新邀请、错误邮箱、同用户接受重放、数据库约束、CSRF、OpenAPI 快照和 TypeScript Client。
