@@ -1,10 +1,14 @@
 use async_trait::async_trait;
-use sqlx::{FromRow, PgPool};
+use sqlx::PgPool;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use zipship_jobs::{JobLease, WorkerId};
 use zipship_mail::{ClaimedMail, MailOutboxRepository, MailOutboxRepositoryError};
 use zipship_recovery::SealedEnvelope;
+
+mod row;
+
+use row::{CandidateRow, OutboxRow, ResetRow, corrupt_outbox};
 
 #[derive(Debug, Clone)]
 pub struct PgMailOutboxRepository {
@@ -480,36 +484,4 @@ async fn fail_outbox(
     .await
     .map_err(MailOutboxRepositoryError::unavailable)?;
     Ok(())
-}
-
-fn corrupt_outbox() -> MailOutboxRepositoryError {
-    MailOutboxRepositoryError::unavailable(CorruptOutboxRecord)
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("email outbox record violates its domain invariants")]
-struct CorruptOutboxRecord;
-
-#[derive(Debug, FromRow)]
-struct CandidateRow {
-    id: Uuid,
-    aggregate_id: Uuid,
-    user_id: Uuid,
-}
-
-#[derive(Debug, FromRow)]
-struct ResetRow {
-    state: String,
-    expires_at: OffsetDateTime,
-}
-
-#[derive(Debug, FromRow)]
-struct OutboxRow {
-    key_id: Option<String>,
-    nonce: Option<Vec<u8>>,
-    ciphertext: Option<Vec<u8>>,
-    state: String,
-    attempts: i16,
-    max_attempts: i16,
-    next_attempt_at: OffsetDateTime,
 }
