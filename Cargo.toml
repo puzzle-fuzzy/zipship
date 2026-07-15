@@ -14,6 +14,7 @@ members = [
   "crates/zipship-members",
   "crates/zipship-postgres",
   "crates/zipship-projects",
+  "crates/zipship-recovery",
   "crates/zipship-releases",
   "crates/zipship-storage",
   "crates/zipship-uploads",
@@ -35,6 +36,7 @@ async-trait = "0.1.89"
 axum = { version = "0.8.9", features = ["http1", "json", "macros", "tokio"] }
 axum-extra = { version = "0.12.6", features = ["cookie"] }
 base64 = "0.22.1"
+chacha20poly1305 = { version = "0.11.0", features = ["getrandom"] }
 clap = { version = "4.5.54", features = ["derive", "env"] }
 dotenvy = "0.15.7"
 email_address = "0.2.9"
@@ -87,6 +89,7 @@ utoipa = { version = "5.5.0", features = ["axum_extras", "time", "uuid"] }
 uuid = { version = "1.23.5", features = ["serde", "v4"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 subtle = "2.6.1"
+zeroize = "1.9.0"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
