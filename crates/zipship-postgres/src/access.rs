@@ -55,6 +55,42 @@ impl PreviewRepository for PgPreviewRepository {
 
         row.map(PreviewRow::try_into_release).transpose()
     }
+
+    async fn find_active_release(
+        &self,
+        project_slug: &ProjectSlug,
+    ) -> Result<Option<PreviewRelease>, PreviewRepositoryError> {
+        let row = sqlx::query_as::<_, PreviewRow>(
+            r#"
+            SELECT
+                releases.id AS release_id,
+                projects.slug AS project_slug,
+                projects.spa_fallback,
+                projects.cache_policy,
+                artifacts.sha256,
+                artifacts.storage_key,
+                artifacts.file_count,
+                artifacts.total_size,
+                artifacts.manifest
+            FROM project_active_releases
+            INNER JOIN projects ON projects.id = project_active_releases.project_id
+            INNER JOIN releases
+                ON releases.id = project_active_releases.release_id
+               AND releases.project_id = projects.id
+            INNER JOIN artifacts ON artifacts.id = releases.artifact_id
+            WHERE projects.slug = $1
+              AND projects.deleted_at IS NULL
+              AND releases.state = 'ready'
+              AND artifacts.state = 'ready'
+            "#,
+        )
+        .bind(project_slug.as_str())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(PreviewRepositoryError::unavailable)?;
+
+        row.map(PreviewRow::try_into_release).transpose()
+    }
 }
 
 #[derive(Debug, FromRow)]

@@ -7,7 +7,7 @@ use zipship_postgres::PgPreviewRepository;
 
 #[tokio::test]
 #[ignore = "requires an isolated PostgreSQL database"]
-async fn resolves_only_ready_release_and_artifact_pairs() {
+async fn resolves_fixed_and_active_ready_release_and_artifact_pairs() {
     let pool = test_pool().await;
     zipship_postgres::migrate(&pool).await.unwrap();
     sqlx::query("TRUNCATE TABLE organizations, users, artifacts CASCADE")
@@ -17,6 +17,14 @@ async fn resolves_only_ready_release_and_artifact_pairs() {
     let fixture = insert_ready_release(&pool).await;
     let repository = PgPreviewRepository::new(pool.clone());
     let slug = ProjectSlug::parse("preview-site").unwrap();
+
+    assert!(
+        repository
+            .find_active_release(&slug)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let release = repository
         .find_ready_release(&slug, fixture.release_id)
@@ -35,6 +43,19 @@ async fn resolves_only_ready_release_and_artifact_pairs() {
         18
     );
 
+    sqlx::query("INSERT INTO project_active_releases (project_id, release_id) VALUES ($1, $2)")
+        .bind(fixture.project_id)
+        .bind(fixture.release_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let active = repository
+        .find_active_release(&slug)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(active.release_id(), fixture.release_id);
+
     sqlx::query("UPDATE releases SET state = 'archived' WHERE id = $1")
         .bind(fixture.release_id)
         .execute(&pool)
@@ -47,9 +68,17 @@ async fn resolves_only_ready_release_and_artifact_pairs() {
             .unwrap()
             .is_none()
     );
+    assert!(
+        repository
+            .find_active_release(&slug)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 struct Fixture {
+    project_id: Uuid,
     release_id: Uuid,
 }
 
@@ -125,7 +154,10 @@ async fn insert_ready_release(pool: &PgPool) -> Fixture {
     .await
     .unwrap();
 
-    Fixture { release_id }
+    Fixture {
+        project_id,
+        release_id,
+    }
 }
 
 async fn test_pool() -> PgPool {

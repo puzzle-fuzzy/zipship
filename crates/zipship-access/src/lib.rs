@@ -197,6 +197,11 @@ pub trait PreviewRepository: Send + Sync + 'static {
         project_slug: &ProjectSlug,
         release_id: Uuid,
     ) -> Result<Option<PreviewRelease>, PreviewRepositoryError>;
+
+    async fn find_active_release(
+        &self,
+        project_slug: &ProjectSlug,
+    ) -> Result<Option<PreviewRelease>, PreviewRepositoryError>;
 }
 
 #[derive(Clone)]
@@ -239,6 +244,44 @@ impl PreviewService {
                 return error_response(StatusCode::SERVICE_UNAVAILABLE);
             }
         };
+        self.serve_release(method, headers, release, request_path)
+            .await
+    }
+
+    async fn serve_active(
+        &self,
+        method: &Method,
+        headers: &HeaderMap,
+        project_slug: &str,
+        request_path: &str,
+    ) -> Response<Body> {
+        let Ok(project_slug) = ProjectSlug::parse(project_slug) else {
+            return error_response(StatusCode::NOT_FOUND);
+        };
+        let release = match self.repository.find_active_release(&project_slug).await {
+            Ok(Some(release)) => release,
+            Ok(None) => return error_response(StatusCode::NOT_FOUND),
+            Err(repository_error) => {
+                error!(
+                    error = %repository_error,
+                    project_slug = %project_slug.as_str(),
+                    "active release repository lookup failed"
+                );
+                return error_response(StatusCode::SERVICE_UNAVAILABLE);
+            }
+        };
+        self.serve_release(method, headers, release, request_path)
+            .await
+    }
+
+    async fn serve_release(
+        &self,
+        method: &Method,
+        headers: &HeaderMap,
+        release: PreviewRelease,
+        request_path: &str,
+    ) -> Response<Body> {
+        let release_id = release.release_id();
         let asset = match release.resolve_asset(request_path, accepts_html(headers)) {
             Ok(Some(asset)) => asset,
             Ok(None) | Err(_) => return error_response(StatusCode::NOT_FOUND),
@@ -345,6 +388,9 @@ pub fn build_router(service: PreviewService) -> Router {
             "/_sites/{project_slug}/{release_id}/{*path}",
             get(preview_asset),
         )
+        .route("/{project_slug}", get(active_root))
+        .route("/{project_slug}/", get(active_root))
+        .route("/{project_slug}/{*path}", get(active_asset))
         .with_state(service)
         .layer(SetResponseHeaderLayer::if_not_present(
             HeaderName::from_static("referrer-policy"),
@@ -385,6 +431,34 @@ async fn preview_asset(
     };
     service
         .serve(&method, &headers, &project_slug, &release_id, &path)
+        .await
+}
+
+async fn active_root(
+    State(service): State<PreviewService>,
+    method: Method,
+    headers: HeaderMap,
+    params: Result<Path<String>, PathRejection>,
+) -> Response<Body> {
+    let Ok(Path(project_slug)) = params else {
+        return error_response(StatusCode::NOT_FOUND);
+    };
+    service
+        .serve_active(&method, &headers, &project_slug, "")
+        .await
+}
+
+async fn active_asset(
+    State(service): State<PreviewService>,
+    method: Method,
+    headers: HeaderMap,
+    params: Result<Path<(String, String)>, PathRejection>,
+) -> Response<Body> {
+    let Ok(Path((project_slug, path))) = params else {
+        return error_response(StatusCode::NOT_FOUND);
+    };
+    service
+        .serve_active(&method, &headers, &project_slug, &path)
         .await
 }
 
@@ -663,6 +737,13 @@ mod tests {
                 && self.release.release_id() == release_id)
                 .then(|| self.release.clone()))
         }
+
+        async fn find_active_release(
+            &self,
+            project_slug: &ProjectSlug,
+        ) -> Result<Option<PreviewRelease>, PreviewRepositoryError> {
+            Ok((self.release.project_slug() == project_slug).then(|| self.release.clone()))
+        }
     }
 
     async fn http_fixture(cache_policy: CachePolicy) -> (Router, TempDir, Uuid) {
@@ -821,6 +902,32 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[tokio::test]
+    async fn serves_the_database_selected_active_release_at_the_project_path() {
+        let (app, _temp, _release_id) = http_fixture(CachePolicy::Standard).await;
+        let root = app
+            .clone()
+            .oneshot(Request::get("/marketing/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(root.status(), StatusCode::OK);
+        assert_eq!(root.headers()[header::CACHE_CONTROL], "no-cache");
+        assert_eq!(to_bytes(root.into_body(), 16).await.unwrap(), "home");
+
+        let deep_link = app
+            .oneshot(
+                Request::get("/marketing/dashboard/settings")
+                    .header(header::ACCEPT, "text/html")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(deep_link.status(), StatusCode::OK);
+        assert_eq!(deep_link.headers()[header::VARY], "Accept");
+        assert_eq!(to_bytes(deep_link.into_body(), 16).await.unwrap(), "home");
     }
 
     #[tokio::test]
