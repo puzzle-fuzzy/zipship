@@ -7,10 +7,11 @@ use std::{
 
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
-use zip::{CompressionMethod, ZipArchive, read::ZipFile};
+use zip::{CompressionMethod, ZipArchive, read::ZipFile, result::ZipError};
 
 use crate::{
     ArtifactError, ArtifactLimits, ExtractedArtifact,
+    central_directory::validate_central_directory,
     manifest::{ExtractedFile, build_artifact_result},
 };
 
@@ -39,7 +40,13 @@ fn extract_artifact_inner(
     limits: ArtifactLimits,
 ) -> Result<ExtractedArtifact, ArtifactError> {
     let archive_file = File::open(archive_path).map_err(ArtifactError::Io)?;
-    let mut archive = ZipArchive::new(archive_file).map_err(|_| ArtifactError::InvalidArchive)?;
+    let mut archive = ZipArchive::new(archive_file).map_err(map_archive_metadata_error)?;
+    validate_central_directory(
+        archive_path,
+        archive.central_directory_start(),
+        archive.len(),
+        limits.maximum_entries,
+    )?;
     let entries = validate_archive(&mut archive, limits)?;
     let mut expanded_bytes = 0_u64;
     let mut extracted_files = Vec::new();
@@ -123,7 +130,7 @@ fn validate_archive(
     for archive_index in 0..archive.len() {
         let file = archive
             .by_index(archive_index)
-            .map_err(|_| ArtifactError::InvalidArchive)?;
+            .map_err(map_archive_metadata_error)?;
         validate_entry_type(&file)?;
         let components = validate_entry_path(&file, limits.maximum_path_depth)?;
         let path = components.join("/");
@@ -357,5 +364,16 @@ fn map_archive_read_error(error: std::io::Error) -> ArtifactError {
         ArtifactError::InvalidArchive
     } else {
         ArtifactError::Io(error)
+    }
+}
+
+fn map_archive_metadata_error(error: ZipError) -> ArtifactError {
+    match error {
+        ZipError::Io(error) => map_archive_read_error(error),
+        ZipError::CompressionMethodNotSupported(_) => ArtifactError::UnsupportedCompression,
+        ZipError::UnsupportedArchive(
+            "Encrypted files are not supported" | ZipError::PASSWORD_REQUIRED,
+        ) => ArtifactError::EncryptedArchive,
+        _ => ArtifactError::InvalidArchive,
     }
 }

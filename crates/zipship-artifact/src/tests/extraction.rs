@@ -52,3 +52,32 @@ fn extracts_a_wrapped_site_and_hashes_the_manifest_deterministically() {
         "<main>ZipShip</main>",
     );
 }
+
+#[test]
+fn removes_partial_destinations_for_invalid_archives() {
+    let temp = tempdir().unwrap();
+    let archive = temp.path().join("invalid.zip");
+    let destination = temp.path().join("expanded");
+    fs::write(&archive, b"this is not a ZIP archive").unwrap();
+
+    let error = extract_artifact(&archive, &destination, ArtifactLimits::default()).unwrap_err();
+    assert_eq!(error.code(), "INVALID_ZIP_ARCHIVE");
+    assert!(!destination.exists());
+}
+
+#[test]
+fn refuses_to_overwrite_an_existing_destination() {
+    let temp = tempdir().unwrap();
+    let archive = temp.path().join("site.zip");
+    let destination = temp.path().join("expanded");
+    write_zip(&archive, &[("index.html", b"new")]);
+    fs::create_dir(&destination).unwrap();
+    fs::write(destination.join("sentinel.txt"), b"preserve").unwrap();
+
+    let error = extract_artifact(&archive, &destination, ArtifactLimits::default()).unwrap_err();
+    assert_eq!(error.code(), "ARTIFACT_DESTINATION_EXISTS");
+    assert_eq!(
+        fs::read(destination.join("sentinel.txt")).unwrap(),
+        b"preserve"
+    );
+}

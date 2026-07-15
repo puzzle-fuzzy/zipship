@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod archive;
+mod central_directory;
 mod error;
 mod jobs;
 mod manifest;

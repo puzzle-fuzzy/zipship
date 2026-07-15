@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn rejects_archives_over_the_entry_limit_before_extraction() {
+    let temp = tempdir().unwrap();
+    let archive = temp.path().join("entries.zip");
+    let destination = temp.path().join("expanded");
+    write_zip(
+        &archive,
+        &[("index.html", b"index"), ("assets/app.js", b"app")],
+    );
+    let limits = ArtifactLimits {
+        maximum_entries: 1,
+        ..ArtifactLimits::default()
+    };
+
+    let error = extract_artifact(&archive, &destination, limits).unwrap_err();
+    assert_eq!(error.code(), "ZIP_ENTRY_LIMIT_EXCEEDED");
+    assert!(!destination.exists());
+}
+
+#[test]
 fn enforces_entry_size_total_size_depth_and_ratio_limits() {
     let temp = tempdir().unwrap();
     let archive = temp.path().join("limits.zip");
