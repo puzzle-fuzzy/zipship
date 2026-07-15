@@ -56,7 +56,7 @@ bun run rust:test
 - `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
 - `GET /_api/openapi.json`：当前 Rust API 契约。
 
-当前 Rust 纵向切片已经贯通注册、个人组织、项目、上传入队和异步 Artifact 处理。上传协议为：
+当前 Rust 纵向切片已经贯通注册、个人组织、项目、上传入队、异步 Artifact 处理和固定 Release 预览。上传协议为：
 
 - `POST /_api/projects/{project_id}/uploads`：预留 ZIP 文件名与精确字节数。
 - `PUT /_api/uploads/{upload_id}/content`：携带 Cookie、CSRF、`Content-Length`，以原始 Body 流式写入 staging。
@@ -65,9 +65,12 @@ bun run rust:test
 
 独立 Worker 使用 PostgreSQL lease claim 任务并持续 heartbeat；过期 lease 可回收重试。Worker 对 ZIP 执行路径、类型、大小、层级、压缩率和入口目录校验，生成稳定 Manifest 与完整 SHA-256，将内容只写一次地提交到不可变 Artifact 存储，并在同一数据库事务中收敛 Upload、Release、Artifact、Job 和 Audit 状态。
 
+Access Plane 使用独立 Origin，通过 `/_sites/{project_slug}/{release_id}/` 提供固定版本预览。它只服务 ready Release/Artifact 和 Manifest 内登记的普通文件，支持 MIME、强 ETag、条件请求、单字节 Range、项目缓存策略以及仅限 HTML 导航的 SPA fallback。
+
 ## 开发端口
 
 - Rust API：`http://127.0.0.1:5006`
+- Rust Access Plane：`http://127.0.0.1:5007`
 - Web Shell：`http://127.0.0.1:4015`
 - Desktop Shell renderer：`http://localhost:1420`（Tauri 约定端口；完整桌面开发用 `bun --filter @zipship/desktop-shell tauri dev`，需 Rust 工具链）
 
