@@ -204,7 +204,7 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 ### API Token
 
 - 使用独立前缀和表结构。
-- 支持 scope，例如 `projects:read`、`releases:upload`、`deployments:write`。
+- 支持 scope，例如 `projects:read`、`releases:read`、`uploads:write`、`deployments:write`。
 - 支持过期时间、last_used_at、revoked_at 和描述性名称。
 - 明文只在创建时返回一次。
 
@@ -330,7 +330,7 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
 - `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发与审计游标分页；Rust 全工作区现有 125 项常规测试，以及 15 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发、API Token 并发与审计游标分页；Rust 全工作区现有 126 项常规测试，以及 16 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
 - R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员生命周期、邀请生命周期、密码恢复后端与可靠 SMTP Outbox，以及 Console 全 Store/认证恢复界面切换已经完成；未交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
@@ -404,4 +404,8 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 领域切片已完成：新建独立 `zipship-tokens` crate，以 `zps_` 前缀加 32 字节操作系统随机数生成凭证，明文仅通过 `SecretString` 的创建结果交付，持久化命令只含 SHA-256 摘要和用于识别的短前缀，所有 `Debug` 路径显式脱敏。Token 名称、四个稳定 scope、1–365 天强制过期、每用户最多 20 个活动 Token、撤销/过期/账号停用以及稳定错误码已建模。Bearer 解析先在仓储访问前校验格式，认证结果只携带 Token 原有 scope，后续 HTTP 权限层必须再与用户组织 RBAC 取交集，不得因 Token 扩权。
 
-下一个独立问题是 PostgreSQL API Token 仓储：直接建立最终 schema 约束和索引，用用户行锁串行化活动 Token 上限与账号状态；创建、列表、幂等撤销、摘要解析与 `last_used_at` 更新都在真实 PostgreSQL 事务测试中验证，并覆盖并发创建、撤销/认证竞争和已停用账号。
+PostgreSQL 仓储切片的目标是：直接建立最终 schema 约束和索引，用用户行锁串行化活动 Token 上限与账号状态；创建、列表、幂等撤销、摘要解析与 `last_used_at` 更新都在真实 PostgreSQL 事务测试中验证，并覆盖并发创建、撤销/认证竞争和已停用账号。
+
+PostgreSQL 切片已完成：无兼容性地替换临时 `api_tokens` 表，数据库强制名称、`zps_` 短前缀、32 字节摘要、scope 集合、1–365 天过期窗口与时间顺序；用户行锁确保并发创建不能突破 20 个活动 Token，撤销和认证按 Token 行串行化。撤销对重放幂等，仅首次变化写入不含凭证数据的组织审计；`last_used_at` 最多每五分钟落库一次。普通撤销与密码重置批量撤销均对多节点时钟偏移保持单调，不会因领先的最后使用时间而撤销失败。管理列表活动项优先并限制最近 100 项，避免无界查询。
+
+下一个独立问题是 Control Plane HTTP 与鉴权：增加本人 Token 创建/列表/撤销 API、CSRF、稳定错误码与 OpenAPI；Bearer 只接入明确支持的项目、版本、上传和部署路由，并对 Token scope 与当前组织 RBAC 取交集，不得访问 Cookie Session、CSRF 或本人安全设置路由。

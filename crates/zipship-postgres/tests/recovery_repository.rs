@@ -99,8 +99,26 @@ async fn enforces_password_recovery_security_and_concurrency() {
     assert_ne!(second_session.session_id, owner.session_id);
     sqlx::query(
         r#"
-        INSERT INTO api_tokens (id, user_id, name, token_hash, scopes, created_at)
-        VALUES ($1, $2, 'recovery-test', $3, '{}', $4)
+        INSERT INTO api_tokens (
+            id,
+            user_id,
+            name,
+            display_prefix,
+            token_hash,
+            scopes,
+            expires_at,
+            created_at
+        )
+        VALUES (
+            $1,
+            $2,
+            'recovery-test',
+            'zps_recover1',
+            $3,
+            ARRAY['projects:read'],
+            $4 + INTERVAL '30 days',
+            $4
+        )
         "#,
     )
     .bind(Uuid::new_v4())

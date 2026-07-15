@@ -253,7 +253,11 @@ impl PasswordRecoveryRepository for PgPasswordRecoveryRepository {
         sqlx::query(
             r#"
             UPDATE api_tokens
-            SET revoked_at = $2
+            SET revoked_at = GREATEST(
+                $2,
+                api_tokens.created_at,
+                COALESCE(api_tokens.last_used_at, $2)
+            )
             WHERE user_id = $1 AND revoked_at IS NULL
             "#,
         )

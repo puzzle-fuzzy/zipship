@@ -17,6 +17,7 @@ mod members;
 mod projects;
 mod recovery;
 mod releases;
+mod tokens;
 mod uploads;
 
 pub use access::PgPreviewRepository;
@@ -31,6 +32,7 @@ pub use members::PgMembersRepository;
 pub use projects::PgProjectsRepository;
 pub use recovery::PgPasswordRecoveryRepository;
 pub use releases::PgReleasesRepository;
+pub use tokens::PgApiTokensRepository;
 pub use uploads::PgUploadsRepository;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
