@@ -334,7 +334,10 @@ fn storage_error(error: StorageError) -> ApiError {
         }
         StorageError::Io(_)
         | StorageError::InvalidStagingPath
-        | StorageError::InvalidStagingDirectory => {
+        | StorageError::InvalidStagingDirectory
+        | StorageError::InvalidArtifactPath
+        | StorageError::InvalidArtifactDirectory
+        | StorageError::InvalidArtifactFile => {
             ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "UPLOAD_STORAGE_FAILURE")
         }
     }

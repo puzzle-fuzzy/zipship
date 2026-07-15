@@ -4,8 +4,10 @@ use async_trait::async_trait;
 use clap::{Parser, Subcommand};
 use sqlx::PgPool;
 use std::{collections::BTreeMap, error::Error, sync::Arc};
+use tokio::sync::watch;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
+use zipship_access::PreviewService;
 use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
@@ -102,7 +104,13 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         },
     );
     let cookie_policy = CookiePolicy::new(settings.environment == Environment::Production);
-    let app = build_router(AppState::new(
+    let access_app = zipship_access::build_router(PreviewService::new(
+        Arc::new(zipship_postgres::PgPreviewRepository::new(
+            readiness.pool.clone(),
+        )),
+        storage.clone(),
+    ));
+    let control_app = build_router(AppState::new(
         readiness,
         auth,
         projects,
@@ -110,12 +118,26 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         storage,
         cookie_policy,
     ));
-    let listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
+    let control_listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
+    let access_listener = tokio::net::TcpListener::bind(settings.access_bind).await?;
+    let (shutdown_sender, _) = watch::channel(false);
+    let signal_sender = shutdown_sender.clone();
+    let signal_task = tokio::spawn(async move {
+        if let Err(error) = shutdown_signal().await {
+            error!(error = %error, "failed to install server shutdown signal");
+        }
+        let _ = signal_sender.send(true);
+    });
 
-    info!(bind = %settings.http_bind, "zipshipd listening");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    info!(bind = %settings.http_bind, "ZipShip control plane listening");
+    info!(bind = %settings.access_bind, "ZipShip access plane listening");
+    let control_server = axum::serve(control_listener, control_app)
+        .with_graceful_shutdown(wait_for_shutdown(shutdown_sender.subscribe()));
+    let access_server = axum::serve(access_listener, access_app)
+        .with_graceful_shutdown(wait_for_shutdown(shutdown_sender.subscribe()));
+    let result = tokio::try_join!(control_server, access_server);
+    signal_task.abort();
+    result?;
     Ok(())
 }
 
@@ -127,8 +149,24 @@ fn init_tracing(filter: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
     Ok(())
 }
 
-async fn shutdown_signal() {
-    if let Err(error) = tokio::signal::ctrl_c().await {
-        error!(error = %error, "failed to install shutdown signal handler");
+async fn wait_for_shutdown(mut shutdown: watch::Receiver<bool>) {
+    if !*shutdown.borrow() {
+        let _ = shutdown.changed().await;
     }
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() -> Result<(), std::io::Error> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut terminate = signal(SignalKind::terminate())?;
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => result,
+        _ = terminate.recv() => Ok(()),
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() -> Result<(), std::io::Error> {
+    tokio::signal::ctrl_c().await
 }

@@ -31,6 +31,7 @@ impl FromStr for Environment {
 pub struct Settings {
     pub environment: Environment,
     pub http_bind: SocketAddr,
+    pub access_bind: SocketAddr,
     pub database_url: SecretString,
     pub database_max_connections: u32,
     pub storage_root: PathBuf,
@@ -131,9 +132,21 @@ impl Settings {
             "1048576",
         )?;
 
+        let http_bind: SocketAddr =
+            parse_or_default(&mut lookup, "ZIPSHIP_HTTP_BIND", "127.0.0.1:5006")?;
+        let access_bind: SocketAddr =
+            parse_or_default(&mut lookup, "ZIPSHIP_ACCESS_BIND", "127.0.0.1:5007")?;
+        if http_bind == access_bind {
+            return Err(ConfigError::InvalidValue {
+                key: "ZIPSHIP_ACCESS_BIND",
+                value: access_bind.to_string(),
+            });
+        }
+
         Ok(Self {
             environment,
-            http_bind: parse_or_default(&mut lookup, "ZIPSHIP_HTTP_BIND", "127.0.0.1:5006")?,
+            http_bind,
+            access_bind,
             database_url: SecretString::from(database_url),
             database_max_connections: parse_or_default(
                 &mut lookup,
@@ -225,6 +238,7 @@ mod tests {
         let settings = settings_from(&[]).unwrap();
         assert_eq!(settings.environment, Environment::Development);
         assert_eq!(settings.http_bind.to_string(), "127.0.0.1:5006");
+        assert_eq!(settings.access_bind.to_string(), "127.0.0.1:5007");
         assert_eq!(settings.storage_root, PathBuf::from(".zipship"));
         assert!(settings.database_url.expose_secret().contains("127.0.0.1"));
         assert_eq!(settings.upload_max_bytes, 500 * 1_024 * 1_024);
@@ -258,6 +272,14 @@ mod tests {
     #[test]
     fn rejects_invalid_typed_values() {
         assert!(settings_from(&[("ZIPSHIP_HTTP_BIND", "not-an-address")]).is_err());
+        assert!(settings_from(&[("ZIPSHIP_ACCESS_BIND", "not-an-address")]).is_err());
+        assert!(
+            settings_from(&[
+                ("ZIPSHIP_HTTP_BIND", "127.0.0.1:5006"),
+                ("ZIPSHIP_ACCESS_BIND", "127.0.0.1:5006"),
+            ])
+            .is_err()
+        );
         assert!(settings_from(&[("ZIPSHIP_WORKER_LEASE_SECS", "never")]).is_err());
         assert!(settings_from(&[("ZIPSHIP_WORKER_POLL_MS", "0")]).is_err());
         assert!(settings_from(&[("ZIPSHIP_WORKER_LEASE_SECS", "86401")]).is_err());
