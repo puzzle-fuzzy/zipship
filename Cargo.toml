@@ -10,6 +10,7 @@ members = [
   "crates/zipship-domain",
   "crates/zipship-deployments",
   "crates/zipship-jobs",
+  "crates/zipship-members",
   "crates/zipship-postgres",
   "crates/zipship-projects",
   "crates/zipship-releases",

@@ -15,8 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zipship_projects::{
-    CreateProjectCommand, MemberSummary, OrganizationSummary, Project, ProjectsError,
-    UpdateProjectCommand,
+    CreateProjectCommand, OrganizationSummary, Project, ProjectsError, UpdateProjectCommand,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -32,21 +31,6 @@ pub(crate) struct OrganizationResponse {
     slug: String,
     role: String,
     created_at: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct MembersResponse {
-    members: Vec<MemberResponse>,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct MemberResponse {
-    user_id: Uuid,
-    email: String,
-    display_name: String,
-    role: String,
-    joined_at: String,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -121,10 +105,6 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/_api/organizations", get(list_organizations))
         .route(
-            "/_api/organizations/{organization_id}/members",
-            get(list_members),
-        )
-        .route(
             "/_api/organizations/{organization_id}/projects",
             get(list_projects).post(create_project),
         )
@@ -157,36 +137,6 @@ pub(crate) async fn list_organizations(
         .map(Into::into)
         .collect();
     Ok(no_store(Json(OrganizationsResponse { organizations })))
-}
-
-#[utoipa::path(
-    get,
-    path = "/_api/organizations/{organization_id}/members",
-    tag = "organizations",
-    params(("organization_id" = Uuid, Path, description = "Organization ID")),
-    responses(
-        (status = 200, description = "Organization members", body = MembersResponse),
-        (status = 400, description = "Path parameter is invalid", body = ErrorResponse),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current user is not a member", body = ErrorResponse),
-        (status = 503, description = "Membership storage is unavailable", body = ErrorResponse)
-    )
-)]
-pub(crate) async fn list_members(
-    State(state): State<AppState>,
-    jar: CookieJar,
-    Path(organization_id): Path<String>,
-) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
-    let organization_id = parse_uuid(&organization_id)?;
-    let members = state
-        .projects
-        .list_members(session.user.id, organization_id)
-        .await?
-        .into_iter()
-        .map(Into::into)
-        .collect();
-    Ok(no_store(Json(MembersResponse { members })))
 }
 
 #[utoipa::path(
@@ -370,18 +320,6 @@ impl From<OrganizationSummary> for OrganizationResponse {
             slug: organization.slug,
             role: organization.role.as_str().to_owned(),
             created_at: format_timestamp(organization.created_at),
-        }
-    }
-}
-
-impl From<MemberSummary> for MemberResponse {
-    fn from(member: MemberSummary) -> Self {
-        Self {
-            user_id: member.user_id,
-            email: member.email,
-            display_name: member.display_name,
-            role: member.role.as_str().to_owned(),
-            joined_at: format_timestamp(member.joined_at),
         }
     }
 }

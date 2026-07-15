@@ -450,7 +450,7 @@
     "/_api/organizations/{organization_id}/members": {
       "get": {
         "tags": [
-          "organizations"
+          "members"
         ],
         "operationId": "list_members",
         "parameters": [
@@ -498,6 +498,127 @@
           },
           "403": {
             "description": "Current user is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Membership storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/organizations/{organization_id}/members/{user_id}": {
+      "patch": {
+        "tags": [
+          "members"
+        ],
+        "operationId": "update_member_role",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "description": "Organization ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "path",
+            "description": "Member user ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Member role updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "JSON or path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current role cannot perform this update",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Target member is missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Update would remove the last owner",
             "content": {
               "application/json": {
                 "schema": {
@@ -2048,6 +2169,17 @@
           }
         }
       },
+      "MemberEnvelope": {
+        "type": "object",
+        "required": [
+          "member"
+        ],
+        "properties": {
+          "member": {
+            "$ref": "#/components/schemas/MemberResponse"
+          }
+        }
+      },
       "MemberResponse": {
         "type": "object",
         "required": [
@@ -2068,13 +2200,23 @@
             "type": "string"
           },
           "role": {
-            "type": "string"
+            "$ref": "#/components/schemas/MemberRoleDto"
           },
           "userId": {
             "type": "string",
             "format": "uuid"
           }
         }
+      },
+      "MemberRoleDto": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "admin",
+          "developer",
+          "deployer",
+          "viewer"
+        ]
       },
       "MembersResponse": {
         "type": "object",
@@ -2361,6 +2503,17 @@
           }
         }
       },
+      "UpdateMemberRoleRequest": {
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/MemberRoleDto"
+          }
+        }
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "required": [
@@ -2523,6 +2676,10 @@
     {
       "name": "organizations",
       "description": "Organizations and memberships"
+    },
+    {
+      "name": "members",
+      "description": "Organization member lifecycle"
     },
     {
       "name": "projects",

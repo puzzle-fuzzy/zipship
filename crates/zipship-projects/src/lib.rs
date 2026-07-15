@@ -19,15 +19,6 @@ pub struct OrganizationSummary {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MemberSummary {
-    pub user_id: Uuid,
-    pub email: String,
-    pub display_name: String,
-    pub role: MemberRole,
-    pub joined_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
     pub id: Uuid,
     pub organization_id: Uuid,
@@ -127,12 +118,6 @@ pub trait ProjectsRepository: Send + Sync + 'static {
         actor_id: Uuid,
     ) -> Result<Option<MemberRole>, ProjectsRepositoryError>;
 
-    async fn list_members(
-        &self,
-        organization_id: Uuid,
-        actor_id: Uuid,
-    ) -> Result<Vec<MemberSummary>, ProjectsRepositoryError>;
-
     async fn create_project(&self, project: NewProject)
     -> Result<Project, ProjectsRepositoryError>;
 
@@ -214,23 +199,6 @@ impl ProjectsService {
     ) -> Result<Vec<OrganizationSummary>, ProjectsError> {
         self.repository
             .list_organizations(actor_id)
-            .await
-            .map_err(map_repository_error)
-    }
-
-    pub async fn list_members(
-        &self,
-        actor_id: Uuid,
-        organization_id: Uuid,
-    ) -> Result<Vec<MemberSummary>, ProjectsError> {
-        self.require_permission(
-            organization_id,
-            actor_id,
-            PermissionAction::ViewOrganization,
-        )
-        .await?;
-        self.repository
-            .list_members(organization_id, actor_id)
             .await
             .map_err(map_repository_error)
     }
@@ -388,7 +356,6 @@ mod tests {
     struct State {
         organizations: Vec<OrganizationSummary>,
         memberships: Vec<Membership>,
-        members: Vec<MemberSummary>,
         projects: Vec<Project>,
     }
 
@@ -432,21 +399,6 @@ mod tests {
                     membership.organization_id == organization_id && membership.user_id == actor_id
                 })
                 .map(|membership| membership.role))
-        }
-
-        async fn list_members(
-            &self,
-            organization_id: Uuid,
-            actor_id: Uuid,
-        ) -> Result<Vec<MemberSummary>, ProjectsRepositoryError> {
-            let state = self.state.lock().unwrap();
-            let authorized = state.memberships.iter().any(|membership| {
-                membership.organization_id == organization_id && membership.user_id == actor_id
-            });
-            if !authorized {
-                return Err(ProjectsRepositoryError::Forbidden);
-            }
-            Ok(state.members.clone())
         }
 
         async fn create_project(
@@ -630,13 +582,6 @@ mod tests {
                 user_id,
                 role,
             });
-            state.members.push(MemberSummary {
-                user_id,
-                email: "owner@example.com".to_owned(),
-                display_name: "Owner".to_owned(),
-                role,
-                joined_at: NOW,
-            });
         }
         let service = ProjectsService::with_clock(repository.clone(), Arc::new(FixedClock));
         (repository, service, user_id, organization_id)
@@ -653,16 +598,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn lists_only_the_current_users_organizations_and_members() {
-        let (_, service, user_id, organization_id) = fixture(MemberRole::Viewer);
+    async fn lists_only_the_current_users_organizations() {
+        let (_, service, user_id, _) = fixture(MemberRole::Viewer);
         let organizations = service.list_organizations(user_id).await.unwrap();
         assert_eq!(organizations.len(), 1);
         assert_eq!(organizations[0].role, MemberRole::Viewer);
-        let members = service
-            .list_members(user_id, organization_id)
-            .await
-            .unwrap();
-        assert_eq!(members.len(), 1);
     }
 
     #[tokio::test]

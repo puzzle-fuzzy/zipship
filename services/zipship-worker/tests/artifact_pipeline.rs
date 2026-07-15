@@ -21,9 +21,11 @@ use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
 use zipship_domain::ArtifactDigest;
 use zipship_jobs::{JobLease, WorkerId};
+use zipship_members::MembersService;
 use zipship_postgres::{
     PgArtifactJobsRepository, PgAuditRepository, PgAuthRepository, PgDeploymentsRepository,
-    PgJobsRepository, PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
+    PgJobsRepository, PgMembersRepository, PgPreviewRepository, PgProjectsRepository,
+    PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
 use zipship_releases::ReleasesService;
@@ -494,6 +496,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
         .await
         .unwrap();
     let audit = AuditService::new(Arc::new(PgAuditRepository::new(pool.clone())));
+    let members = MembersService::new(Arc::new(PgMembersRepository::new(pool.clone())));
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
     let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
     let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
@@ -505,7 +508,15 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     );
     build_router(AppState::new(
         Arc::new(Probe),
-        AppServices::new(auth, audit, deployments, projects, releases, uploads),
+        AppServices::new(
+            auth,
+            audit,
+            deployments,
+            members,
+            projects,
+            releases,
+            uploads,
+        ),
         storage.clone(),
         BrowserPolicy::new(
             CookiePolicy::new(false),

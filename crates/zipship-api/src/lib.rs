@@ -22,6 +22,7 @@ use utoipa::{OpenApi, ToSchema};
 use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
+use zipship_members::MembersService;
 use zipship_projects::ProjectsService;
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
@@ -31,6 +32,7 @@ mod audit;
 mod auth;
 mod deployments;
 mod error;
+mod members;
 mod projects;
 mod releases;
 mod request;
@@ -129,6 +131,7 @@ pub struct AppServices {
     auth: AuthService,
     audit: AuditService,
     deployments: DeploymentsService,
+    members: MembersService,
     projects: ProjectsService,
     releases: ReleasesService,
     uploads: UploadsService,
@@ -139,6 +142,7 @@ impl AppServices {
         auth: AuthService,
         audit: AuditService,
         deployments: DeploymentsService,
+        members: MembersService,
         projects: ProjectsService,
         releases: ReleasesService,
         uploads: UploadsService,
@@ -147,6 +151,7 @@ impl AppServices {
             auth,
             audit,
             deployments,
+            members,
             projects,
             releases,
             uploads,
@@ -160,6 +165,7 @@ pub struct AppState {
     pub(crate) auth: AuthService,
     pub(crate) audit: AuditService,
     pub(crate) deployments: DeploymentsService,
+    pub(crate) members: MembersService,
     pub(crate) projects: ProjectsService,
     pub(crate) releases: ReleasesService,
     pub(crate) uploads: UploadsService,
@@ -180,6 +186,7 @@ impl AppState {
             auth: services.auth,
             audit: services.audit,
             deployments: services.deployments,
+            members: services.members,
             projects: services.projects,
             releases: services.releases,
             uploads: services.uploads,
@@ -206,7 +213,8 @@ impl AppState {
         deployments::list_deployments,
         releases::list_releases,
         projects::list_organizations,
-        projects::list_members,
+        members::list_members,
+        members::update_member_role,
         projects::list_projects,
         projects::create_project,
         projects::get_project,
@@ -238,8 +246,11 @@ impl AppState {
         releases::ManifestEntryResponse,
         projects::OrganizationsResponse,
         projects::OrganizationResponse,
-        projects::MembersResponse,
-        projects::MemberResponse,
+        members::MembersResponse,
+        members::MemberEnvelope,
+        members::MemberResponse,
+        members::UpdateMemberRoleRequest,
+        members::MemberRoleDto,
         projects::CreateProjectRequest,
         projects::UpdateProjectRequest,
         projects::ProjectCachePolicyRequest,
@@ -258,6 +269,7 @@ impl AppState {
         (name = "audit", description = "Organization activity history"),
         (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
+        (name = "members", description = "Organization member lifecycle"),
         (name = "projects", description = "Static deployment projects"),
         (name = "releases", description = "Immutable project release history"),
         (name = "uploads", description = "Bounded archive ingestion and processing")
@@ -280,6 +292,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(auth::router())
         .merge(audit::router())
         .merge(deployments::router())
+        .merge(members::router())
         .merge(projects::router())
         .merge(releases::router())
         .merge(uploads::standard_router())
@@ -389,8 +402,9 @@ mod tests {
         DeploymentsRepositoryError, DeploymentsService, NewDeployment,
     };
     use zipship_domain::{ArtifactDigest, CachePolicy, MemberRole, ReleaseStatus, UploadStatus};
+    use zipship_members::{Member, MembersRepository, MembersRepositoryError, UpdateMemberRole};
     use zipship_projects::{
-        MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
+        NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
         ProjectsRepositoryError, UpdateProject,
     };
     use zipship_releases::{
@@ -431,6 +445,8 @@ mod tests {
     struct TestProjectsRepository {
         projects: Mutex<Vec<Project>>,
     }
+
+    struct TestMembersRepository;
 
     #[derive(Default)]
     struct UploadState {
@@ -751,23 +767,6 @@ mod tests {
             Ok((organization_id == TEST_ORGANIZATION_ID).then_some(MemberRole::Owner))
         }
 
-        async fn list_members(
-            &self,
-            organization_id: Uuid,
-            actor_id: Uuid,
-        ) -> Result<Vec<MemberSummary>, ProjectsRepositoryError> {
-            if organization_id != TEST_ORGANIZATION_ID {
-                return Err(ProjectsRepositoryError::Forbidden);
-            }
-            Ok(vec![MemberSummary {
-                user_id: actor_id,
-                email: "owner@example.com".to_owned(),
-                display_name: "Owner".to_owned(),
-                role: MemberRole::Owner,
-                joined_at: OffsetDateTime::UNIX_EPOCH,
-            }])
-        }
-
         async fn create_project(
             &self,
             project: NewProject,
@@ -861,6 +860,45 @@ mod tests {
                     project,
                     role: MemberRole::Owner,
                 }))
+        }
+    }
+
+    #[async_trait]
+    impl MembersRepository for TestMembersRepository {
+        async fn list_members(
+            &self,
+            organization_id: Uuid,
+            actor_id: Uuid,
+        ) -> Result<Vec<Member>, MembersRepositoryError> {
+            if organization_id != TEST_ORGANIZATION_ID {
+                return Err(MembersRepositoryError::Forbidden);
+            }
+            Ok(vec![Member {
+                user_id: actor_id,
+                email: "owner@example.com".to_owned(),
+                display_name: "Owner".to_owned(),
+                role: MemberRole::Owner,
+                joined_at: OffsetDateTime::UNIX_EPOCH,
+            }])
+        }
+
+        async fn update_role(
+            &self,
+            update: UpdateMemberRole,
+        ) -> Result<Member, MembersRepositoryError> {
+            if update.organization_id != TEST_ORGANIZATION_ID {
+                return Err(MembersRepositoryError::Forbidden);
+            }
+            if update.target_user_id == update.actor_id && update.role != MemberRole::Owner {
+                return Err(MembersRepositoryError::LastOwner);
+            }
+            Ok(Member {
+                user_id: update.target_user_id,
+                email: "member@example.com".to_owned(),
+                display_name: "Member".to_owned(),
+                role: update.role,
+                joined_at: OffsetDateTime::UNIX_EPOCH,
+            })
         }
     }
 
@@ -977,6 +1015,7 @@ mod tests {
             .await
             .unwrap();
         let audit = AuditService::new(Arc::new(TestAuditRepository));
+        let members = MembersService::new(Arc::new(TestMembersRepository));
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
         let releases = ReleasesService::new(Arc::new(TestReleasesRepository));
@@ -996,7 +1035,15 @@ mod tests {
                 status,
                 _storage_root: storage_root,
             }),
-            AppServices::new(auth, audit, deployments, projects, releases, uploads),
+            AppServices::new(
+                auth,
+                audit,
+                deployments,
+                members,
+                projects,
+                releases,
+                uploads,
+            ),
             storage.clone(),
             BrowserPolicy::new(
                 CookiePolicy::new(secure_cookies),
@@ -1133,7 +1180,12 @@ mod tests {
                 .unwrap(),
             "application/json",
         );
-        let document = json_body(response).await;
+        const OPENAPI_MAX_BYTES: usize = 256 * 1_024;
+        let body = to_bytes(response.into_body(), OPENAPI_MAX_BYTES)
+            .await
+            .unwrap();
+        assert!(body.len() < OPENAPI_MAX_BYTES);
+        let document: Value = serde_json::from_slice(&body).unwrap();
         assert!(document["paths"]["/_api/auth/register"].is_object());
         assert!(document["paths"]["/_api/auth/logout"].is_object());
         assert!(
@@ -1143,6 +1195,10 @@ mod tests {
         assert!(document["paths"]["/_api/projects/{project_id}/deployments"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/releases"].is_object());
         assert!(document["paths"]["/_api/organizations"].is_object());
+        assert!(
+            document["paths"]["/_api/organizations/{organization_id}/members/{user_id}"]
+                .is_object()
+        );
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
         assert!(document["paths"]["/_api/uploads/{upload_id}/content"].is_object());
@@ -1352,6 +1408,87 @@ mod tests {
             json_body(invalid).await,
             json!({ "code": "INVALID_DISPLAY_NAME" })
         );
+    }
+
+    #[tokio::test]
+    async fn member_role_updates_require_csrf_and_return_the_updated_member() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let actor_id = json_body(registered).await["user"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let target_user_id = Uuid::from_u128(2);
+        let path = format!("/_api/organizations/{TEST_ORGANIZATION_ID}/members/{target_user_id}");
+        let body = json!({ "role": "admin" }).to_string();
+
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::patch(&path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            json_body(missing_csrf).await,
+            json!({ "code": "INVALID_CSRF_TOKEN" })
+        );
+
+        let updated = app
+            .clone()
+            .oneshot(
+                Request::patch(&path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.status(), StatusCode::OK);
+        let updated = json_body(updated).await;
+        assert_eq!(updated["member"]["userId"], target_user_id.to_string());
+        assert_eq!(updated["member"]["role"], "admin");
+
+        let listed = app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/members"
+                ))
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.status(), StatusCode::OK);
+        assert_eq!(json_body(listed).await["members"][0]["role"], "owner");
+
+        let last_owner = app
+            .oneshot(
+                Request::patch(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/members/{actor_id}"
+                ))
+                .header(header::COOKIE, cookie_header)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::from(json!({ "role": "viewer" }).to_string()))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(last_owner.status(), StatusCode::CONFLICT);
+        assert_eq!(json_body(last_owner).await, json!({ "code": "LAST_OWNER" }));
     }
 
     #[tokio::test]

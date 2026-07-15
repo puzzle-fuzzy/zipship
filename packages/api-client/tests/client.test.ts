@@ -94,3 +94,44 @@ test("binds the generated current-user profile update contract", async () => {
     displayName: "Product Owner",
   });
 });
+
+test("binds the generated member role update contract", async () => {
+  let request: Request | undefined;
+  const api = createApiClient("https://control.example.test", {
+    fetch: async (input) => {
+      request = input;
+      return Response.json({
+        member: {
+          userId: "00000000-0000-0000-0000-000000000002",
+          email: "member@example.com",
+          displayName: "Member",
+          role: "owner",
+          joinedAt: "2026-07-15T00:00:00Z",
+        },
+      });
+    },
+  });
+
+  const result = await api.PATCH(
+    "/_api/organizations/{organization_id}/members/{user_id}",
+    {
+      params: {
+        path: {
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          user_id: "00000000-0000-0000-0000-000000000002",
+        },
+        header: { "x-csrf-token": "csrf-token" },
+      },
+      body: { role: "owner" },
+    },
+  );
+
+  expect(result.error).toBeUndefined();
+  expect(result.data?.member.role).toBe("owner");
+  expect(request?.method).toBe("PATCH");
+  expect(request?.url).toBe(
+    "https://control.example.test/_api/organizations/00000000-0000-0000-0000-000000000001/members/00000000-0000-0000-0000-000000000002",
+  );
+  expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
+  expect(await request?.clone().json()).toEqual({ role: "owner" });
+});

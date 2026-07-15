@@ -79,15 +79,6 @@ async fn enforces_membership_and_project_creation_transactions() {
             .await,
         Err(ProjectsError::Forbidden),
     );
-    assert_eq!(
-        projects
-            .list_members(owner.user.id, organization_id)
-            .await
-            .unwrap()
-            .len(),
-        2,
-    );
-
     let first = projects.create_project(create_command(
         owner.user.id,
         organization_id,

@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_domain::{CachePolicy, MemberRole, PermissionAction};
 use zipship_projects::{
-    MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
+    NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
     ProjectsRepositoryError, UpdateProject,
 };
 
@@ -71,47 +71,6 @@ impl ProjectsRepository for PgProjectsRepository {
         .await
         .map_err(ProjectsRepositoryError::unavailable)?;
         role.map(|role| parse_role(&role)).transpose()
-    }
-
-    async fn list_members(
-        &self,
-        organization_id: Uuid,
-        actor_id: Uuid,
-    ) -> Result<Vec<MemberSummary>, ProjectsRepositoryError> {
-        let rows = sqlx::query_as::<_, MemberRow>(
-            r#"
-            SELECT
-                users.id AS user_id,
-                users.email,
-                users.display_name,
-                target_membership.role,
-                target_membership.created_at AS joined_at
-            FROM memberships AS target_membership
-            INNER JOIN users ON users.id = target_membership.user_id
-            WHERE target_membership.organization_id = $1
-              AND EXISTS (
-                  SELECT 1
-                  FROM memberships AS actor_membership
-                  WHERE actor_membership.organization_id = $1
-                    AND actor_membership.user_id = $2
-              )
-            ORDER BY target_membership.created_at ASC, users.id ASC
-            "#,
-        )
-        .bind(organization_id)
-        .bind(actor_id)
-        .fetch_all(&self.pool)
-        .await
-        .map_err(ProjectsRepositoryError::unavailable)?;
-        if rows.is_empty()
-            && self
-                .membership_role(organization_id, actor_id)
-                .await?
-                .is_none()
-        {
-            return Err(ProjectsRepositoryError::Forbidden);
-        }
-        rows.into_iter().map(TryInto::try_into).collect()
     }
 
     async fn create_project(
@@ -467,29 +426,6 @@ impl TryFrom<OrganizationRow> for OrganizationSummary {
             slug: row.slug,
             role: parse_role(&row.role)?,
             created_at: row.created_at,
-        })
-    }
-}
-
-#[derive(Debug, FromRow)]
-struct MemberRow {
-    user_id: Uuid,
-    email: String,
-    display_name: String,
-    role: String,
-    joined_at: OffsetDateTime,
-}
-
-impl TryFrom<MemberRow> for MemberSummary {
-    type Error = ProjectsRepositoryError;
-
-    fn try_from(row: MemberRow) -> Result<Self, Self::Error> {
-        Ok(Self {
-            user_id: row.user_id,
-            email: row.email,
-            display_name: row.display_name,
-            role: parse_role(&row.role)?,
-            joined_at: row.joined_at,
         })
     }
 }

@@ -25,6 +25,7 @@ zipship-artifact = { path = "../zipship-artifact" }
 zipship-audit = { path = "../zipship-audit" }
 zipship-deployments = { path = "../zipship-deployments" }
 zipship-domain = { path = "../zipship-domain" }
+zipship-members = { path = "../zipship-members" }
 zipship-projects = { path = "../zipship-projects" }
 zipship-releases = { path = "../zipship-releases" }
 zipship-storage = { path = "../zipship-storage" }

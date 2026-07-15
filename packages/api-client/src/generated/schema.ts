@@ -116,6 +116,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/_api/organizations/{organization_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_member_role"];
+        trace?: never;
+    };
     "/_api/organizations/{organization_id}/projects": {
         parameters: {
             query?: never;
@@ -417,14 +433,19 @@ export interface components {
             /** Format: int64 */
             size: number;
         };
+        MemberEnvelope: {
+            member: components["schemas"]["MemberResponse"];
+        };
         MemberResponse: {
             displayName: string;
             email: string;
             joinedAt: string;
-            role: string;
+            role: components["schemas"]["MemberRoleDto"];
             /** Format: uuid */
             userId: string;
         };
+        /** @enum {string} */
+        MemberRoleDto: "owner" | "admin" | "developer" | "deployer" | "viewer";
         MembersResponse: {
             members: components["schemas"]["MemberResponse"][];
         };
@@ -498,6 +519,9 @@ export interface components {
         };
         ReleasesResponse: {
             releases: components["schemas"]["ReleaseResponse"][];
+        };
+        UpdateMemberRoleRequest: {
+            role: components["schemas"]["MemberRoleDto"];
         };
         UpdateProfileRequest: {
             displayName: string;
@@ -944,6 +968,92 @@ export interface operations {
             };
             /** @description Current user is not a member */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Membership storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_member_role: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token issued with the session */
+                "x-csrf-token": string;
+            };
+            path: {
+                /** @description Organization ID */
+                organization_id: string;
+                /** @description Member user ID */
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMemberRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Member role updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemberEnvelope"];
+                };
+            };
+            /** @description JSON or path parameter is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Current role cannot perform this update */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Target member is missing */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Update would remove the last owner */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
