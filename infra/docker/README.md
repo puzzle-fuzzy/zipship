@@ -34,6 +34,13 @@ bun run test:integration
 
 所有应用容器均为只读根文件系统、drop all capabilities、`no-new-privileges`，只把 `/tmp` 和必要持久卷设为可写。`backend` 网络为 internal；只有 Worker 与 Edge 接入出网网络。Rust 镜像中的进程固定使用 UID/GID 10001，Caddy 使用官方 `caddy` 用户并通过容器高端口 8080/8443 工作，不需要绑定端口 capability。
 
+推送语义化版本标签（例如 `v0.1.0`）会触发 `release-images.yml`，为 amd64/arm64 构建并发布以下 GHCR 镜像，同时附带 SBOM 与 provenance：
+
+- `ghcr.io/<repository-owner>/zipship-server:0.1.0`
+- `ghcr.io/<repository-owner>/zipship-edge:0.1.0`
+
+生产环境应使用精确版本标签或工作流输出的 digest，不要使用可漂移的 `latest`。
+
 复制 `production.env.example` 到仓库外并替换占位符：
 
 ```bash
