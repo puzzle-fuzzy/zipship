@@ -200,13 +200,29 @@ fn service(role: MemberRole) -> (Arc<InMemoryRepository>, UploadsService) {
     let service = UploadsService::with_clock(
         repository.clone(),
         Arc::new(FixedClock),
-        UploadLimits {
-            maximum_bytes: 1_024,
-            upload_ttl: Duration::from_secs(600),
-            receive_lease: Duration::from_secs(60),
-        },
+        UploadLimits::new(1_024, Duration::from_secs(600), Duration::from_secs(60)).unwrap(),
     );
     (repository, service)
+}
+
+#[test]
+fn rejects_limits_that_expire_or_overrun_the_application_clock() {
+    assert_eq!(
+        UploadLimits::new(0, Duration::from_secs(600), Duration::from_secs(60)),
+        Err(UploadLimitsError::InvalidMaximumBytes)
+    );
+    assert_eq!(
+        UploadLimits::new(1_024, Duration::from_millis(999), Duration::from_secs(60)),
+        Err(UploadLimitsError::InvalidUploadTtl)
+    );
+    assert_eq!(
+        UploadLimits::new(1_024, Duration::from_secs(600), Duration::from_millis(999)),
+        Err(UploadLimitsError::InvalidReceiveLease)
+    );
+    assert_eq!(
+        UploadLimits::new(1_024, Duration::MAX, Duration::from_secs(60)),
+        Err(UploadLimitsError::InvalidUploadTtl)
+    );
 }
 
 fn create_command() -> CreateUploadCommand {

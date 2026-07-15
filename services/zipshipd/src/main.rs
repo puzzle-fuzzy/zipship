@@ -135,11 +135,11 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         Arc::new(zipship_postgres::PgUploadsRepository::new(
             readiness.pool.clone(),
         )),
-        UploadLimits {
-            maximum_bytes: settings.upload_max_bytes,
-            upload_ttl: settings.upload_ttl,
-            receive_lease: settings.upload_receive_lease,
-        },
+        UploadLimits::new(
+            settings.upload_max_bytes,
+            settings.upload_ttl,
+            settings.upload_receive_lease,
+        )?,
     );
     let cookie_policy = CookiePolicy::new(settings.environment == Environment::Production);
     let access_app = zipship_access::build_router(PreviewService::new(

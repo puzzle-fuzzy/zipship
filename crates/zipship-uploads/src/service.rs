@@ -37,7 +37,7 @@ impl UploadsService {
     }
 
     pub const fn maximum_bytes(&self) -> u64 {
-        self.limits.maximum_bytes
+        self.limits.maximum_bytes()
     }
 
     pub async fn create(&self, command: CreateUploadCommand) -> Result<UploadRecord, UploadsError> {
@@ -45,11 +45,11 @@ impl UploadsService {
             .await?;
         let filename = UploadFilename::parse(&command.original_filename)
             .map_err(|_| UploadsError::InvalidInput)?;
-        let expected_size = UploadSize::parse(command.expected_size, self.limits.maximum_bytes)
+        let expected_size = UploadSize::parse(command.expected_size, self.limits.maximum_bytes())
             .map_err(|_| UploadsError::InvalidInput)?;
         let now = self.clock.now();
         let upload_id = Uuid::new_v4();
-        let expires_at = add_std_duration(now, self.limits.upload_ttl)?;
+        let expires_at = add_std_duration(now, self.limits.upload_ttl())?;
         self.repository
             .create_upload(NewUpload {
                 id: upload_id,
@@ -71,7 +71,7 @@ impl UploadsService {
         actor_id: Uuid,
     ) -> Result<BeginReceiveResult, UploadsError> {
         let now = self.clock.now();
-        let lease_expires_at = add_std_duration(now, self.limits.receive_lease)?;
+        let lease_expires_at = add_std_duration(now, self.limits.receive_lease())?;
         self.repository
             .begin_receive(upload_id, actor_id, Uuid::new_v4(), now, lease_expires_at)
             .await
@@ -157,9 +157,9 @@ fn add_std_duration(
     value: OffsetDateTime,
     duration: Duration,
 ) -> Result<OffsetDateTime, UploadsError> {
-    let seconds = i64::try_from(duration.as_secs()).map_err(|_| UploadsError::Infrastructure)?;
+    let duration = time::Duration::try_from(duration).map_err(|_| UploadsError::Infrastructure)?;
     value
-        .checked_add(time::Duration::seconds(seconds))
+        .checked_add(duration)
         .ok_or(UploadsError::Infrastructure)
 }
 

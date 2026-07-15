@@ -922,11 +922,12 @@ async fn test_app_with_recovery(
     let tokens = ApiTokensService::new(Arc::new(TestApiTokensRepository::default()));
     let uploads = UploadsService::new(
         Arc::new(TestUploadsRepository::default()),
-        UploadLimits {
-            maximum_bytes: 1_024 * 1_024,
-            upload_ttl: Duration::from_secs(600),
-            receive_lease: Duration::from_secs(60),
-        },
+        UploadLimits::new(
+            1_024 * 1_024,
+            Duration::from_secs(600),
+            Duration::from_secs(60),
+        )
+        .unwrap(),
     );
     let storage_root = tempfile::tempdir().unwrap();
     let storage = LocalArtifactStore::new(storage_root.path());
