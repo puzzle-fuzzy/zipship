@@ -223,3 +223,16 @@ fn rejects_invalid_typed_values() {
         .is_err(),
     );
 }
+
+#[test]
+fn production_rejects_insecure_credentialed_origins() {
+    assert_eq!(
+        parse_origins("http://127.0.0.1:4015".to_owned(), false).unwrap(),
+        ["http://127.0.0.1:4015"]
+    );
+    assert!(parse_origins("http://console.example.com".to_owned(), true).is_err());
+    assert_eq!(
+        parse_origins("https://console.example.com".to_owned(), true).unwrap(),
+        ["https://console.example.com"]
+    );
+}

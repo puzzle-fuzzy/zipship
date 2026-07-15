@@ -92,12 +92,15 @@ impl Settings {
         )?;
         let storage_root =
             required_in_production(&mut lookup, "ZIPSHIP_STORAGE_ROOT", production, ".zipship")?;
-        let control_allowed_origins = parse_origins(required_in_production(
-            &mut lookup,
-            "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+        let control_allowed_origins = parse_origins(
+            required_in_production(
+                &mut lookup,
+                "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+                production,
+                DEVELOPMENT_CONTROL_ORIGINS,
+            )?,
             production,
-            DEVELOPMENT_CONTROL_ORIGINS,
-        )?)?;
+        )?;
         let trusted_proxy_networks = parse_optional_list(
             lookup("ZIPSHIP_TRUSTED_PROXY_NETWORKS"),
             "ZIPSHIP_TRUSTED_PROXY_NETWORKS",
@@ -277,7 +280,7 @@ fn validate_smtp_url(value: String, production: bool) -> Result<String, ConfigEr
     Ok(value)
 }
 
-fn parse_origins(value: String) -> Result<Vec<String>, ConfigError> {
+fn parse_origins(value: String, production: bool) -> Result<Vec<String>, ConfigError> {
     let invalid = || ConfigError::InvalidValue {
         key: "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
         value: value.clone(),
@@ -289,6 +292,7 @@ fn parse_origins(value: String) -> Result<Vec<String>, ConfigError> {
         }
         let url = Url::parse(candidate).map_err(|_| invalid())?;
         if !matches!(url.scheme(), "http" | "https")
+            || (production && url.scheme() != "https")
             || url.host().is_none()
             || !url.username().is_empty()
             || url.password().is_some()
