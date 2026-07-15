@@ -1,3 +1,4 @@
+use super::row::{ResolvedSessionRow, UserRow};
 use super::*;
 use secrecy::SecretString;
 use zipship_auth::PasswordEngine;
