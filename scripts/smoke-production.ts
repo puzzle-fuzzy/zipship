@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { request as httpsRequest } from 'node:https';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -16,7 +17,7 @@ type CommandResult = {
   stdout: string;
 };
 
-type CurlRequest = {
+type SmokeRequest = {
   body?: unknown;
   headers?: Record<string, string>;
   host: string;
@@ -25,7 +26,7 @@ type CurlRequest = {
   uploadFile?: string;
 };
 
-type CurlResponse = {
+type SmokeResponse = {
   body: string;
   status: number;
 };
@@ -86,7 +87,6 @@ function encodeEnvironment(entries: Record<string, string>): string {
 
 async function main(): Promise<void> {
   const workingDirectory = await mkdtemp(join(tmpdir(), 'zipship-production-smoke-'));
-  const cookieJar = join(workingDirectory, 'cookies.txt');
   const environmentFile = join(workingDirectory, 'production.env');
   const archiveFile = join(workingDirectory, 'site.zip');
   const runId = randomIdentifier();
@@ -119,7 +119,6 @@ async function main(): Promise<void> {
     ...args,
   ];
 
-  await writeFile(cookieJar, '', 'utf8');
   await writeFile(
     environmentFile,
     encodeEnvironment({
@@ -154,10 +153,7 @@ async function main(): Promise<void> {
 
   let composeAttempted = false;
   try {
-    for (const command of [
-      ['docker', 'info', '--format', '{{.ServerVersion}}'],
-      ['curl', '--version'],
-    ]) {
+    for (const command of [['docker', 'info', '--format', '{{.ServerVersion}}']]) {
       const result = await runCapture(command);
       if (result.exitCode !== 0 || !result.stdout.trim()) {
         const detail = result.stderr.trim() || 'command returned no version information';
@@ -170,10 +166,9 @@ async function main(): Promise<void> {
     console.log(`Starting isolated production stack ${projectName}...`);
     await run(compose('up', '--detach', '--build', '--wait', '--wait-timeout', '600'));
 
-    const request = createCurlClient({
+    const request = createSmokeClient({
       apiHost,
       consoleOrigin,
-      cookieJar,
       httpsPort,
     });
 
@@ -200,7 +195,7 @@ async function main(): Promise<void> {
       email,
       password: `Smoke-${randomIdentifier(12)}-aA9!`,
     });
-    const csrfToken = await readCookie(cookieJar, 'zipship_csrf');
+    const csrfToken = request.cookie('zipship_csrf');
 
     const organizations = await request.json<{
       organizations: Array<{ id: string }>;
@@ -298,12 +293,13 @@ async function main(): Promise<void> {
   }
 }
 
-function createCurlClient(options: {
+function createSmokeClient(options: {
   apiHost: string;
   consoleOrigin: string;
-  cookieJar: string;
   httpsPort: number;
 }) {
+  const cookies = new Map<string, Map<string, string>>();
+
   const request = async ({
     body,
     headers = {},
@@ -311,53 +307,67 @@ function createCurlClient(options: {
     method = 'GET',
     path,
     uploadFile,
-  }: CurlRequest): Promise<CurlResponse> => {
-    const url = `https://${host}:${options.httpsPort}${path}`;
+  }: SmokeRequest): Promise<SmokeResponse> => {
     const effectiveMethod = uploadFile ? 'PUT' : method;
-    const command = [
-      'curl',
-      '--http1.1',
-      '--insecure',
-      '--silent',
-      '--show-error',
-      '--max-time',
-      '60',
-      '--resolve',
-      `${host}:${options.httpsPort}:127.0.0.1`,
-      '--cookie',
-      options.cookieJar,
-      '--cookie-jar',
-      options.cookieJar,
-      '--header',
-      `origin: ${options.consoleOrigin}`,
-      '--request',
-      effectiveMethod,
-    ];
-    for (const [name, value] of Object.entries(headers)) {
-      command.push('--header', `${name}: ${value}`);
+    const hostCookies = cookies.get(host);
+    const requestHeaders: Record<string, string> = {
+      host,
+      origin: options.consoleOrigin,
+      ...headers,
+    };
+    if (hostCookies?.size) {
+      requestHeaders.cookie = [...hostCookies]
+        .map(([name, value]) => `${name}=${value}`)
+        .join('; ');
     }
-    if (uploadFile) {
-      command.push('--upload-file', uploadFile);
-    } else if (body !== undefined) {
-      command.push(
-        '--header',
-        'content-type: application/json',
-        '--data-binary',
-        JSON.stringify(body),
-      );
-    }
-    command.push('--write-out', '\n__ZIPSHIP_STATUS__:%{http_code}', url);
 
-    const result = await runCapture(command);
-    const match = result.stdout.match(/\n__ZIPSHIP_STATUS__:(\d{3})$/);
-    const status = match ? Number.parseInt(match[1], 10) : 0;
-    const responseBody = match ? result.stdout.slice(0, match.index) : result.stdout;
-    if (result.exitCode !== 0 || status < 200 || status >= 300) {
+    let payload: Buffer | string | undefined;
+    if (uploadFile) {
+      payload = await readFile(uploadFile);
+    } else if (body !== undefined) {
+      requestHeaders['content-type'] = 'application/json';
+      payload = JSON.stringify(body);
+    }
+
+    const response = await new Promise<SmokeResponse>((resolve, reject) => {
+      const outgoing = httpsRequest(
+        {
+          headers: requestHeaders,
+          hostname: '127.0.0.1',
+          method: effectiveMethod,
+          path,
+          port: options.httpsPort,
+          rejectUnauthorized: false,
+          servername: host,
+        },
+        (incoming) => {
+          const chunks: Buffer[] = [];
+          incoming.on('data', (chunk: Buffer | string) => {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          });
+          incoming.on('end', () => {
+            rememberCookies(cookies, host, incoming.headers['set-cookie']);
+            resolve({
+              body: Buffer.concat(chunks).toString('utf8'),
+              status: incoming.statusCode ?? 0,
+            });
+          });
+          incoming.on('error', reject);
+        },
+      );
+      outgoing.setTimeout(60_000, () => {
+        outgoing.destroy(new Error(`${effectiveMethod} ${host}${path} timed out`));
+      });
+      outgoing.on('error', reject);
+      outgoing.end(payload);
+    });
+
+    if (response.status < 200 || response.status >= 300) {
       throw new Error(
-        `${effectiveMethod} ${url} failed (${status || result.exitCode}): ${responseBody || result.stderr}`,
+        `${effectiveMethod} https://${host}:${options.httpsPort}${path} failed (${response.status}): ${response.body}`,
       );
     }
-    return { body: responseBody, status };
+    return response;
   };
 
   request.json = async <T>(
@@ -376,21 +386,40 @@ function createCurlClient(options: {
     return JSON.parse(response.body) as T;
   };
 
+  request.cookie = (name: string): string => {
+    for (const hostCookies of cookies.values()) {
+      const value = hostCookies.get(name);
+      if (value) {
+        return value;
+      }
+    }
+    throw new Error(`Cookie ${name} was not issued`);
+  };
+
   return request;
 }
 
-type SmokeClient = ReturnType<typeof createCurlClient>;
+function rememberCookies(
+  cookies: Map<string, Map<string, string>>,
+  host: string,
+  setCookieHeaders: string[] | undefined,
+): void {
+  if (!setCookieHeaders?.length) {
+    return;
+  }
 
-async function readCookie(cookieJar: string, name: string): Promise<string> {
-  const contents = await readFile(cookieJar, 'utf8');
-  for (const line of contents.split(/\r?\n/)) {
-    const fields = line.split('\t');
-    if (fields.length >= 7 && fields[5] === name && fields[6]) {
-      return fields[6];
+  const hostCookies = cookies.get(host) ?? new Map<string, string>();
+  for (const header of setCookieHeaders) {
+    const pair = header.split(';', 1)[0];
+    const separator = pair.indexOf('=');
+    if (separator > 0) {
+      hostCookies.set(pair.slice(0, separator), pair.slice(separator + 1));
     }
   }
-  throw new Error(`Cookie ${name} was not issued`);
+  cookies.set(host, hostCookies);
 }
+
+type SmokeClient = ReturnType<typeof createSmokeClient>;
 
 async function waitForRelease(
   json: SmokeClient['json'],
