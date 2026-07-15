@@ -32,7 +32,7 @@ bun run test:integration
 3. Server/Worker 健康后启动非 root Caddy Edge，只对外暴露 HTTP/HTTPS。
 4. Caddy 为 `console`、`api`、`sites` 三个主机名签发证书；Rust 仍是项目路由、发布指针和静态 Artifact 策略的唯一事实源。
 
-所有应用容器均为只读根文件系统、drop all capabilities、`no-new-privileges`，只把 `/tmp` 和必要持久卷设为可写。`backend` 网络为 internal；只有 Worker 与 Edge 接入出网网络。Rust 镜像中的进程固定使用 UID/GID 10001，Caddy 使用官方 `caddy` 用户并通过容器高端口 8080/8443 工作，不需要绑定端口 capability。
+所有应用容器均为只读根文件系统、drop all capabilities、`no-new-privileges`，只把 `/tmp` 和必要持久卷设为可写。`backend` 网络为 internal；只有 Worker 与 Edge 接入出网网络。Rust 镜像中的进程固定使用 UID/GID 10001，Edge 镜像显式创建 UID/GID 10002 的无登录用户，并通过容器高端口 8080/8443 工作，不需要绑定端口 capability。
 
 推送语义化版本标签（例如 `v0.1.0`）会触发 `release-images.yml`，为 amd64/arm64 构建并发布以下 GHCR 镜像，同时附带 SBOM 与 provenance：
 

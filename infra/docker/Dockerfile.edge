@@ -14,15 +14,21 @@ RUN bun --filter @zipship/web-shell build
 
 FROM caddy:${CADDY_VERSION}-alpine AS runtime
 
-RUN mkdir -p /srv/console /data /config && \
-    chown -R caddy:caddy /srv/console /data /config /etc/caddy
+ARG ZIPSHIP_EDGE_UID=10002
+ARG ZIPSHIP_EDGE_GID=10002
 
-COPY --from=console-builder --chown=caddy:caddy /src/apps/web-shell/dist/ /srv/console/
-COPY --chown=caddy:caddy infra/docker/Caddyfile /etc/caddy/Caddyfile
-COPY --chown=caddy:caddy infra/docker/Caddyfile.common /etc/caddy/Caddyfile.common
-COPY --chown=caddy:caddy infra/docker/Caddyfile.smoke /etc/caddy/Caddyfile.smoke
+RUN addgroup --system --gid "${ZIPSHIP_EDGE_GID}" zipship-edge && \
+    adduser --system --disabled-password --no-create-home \
+      --uid "${ZIPSHIP_EDGE_UID}" --ingroup zipship-edge zipship-edge && \
+    mkdir -p /srv/console /data /config && \
+    chown -R zipship-edge:zipship-edge /srv/console /data /config
 
-USER caddy:caddy
+COPY --from=console-builder --chown=zipship-edge:zipship-edge /src/apps/web-shell/dist/ /srv/console/
+COPY --chown=zipship-edge:zipship-edge infra/docker/Caddyfile /etc/caddy/Caddyfile
+COPY --chown=zipship-edge:zipship-edge infra/docker/Caddyfile.common /etc/caddy/Caddyfile.common
+COPY --chown=zipship-edge:zipship-edge infra/docker/Caddyfile.smoke /etc/caddy/Caddyfile.smoke
+
+USER zipship-edge:zipship-edge
 
 EXPOSE 8080 8443 8443/udp
 STOPSIGNAL SIGTERM
