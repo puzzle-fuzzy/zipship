@@ -12,7 +12,8 @@ use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 use zipship_access::PreviewService;
 use zipship_api::{
-    AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe, build_router,
+    AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe,
+    build_router,
 };
 use zipship_artifact::ArtifactLimits;
 use zipship_auth::AuthService;
@@ -24,6 +25,7 @@ use zipship_postgres::{
     PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
+use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::{UploadLimits, UploadsService};
 use zipship_worker::{ArtifactWorker, WorkOutcome};
@@ -146,6 +148,30 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
         "<main>ZipShip worker ready</main>",
     );
     assert!(!storage.upload_staging_path(upload_id).exists());
+
+    let releases = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/_api/projects/{project_id}/releases"))
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(releases.status(), StatusCode::OK);
+    let releases = json_body(releases).await;
+    assert_eq!(releases["releases"][0]["id"], release_id.to_string());
+    assert_eq!(releases["releases"][0]["state"], "ready");
+    assert_eq!(
+        releases["releases"][0]["previewPath"],
+        format!("/_sites/marketing-site/{release_id}/")
+    );
+    assert_eq!(
+        releases["releases"][0]["artifact"]["sha256"],
+        digest.as_str()
+    );
+    assert!(releases["releases"][0].get("storageKey").is_none());
 
     let access = zipship_access::build_router(PreviewService::new(
         Arc::new(PgPreviewRepository::new(pool.clone())),
@@ -415,16 +441,16 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
         .unwrap();
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
     let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
+    let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
+        pool.clone(),
+    )));
     let uploads = UploadsService::new(
         Arc::new(PgUploadsRepository::new(pool.clone())),
         UploadLimits::default(),
     );
     build_router(AppState::new(
         Arc::new(Probe),
-        auth,
-        deployments,
-        projects,
-        uploads,
+        AppServices::new(auth, deployments, projects, releases, uploads),
         storage.clone(),
         BrowserPolicy::new(
             CookiePolicy::new(false),

@@ -661,6 +661,68 @@
         }
       }
     },
+    "/_api/projects/{project_id}/releases": {
+      "get": {
+        "tags": [
+          "releases"
+        ],
+        "operationId": "list_releases",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest releases first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasesResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project does not exist or is not visible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Release storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/_api/projects/{project_id}/releases/{release_id}/publish": {
       "post": {
         "tags": [
@@ -1305,6 +1367,26 @@
   },
   "components": {
     "schemas": {
+      "ArtifactManifestResponse": {
+        "type": "object",
+        "required": [
+          "version",
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestEntryResponse"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "AuthResponse": {
         "type": "object",
         "required": [
@@ -1538,6 +1620,27 @@
           }
         }
       },
+      "ManifestEntryResponse": {
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "MemberResponse": {
         "type": "object",
         "required": [
@@ -1725,6 +1828,125 @@
           }
         }
       },
+      "ReleaseArtifactResponse": {
+        "type": "object",
+        "required": [
+          "sha256",
+          "fileCount",
+          "totalSize",
+          "manifest",
+          "detectReport"
+        ],
+        "properties": {
+          "detectReport": {
+            "type": "object"
+          },
+          "fileCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/ArtifactManifestResponse"
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "totalSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ReleaseResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "versionNumber",
+          "state",
+          "isActive",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "archivedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "artifact": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReleaseArtifactResponse"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "failureCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "previewPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "readyAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ReleasesResponse": {
+        "type": "object",
+        "required": [
+          "releases"
+        ],
+        "properties": {
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseResponse"
+            }
+          }
+        }
+      },
       "UploadEnvelope": {
         "type": "object",
         "required": [
@@ -1853,6 +2075,10 @@
     {
       "name": "projects",
       "description": "Static deployment projects"
+    },
+    {
+      "name": "releases",
+      "description": "Immutable project release history"
     },
     {
       "name": "uploads",

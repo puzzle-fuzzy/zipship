@@ -22,6 +22,7 @@ use utoipa::{OpenApi, ToSchema};
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
 use zipship_projects::ProjectsService;
+use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::UploadsService;
 
@@ -29,6 +30,7 @@ mod auth;
 mod deployments;
 mod error;
 mod projects;
+mod releases;
 mod request;
 mod uploads;
 
@@ -121,11 +123,39 @@ pub trait ReadinessProbe: Send + Sync + 'static {
 }
 
 #[derive(Clone)]
+pub struct AppServices {
+    auth: AuthService,
+    deployments: DeploymentsService,
+    projects: ProjectsService,
+    releases: ReleasesService,
+    uploads: UploadsService,
+}
+
+impl AppServices {
+    pub fn new(
+        auth: AuthService,
+        deployments: DeploymentsService,
+        projects: ProjectsService,
+        releases: ReleasesService,
+        uploads: UploadsService,
+    ) -> Self {
+        Self {
+            auth,
+            deployments,
+            projects,
+            releases,
+            uploads,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) auth: AuthService,
     pub(crate) deployments: DeploymentsService,
     pub(crate) projects: ProjectsService,
+    pub(crate) releases: ReleasesService,
     pub(crate) uploads: UploadsService,
     pub(crate) storage: LocalArtifactStore,
     pub(crate) cookie_policy: CookiePolicy,
@@ -135,19 +165,17 @@ pub struct AppState {
 impl AppState {
     pub fn new(
         readiness: Arc<dyn ReadinessProbe>,
-        auth: AuthService,
-        deployments: DeploymentsService,
-        projects: ProjectsService,
-        uploads: UploadsService,
+        services: AppServices,
         storage: LocalArtifactStore,
         browser_policy: BrowserPolicy,
     ) -> Self {
         Self {
             readiness,
-            auth,
-            deployments,
-            projects,
-            uploads,
+            auth: services.auth,
+            deployments: services.deployments,
+            projects: services.projects,
+            releases: services.releases,
+            uploads: services.uploads,
             storage,
             cookie_policy: browser_policy.cookie_policy,
             cors_policy: browser_policy.cors_policy,
@@ -167,6 +195,7 @@ impl AppState {
         deployments::publish,
         deployments::rollback,
         deployments::list_deployments,
+        releases::list_releases,
         projects::list_organizations,
         projects::list_members,
         projects::list_projects,
@@ -188,6 +217,11 @@ impl AppState {
         deployments::DeploymentEnvelope,
         deployments::DeploymentResponse,
         deployments::DeploymentsResponse,
+        releases::ReleasesResponse,
+        releases::ReleaseResponse,
+        releases::ReleaseArtifactResponse,
+        releases::ArtifactManifestResponse,
+        releases::ManifestEntryResponse,
         projects::OrganizationsResponse,
         projects::OrganizationResponse,
         projects::MembersResponse,
@@ -208,6 +242,7 @@ impl AppState {
         (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
         (name = "projects", description = "Static deployment projects"),
+        (name = "releases", description = "Immutable project release history"),
         (name = "uploads", description = "Bounded archive ingestion and processing")
     )
 )]
@@ -228,6 +263,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(auth::router())
         .merge(deployments::router())
         .merge(projects::router())
+        .merge(releases::router())
         .merge(uploads::standard_router())
         .layer(DefaultBodyLimit::max(16 * 1_024))
         .layer(TimeoutLayer::with_status_code(
@@ -321,6 +357,7 @@ mod tests {
     use time::OffsetDateTime;
     use tower::ServiceExt;
     use uuid::Uuid;
+    use zipship_artifact::{ArtifactManifest, ManifestEntry};
     use zipship_auth::{
         AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
         NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
@@ -329,10 +366,14 @@ mod tests {
         Deployment, DeploymentResult, DeploymentStatus, DeploymentsRepository,
         DeploymentsRepositoryError, DeploymentsService, NewDeployment,
     };
-    use zipship_domain::{CachePolicy, MemberRole, UploadStatus};
+    use zipship_domain::{ArtifactDigest, CachePolicy, MemberRole, ReleaseStatus, UploadStatus};
     use zipship_projects::{
         MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
         ProjectsRepositoryError,
+    };
+    use zipship_releases::{
+        ProjectReleases, Release, ReleaseArtifact, ReleasesRepository, ReleasesRepositoryError,
+        ReleasesService,
     };
     use zipship_uploads::{
         BeginReceiveResult, FinalizeResult, FinalizedUpload, NewUpload, ReceiveLease, UploadLimits,
@@ -426,6 +467,47 @@ mod tests {
                 .filter(|deployment| deployment.project_id == project_id)
                 .cloned()
                 .collect())
+        }
+    }
+
+    struct TestReleasesRepository;
+
+    #[async_trait]
+    impl ReleasesRepository for TestReleasesRepository {
+        async fn list_for_project(
+            &self,
+            project_id: Uuid,
+            actor_id: Uuid,
+        ) -> Result<ProjectReleases, ReleasesRepositoryError> {
+            Ok(ProjectReleases {
+                project_slug: zipship_domain::ProjectSlug::parse("marketing").unwrap(),
+                releases: vec![Release {
+                    id: Uuid::from_u128(91),
+                    project_id,
+                    version_number: 1,
+                    state: ReleaseStatus::Ready,
+                    failure_code: None,
+                    artifact: Some(ReleaseArtifact {
+                        digest: ArtifactDigest::parse("ab".repeat(32)).unwrap(),
+                        file_count: 1,
+                        total_size: 4,
+                        manifest: ArtifactManifest {
+                            version: 1,
+                            files: vec![ManifestEntry {
+                                path: "index.html".to_owned(),
+                                size: 4,
+                                sha256: "cd".repeat(32),
+                            }],
+                        },
+                        detect_report: json!({ "entryDirectory": "dist" }),
+                    }),
+                    is_active: true,
+                    created_by: actor_id,
+                    created_at: OffsetDateTime::UNIX_EPOCH,
+                    ready_at: Some(OffsetDateTime::UNIX_EPOCH),
+                    archived_at: None,
+                }],
+            })
         }
     }
 
@@ -796,6 +878,7 @@ mod tests {
             .unwrap();
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
+        let releases = ReleasesService::new(Arc::new(TestReleasesRepository));
         let uploads = UploadsService::new(
             Arc::new(TestUploadsRepository::default()),
             UploadLimits {
@@ -812,10 +895,7 @@ mod tests {
                 status,
                 _storage_root: storage_root,
             }),
-            auth,
-            deployments,
-            projects,
-            uploads,
+            AppServices::new(auth, deployments, projects, releases, uploads),
             storage.clone(),
             BrowserPolicy::new(
                 CookiePolicy::new(secure_cookies),
@@ -960,6 +1040,7 @@ mod tests {
                 .is_object()
         );
         assert!(document["paths"]["/_api/projects/{project_id}/deployments"].is_object());
+        assert!(document["paths"]["/_api/projects/{project_id}/releases"].is_object());
         assert!(document["paths"]["/_api/organizations"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
@@ -1181,6 +1262,41 @@ mod tests {
             json_body(invalid_path).await,
             json!({ "code": "INVALID_PATH_PARAMETER" }),
         );
+    }
+
+    #[tokio::test]
+    async fn release_routes_expose_immutable_metadata_without_storage_paths() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let project_id = Uuid::from_u128(90);
+
+        let response = app
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}/releases"))
+                    .header(header::COOKIE, cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = json_body(response).await;
+        let release = &response["releases"][0];
+        assert_eq!(release["state"], "ready");
+        assert_eq!(release["isActive"], true);
+        assert_eq!(
+            release["previewPath"],
+            format!("/_sites/marketing/{}/", Uuid::from_u128(91))
+        );
+        assert_eq!(
+            release["artifact"]["manifest"]["files"][0]["path"],
+            "index.html"
+        );
+        assert!(release.get("storageKey").is_none());
+        assert!(release.get("storagePath").is_none());
     }
 
     #[tokio::test]

@@ -39,6 +39,8 @@ pub enum DomainError {
     InvalidJobKind,
     #[error("invalid job status")]
     InvalidJobStatus,
+    #[error("invalid release status")]
+    InvalidReleaseStatus,
     #[error("invalid SHA-256 artifact digest")]
     InvalidArtifactDigest,
     #[error("invalid state transition from {from} to {to}")]
@@ -448,6 +450,20 @@ impl ReleaseStatus {
     }
 }
 
+impl FromStr for ReleaseStatus {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "processing" => Ok(Self::Processing),
+            "ready" => Ok(Self::Ready),
+            "failed" => Ok(Self::Failed),
+            "archived" => Ok(Self::Archived),
+            _ => Err(DomainError::InvalidReleaseStatus),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemberRole {
@@ -655,6 +671,11 @@ mod tests {
 
     #[test]
     fn release_activity_is_not_a_release_state() {
+        assert_eq!("ready".parse(), Ok(ReleaseStatus::Ready));
+        assert_eq!(
+            "active".parse::<ReleaseStatus>(),
+            Err(DomainError::InvalidReleaseStatus)
+        );
         assert_eq!(
             ReleaseStatus::Processing.transition_to(ReleaseStatus::Ready),
             Ok(ReleaseStatus::Ready),

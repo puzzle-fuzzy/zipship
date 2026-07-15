@@ -21,8 +21,11 @@ tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
+zipship-artifact = { path = "../zipship-artifact" }
 zipship-deployments = { path = "../zipship-deployments" }
+zipship-domain = { path = "../zipship-domain" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-releases = { path = "../zipship-releases" }
 zipship-storage = { path = "../zipship-storage" }
 zipship-uploads = { path = "../zipship-uploads" }
 
@@ -30,7 +33,6 @@ zipship-uploads = { path = "../zipship-uploads" }
 tokio.workspace = true
 tower.workspace = true
 tempfile.workspace = true
-zipship-domain = { path = "../zipship-domain" }
 
 [lints]
 workspace = true

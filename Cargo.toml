@@ -11,6 +11,7 @@ members = [
   "crates/zipship-jobs",
   "crates/zipship-postgres",
   "crates/zipship-projects",
+  "crates/zipship-releases",
   "crates/zipship-storage",
   "crates/zipship-uploads",
   "services/zipship-worker",

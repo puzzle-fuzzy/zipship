@@ -148,6 +148,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/_api/projects/{project_id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_releases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/_api/projects/{project_id}/releases/{release_id}/publish": {
         parameters: {
             query?: never;
@@ -280,6 +296,11 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        ArtifactManifestResponse: {
+            files: components["schemas"]["ManifestEntryResponse"][];
+            /** Format: int32 */
+            version: number;
+        };
         AuthResponse: {
             user: components["schemas"]["UserResponse"];
         };
@@ -346,6 +367,12 @@ export interface components {
             email: string;
             password: string;
         };
+        ManifestEntryResponse: {
+            path: string;
+            sha256: string;
+            /** Format: int64 */
+            size: number;
+        };
         MemberResponse: {
             displayName: string;
             email: string;
@@ -395,6 +422,36 @@ export interface components {
             displayName: string;
             email: string;
             password: string;
+        };
+        ReleaseArtifactResponse: {
+            detectReport: Record<string, never>;
+            /** Format: int32 */
+            fileCount: number;
+            manifest: components["schemas"]["ArtifactManifestResponse"];
+            sha256: string;
+            /** Format: int64 */
+            totalSize: number;
+        };
+        ReleaseResponse: {
+            archivedAt?: string | null;
+            artifact?: null | components["schemas"]["ReleaseArtifactResponse"];
+            createdAt: string;
+            /** Format: uuid */
+            createdBy: string;
+            failureCode?: string | null;
+            /** Format: uuid */
+            id: string;
+            isActive: boolean;
+            previewPath?: string | null;
+            /** Format: uuid */
+            projectId: string;
+            readyAt?: string | null;
+            state: string;
+            /** Format: int32 */
+            versionNumber: number;
+        };
+        ReleasesResponse: {
+            releases: components["schemas"]["ReleaseResponse"][];
         };
         UploadEnvelope: {
             upload: components["schemas"]["UploadResponse"];
@@ -971,6 +1028,56 @@ export interface operations {
                 };
             };
             /** @description Deployment storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_releases: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest releases first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleasesResponse"];
+                };
+            };
+            /** @description Session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Project does not exist or is not visible */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Release storage is unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

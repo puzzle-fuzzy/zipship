@@ -2509,10 +2509,12 @@ dependencies = [
  "tracing",
  "utoipa",
  "uuid",
+ "zipship-artifact",
  "zipship-auth",
  "zipship-deployments",
  "zipship-domain",
  "zipship-projects",
+ "zipship-releases",
  "zipship-storage",
  "zipship-uploads",
 ]
@@ -2615,6 +2617,7 @@ dependencies = [
  "zipship-domain",
  "zipship-jobs",
  "zipship-projects",
+ "zipship-releases",
  "zipship-uploads",
 ]
 
@@ -2627,6 +2630,20 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "zipship-domain",
+]
+
+[[package]]
+name = "zipship-releases"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+ "zipship-artifact",
  "zipship-domain",
 ]
 
@@ -2681,6 +2698,7 @@ dependencies = [
  "zipship-jobs",
  "zipship-postgres",
  "zipship-projects",
+ "zipship-releases",
  "zipship-storage",
  "zipship-uploads",
 ]
@@ -2704,6 +2722,7 @@ dependencies = [
  "zipship-deployments",
  "zipship-postgres",
  "zipship-projects",
+ "zipship-releases",
  "zipship-storage",
  "zipship-uploads",
 ]

@@ -22,6 +22,7 @@ zipship-config = { path = "../../crates/zipship-config" }
 zipship-deployments = { path = "../../crates/zipship-deployments" }
 zipship-postgres = { path = "../../crates/zipship-postgres" }
 zipship-projects = { path = "../../crates/zipship-projects" }
+zipship-releases = { path = "../../crates/zipship-releases" }
 zipship-storage = { path = "../../crates/zipship-storage" }
 zipship-uploads = { path = "../../crates/zipship-uploads" }
 

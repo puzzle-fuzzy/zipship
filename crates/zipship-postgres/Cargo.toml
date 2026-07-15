@@ -22,6 +22,7 @@ zipship-deployments = { path = "../zipship-deployments" }
 zipship-domain = { path = "../zipship-domain" }
 zipship-jobs = { path = "../zipship-jobs" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-releases = { path = "../zipship-releases" }
 zipship-uploads = { path = "../zipship-uploads" }
 
 [dev-dependencies]

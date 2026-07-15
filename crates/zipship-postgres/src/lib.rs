@@ -11,6 +11,7 @@ mod auth;
 mod deployments;
 mod jobs;
 mod projects;
+mod releases;
 mod uploads;
 
 pub use access::PgPreviewRepository;
@@ -19,6 +20,7 @@ pub use auth::PgAuthRepository;
 pub use deployments::PgDeploymentsRepository;
 pub use jobs::PgJobsRepository;
 pub use projects::PgProjectsRepository;
+pub use releases::PgReleasesRepository;
 pub use uploads::PgUploadsRepository;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");

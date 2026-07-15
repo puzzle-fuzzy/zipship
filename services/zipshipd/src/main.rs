@@ -9,12 +9,14 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use zipship_access::PreviewService;
 use zipship_api::{
-    AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe, build_router,
+    AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe,
+    build_router,
 };
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
 use zipship_deployments::DeploymentsService;
 use zipship_projects::ProjectsService;
+use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::{UploadLimits, UploadsService};
 
@@ -99,6 +101,9 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let deployments = DeploymentsService::new(Arc::new(
         zipship_postgres::PgDeploymentsRepository::new(readiness.pool.clone()),
     ));
+    let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
+        readiness.pool.clone(),
+    )));
     let uploads = UploadsService::new(
         Arc::new(zipship_postgres::PgUploadsRepository::new(
             readiness.pool.clone(),
@@ -118,10 +123,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     ));
     let control_app = build_router(AppState::new(
         readiness,
-        auth,
-        deployments,
-        projects,
-        uploads,
+        AppServices::new(auth, deployments, projects, releases, uploads),
         storage,
         BrowserPolicy::new(
             cookie_policy,
