@@ -1,0 +1,17 @@
+[package]
+name = "zipship-access"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+zipship-artifact = { path = "../zipship-artifact" }
+zipship-domain = { path = "../zipship-domain" }
+
+[lints]
+workspace = true

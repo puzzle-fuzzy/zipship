@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/zipship-api",
+  "crates/zipship-access",
   "crates/zipship-artifact",
   "crates/zipship-auth",
   "crates/zipship-config",

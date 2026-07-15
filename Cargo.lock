@@ -2454,6 +2454,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-access"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "uuid",
+ "zipship-artifact",
+ "zipship-domain",
+]
+
+[[package]]
 name = "zipship-api"
 version = "0.1.0"
 dependencies = [
@@ -2558,6 +2569,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "zipship-access",
  "zipship-artifact",
  "zipship-auth",
  "zipship-config",
