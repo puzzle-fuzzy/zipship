@@ -1,4 +1,4 @@
-import type { UploadStep } from "./uploadPipeline";
+import type { UploadFailureReason, UploadStep } from "./uploadPipeline";
 
 export type UploadMode = "zip" | "folder" | "file";
 
@@ -6,6 +6,13 @@ export interface SelectedArtifact {
   mode: UploadMode;
   name: string;
   size: number;
+}
+
+export interface UploadViewState {
+  step: UploadStep;
+  failedStep?: UploadStep;
+  failureReason?: UploadFailureReason;
+  errorDetail?: string;
 }
 
 export const UPLOAD_FLOW_STEPS: UploadStep[] = [
