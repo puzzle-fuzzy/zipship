@@ -18,11 +18,13 @@ tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
+zipship-projects = { path = "../zipship-projects" }
 
 [dev-dependencies]
 serde_json.workspace = true
 tokio.workspace = true
 tower.workspace = true
+zipship-domain = { path = "../zipship-domain" }
 
 [lints]
 workspace = true

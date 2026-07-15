@@ -19,10 +19,14 @@ use tower_http::{
 };
 use utoipa::{OpenApi, ToSchema};
 use zipship_auth::AuthService;
+use zipship_projects::ProjectsService;
 
 mod auth;
+mod error;
+mod projects;
 
 pub use auth::CookiePolicy;
+use error::ErrorResponse;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -48,6 +52,7 @@ pub trait ReadinessProbe: Send + Sync + 'static {
 pub struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) auth: AuthService,
+    pub(crate) projects: ProjectsService,
     pub(crate) cookie_policy: CookiePolicy,
 }
 
@@ -55,11 +60,13 @@ impl AppState {
     pub fn new(
         readiness: Arc<dyn ReadinessProbe>,
         auth: AuthService,
+        projects: ProjectsService,
         cookie_policy: CookiePolicy,
     ) -> Self {
         Self {
             readiness,
             auth,
+            projects,
             cookie_policy,
         }
     }
@@ -73,7 +80,12 @@ impl AppState {
         auth::register,
         auth::login,
         auth::me,
-        auth::logout
+        auth::logout,
+        projects::list_organizations,
+        projects::list_members,
+        projects::list_projects,
+        projects::create_project,
+        projects::get_project
     ),
     components(schemas(
         CheckStatus,
@@ -82,11 +94,21 @@ impl AppState {
         auth::LoginRequest,
         auth::AuthResponse,
         auth::UserResponse,
-        auth::ErrorResponse
+        projects::OrganizationsResponse,
+        projects::OrganizationResponse,
+        projects::MembersResponse,
+        projects::MemberResponse,
+        projects::CreateProjectRequest,
+        projects::ProjectResponse,
+        projects::ProjectEnvelope,
+        projects::ProjectsResponse,
+        ErrorResponse
     )),
     tags(
         (name = "health", description = "Process and dependency health"),
-        (name = "auth", description = "Browser session authentication")
+        (name = "auth", description = "Browser session authentication"),
+        (name = "organizations", description = "Organizations and memberships"),
+        (name = "projects", description = "Static deployment projects")
     )
 )]
 pub struct ApiDoc;
@@ -99,6 +121,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
+        .merge(projects::router())
         .with_state(state)
         .layer(DefaultBodyLimit::max(16 * 1_024))
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -186,10 +209,18 @@ mod tests {
     use std::sync::Mutex;
     use time::OffsetDateTime;
     use tower::ServiceExt;
+    use uuid::Uuid;
     use zipship_auth::{
         AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
         NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
     };
+    use zipship_domain::{CachePolicy, MemberRole};
+    use zipship_projects::{
+        MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
+        ProjectsRepositoryError,
+    };
+
+    const TEST_ORGANIZATION_ID: Uuid = Uuid::from_u128(1);
 
     struct Probe {
         status: CheckStatus,
@@ -211,6 +242,112 @@ mod tests {
     #[derive(Default)]
     struct TestAuthRepository {
         state: Mutex<AuthState>,
+    }
+
+    #[derive(Default)]
+    struct TestProjectsRepository {
+        projects: Mutex<Vec<Project>>,
+    }
+
+    #[async_trait]
+    impl ProjectsRepository for TestProjectsRepository {
+        async fn list_organizations(
+            &self,
+            _actor_id: Uuid,
+        ) -> Result<Vec<OrganizationSummary>, ProjectsRepositoryError> {
+            Ok(vec![OrganizationSummary {
+                id: TEST_ORGANIZATION_ID,
+                name: "Test Organization".to_owned(),
+                slug: "test-organization".to_owned(),
+                role: MemberRole::Owner,
+                created_at: OffsetDateTime::UNIX_EPOCH,
+            }])
+        }
+
+        async fn membership_role(
+            &self,
+            organization_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Option<MemberRole>, ProjectsRepositoryError> {
+            Ok((organization_id == TEST_ORGANIZATION_ID).then_some(MemberRole::Owner))
+        }
+
+        async fn list_members(
+            &self,
+            organization_id: Uuid,
+            actor_id: Uuid,
+        ) -> Result<Vec<MemberSummary>, ProjectsRepositoryError> {
+            if organization_id != TEST_ORGANIZATION_ID {
+                return Err(ProjectsRepositoryError::Forbidden);
+            }
+            Ok(vec![MemberSummary {
+                user_id: actor_id,
+                email: "owner@example.com".to_owned(),
+                display_name: "Owner".to_owned(),
+                role: MemberRole::Owner,
+                joined_at: OffsetDateTime::UNIX_EPOCH,
+            }])
+        }
+
+        async fn create_project(
+            &self,
+            project: NewProject,
+        ) -> Result<Project, ProjectsRepositoryError> {
+            if project.organization_id != TEST_ORGANIZATION_ID {
+                return Err(ProjectsRepositoryError::Forbidden);
+            }
+            let mut projects = self.projects.lock().unwrap();
+            if projects
+                .iter()
+                .any(|stored| stored.slug == project.slug.as_str())
+            {
+                return Err(ProjectsRepositoryError::DuplicateSlug);
+            }
+            let project = Project {
+                id: project.id,
+                organization_id: project.organization_id,
+                name: project.name.as_str().to_owned(),
+                slug: project.slug.as_str().to_owned(),
+                description: project.description.into_inner(),
+                spa_fallback: true,
+                cache_policy: CachePolicy::Standard,
+                active_release_id: None,
+                created_by: project.created_by,
+                created_at: project.created_at,
+                updated_at: project.created_at,
+            };
+            projects.push(project.clone());
+            Ok(project)
+        }
+
+        async fn list_projects(
+            &self,
+            organization_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Vec<Project>, ProjectsRepositoryError> {
+            if organization_id != TEST_ORGANIZATION_ID {
+                return Err(ProjectsRepositoryError::Forbidden);
+            }
+            Ok(self.projects.lock().unwrap().clone())
+        }
+
+        async fn find_project_for_member(
+            &self,
+            project_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Option<ProjectAccess>, ProjectsRepositoryError> {
+            Ok(self
+                .projects
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|project| project.id == project_id)
+                .cloned()
+                .map(|project| ProjectAccess {
+                    project,
+                    role: MemberRole::Owner,
+                }))
+        }
     }
 
     #[async_trait]
@@ -302,9 +439,11 @@ mod tests {
         let auth = AuthService::new(Arc::new(TestAuthRepository::default()))
             .await
             .unwrap();
+        let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
         build_router(AppState::new(
             Arc::new(Probe { status }),
             auth,
+            projects,
             CookiePolicy::new(secure_cookies),
         ))
     }
@@ -391,6 +530,8 @@ mod tests {
         let document = json_body(response).await;
         assert!(document["paths"]["/_api/auth/register"].is_object());
         assert!(document["paths"]["/_api/auth/logout"].is_object());
+        assert!(document["paths"]["/_api/organizations"].is_object());
+        assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
     }
 
     #[tokio::test]
@@ -505,6 +646,95 @@ mod tests {
         assert_eq!(
             json_body(rejected).await,
             json!({ "code": "UNAUTHENTICATED" }),
+        );
+    }
+
+    #[tokio::test]
+    async fn project_routes_require_session_and_csrf() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+
+        let organizations = app
+            .clone()
+            .oneshot(
+                Request::get("/_api/organizations")
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(organizations.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(organizations).await["organizations"][0]["id"],
+            TEST_ORGANIZATION_ID.to_string(),
+        );
+
+        let project_path = format!("/_api/organizations/{TEST_ORGANIZATION_ID}/projects");
+        let request_body = json!({
+            "name": " Marketing Site ",
+            "slug": " Marketing-Site ",
+            "description": " Campaign frontend "
+        })
+        .to_string();
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::post(&project_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(request_body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post(&project_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(request_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let created = json_body(created).await;
+        assert_eq!(created["project"]["slug"], "marketing-site");
+        let project_id = created["project"]["id"].as_str().unwrap();
+
+        let detail = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(detail.status(), StatusCode::OK);
+
+        let invalid_path = app
+            .oneshot(
+                Request::get("/_api/projects/not-a-uuid")
+                    .header(header::COOKIE, cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid_path.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            json_body(invalid_path).await,
+            json!({ "code": "INVALID_PATH_PARAMETER" }),
         );
     }
 }

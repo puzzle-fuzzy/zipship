@@ -9,6 +9,7 @@ use tracing_subscriber::EnvFilter;
 use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
+use zipship_projects::ProjectsService;
 use zipship_storage::LocalArtifactStore;
 
 #[derive(Debug, Parser)]
@@ -86,8 +87,11 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         storage,
     });
     let auth = AuthService::new(Arc::new(zipship_postgres::PgAuthRepository::new(pool))).await?;
+    let projects = ProjectsService::new(Arc::new(zipship_postgres::PgProjectsRepository::new(
+        readiness.pool.clone(),
+    )));
     let cookie_policy = CookiePolicy::new(settings.environment == Environment::Production);
-    let app = build_router(AppState::new(readiness, auth, cookie_policy));
+    let app = build_router(AppState::new(readiness, auth, projects, cookie_policy));
     let listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
 
     info!(bind = %settings.http_bind, "zipshipd listening");

@@ -1,9 +1,10 @@
 use super::AppState;
+use crate::error::{ApiError, ErrorResponse};
 use axum::{
     Json, Router,
     extract::{State, rejection::JsonRejection},
     http::{HeaderMap, HeaderValue, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
     routing::{get, post},
 };
 use axum_extra::extract::CookieJar;
@@ -17,7 +18,7 @@ use zipship_auth::{AuthError, AuthOutcome, LoginCommand, RegisterCommand, UserPr
 
 const SESSION_COOKIE: &str = "zipship_session";
 const CSRF_COOKIE: &str = "zipship_csrf";
-const CSRF_HEADER: &str = "x-csrf-token";
+pub(crate) const CSRF_HEADER: &str = "x-csrf-token";
 
 #[derive(Debug, Clone, Copy)]
 pub struct CookiePolicy {
@@ -57,33 +58,6 @@ pub(crate) struct UserResponse {
     display_name: String,
 }
 
-#[derive(Debug, Serialize, ToSchema)]
-pub(crate) struct ErrorResponse {
-    code: &'static str,
-}
-
-#[derive(Debug)]
-pub(crate) struct ApiError {
-    status: StatusCode,
-    code: &'static str,
-}
-
-impl ApiError {
-    fn invalid_json() -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            code: "INVALID_JSON",
-        }
-    }
-
-    fn missing_csrf() -> Self {
-        Self {
-            status: StatusCode::FORBIDDEN,
-            code: "INVALID_CSRF_TOKEN",
-        }
-    }
-}
-
 impl From<AuthError> for ApiError {
     fn from(error: AuthError) -> Self {
         let status = match error {
@@ -95,21 +69,7 @@ impl From<AuthError> for ApiError {
             AuthError::AccountDisabled | AuthError::InvalidCsrfToken => StatusCode::FORBIDDEN,
             AuthError::Infrastructure => StatusCode::SERVICE_UNAVAILABLE,
         };
-        Self {
-            status,
-            code: error.code(),
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (
-            self.status,
-            [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
-            Json(ErrorResponse { code: self.code }),
-        )
-            .into_response()
+        Self::new(status, error.code())
     }
 }
 
@@ -237,7 +197,7 @@ pub(crate) async fn logout(
     let csrf = headers
         .get(CSRF_HEADER)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(ApiError::missing_csrf)?;
+        .ok_or_else(|| ApiError::new(StatusCode::FORBIDDEN, "INVALID_CSRF_TOKEN"))?;
     state.auth.verify_csrf(&session, csrf)?;
     state.auth.logout(token).await?;
 
@@ -303,7 +263,7 @@ fn removal_cookie(name: &'static str, http_only: bool, policy: CookiePolicy) -> 
         .build()
 }
 
-fn session_token(jar: &CookieJar) -> Result<&str, ApiError> {
+pub(crate) fn session_token(jar: &CookieJar) -> Result<&str, ApiError> {
     jar.get(SESSION_COOKIE)
         .map(Cookie::value)
         .ok_or_else(|| AuthError::Unauthenticated.into())
