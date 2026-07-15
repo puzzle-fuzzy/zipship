@@ -25,10 +25,12 @@ use zipship_deployments::DeploymentsService;
 use zipship_invitations::InvitationsService;
 use zipship_members::MembersService;
 use zipship_projects::ProjectsService;
+use zipship_recovery::PasswordRecoveryService;
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::UploadsService;
 
+mod anonymous;
 mod audit;
 mod auth;
 mod deployments;
@@ -36,10 +38,12 @@ mod error;
 mod invitations;
 mod members;
 mod projects;
+mod recovery;
 mod releases;
 mod request;
 mod uploads;
 
+pub use anonymous::{AnonymousRequestPolicy, InvalidAnonymousRequestPolicy};
 pub use auth::CookiePolicy;
 use error::ErrorResponse;
 
@@ -136,6 +140,7 @@ pub struct AppServices {
     pub invitations: InvitationsService,
     pub members: MembersService,
     pub projects: ProjectsService,
+    pub recovery: PasswordRecoveryService,
     pub releases: ReleasesService,
     pub uploads: UploadsService,
 }
@@ -149,11 +154,13 @@ pub struct AppState {
     pub(crate) invitations: InvitationsService,
     pub(crate) members: MembersService,
     pub(crate) projects: ProjectsService,
+    pub(crate) recovery: PasswordRecoveryService,
     pub(crate) releases: ReleasesService,
     pub(crate) uploads: UploadsService,
     pub(crate) storage: LocalArtifactStore,
     pub(crate) cookie_policy: CookiePolicy,
     pub(crate) cors_policy: CorsPolicy,
+    pub(crate) anonymous: AnonymousRequestPolicy,
 }
 
 impl AppState {
@@ -162,6 +169,7 @@ impl AppState {
         services: AppServices,
         storage: LocalArtifactStore,
         browser_policy: BrowserPolicy,
+        anonymous: AnonymousRequestPolicy,
     ) -> Self {
         Self {
             readiness,
@@ -171,11 +179,13 @@ impl AppState {
             invitations: services.invitations,
             members: services.members,
             projects: services.projects,
+            recovery: services.recovery,
             releases: services.releases,
             uploads: services.uploads,
             storage,
             cookie_policy: browser_policy.cookie_policy,
             cors_policy: browser_policy.cors_policy,
+            anonymous,
         }
     }
 }
@@ -190,6 +200,8 @@ impl AppState {
         auth::me,
         auth::update_profile,
         auth::logout,
+        recovery::request_password_reset,
+        recovery::confirm_password_reset,
         audit::list_audit_logs,
         deployments::publish,
         deployments::rollback,
@@ -220,6 +232,8 @@ impl AppState {
         auth::UpdateProfileRequest,
         auth::AuthResponse,
         auth::UserResponse,
+        recovery::RequestPasswordResetRequest,
+        recovery::ConfirmPasswordResetRequest,
         audit::AuditLogsResponse,
         audit::AuditEntryResponse,
         audit::AuditActorResponse,
@@ -286,6 +300,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
+        .merge(recovery::router())
         .merge(audit::router())
         .merge(deployments::router())
         .merge(invitations::router())
@@ -378,10 +393,12 @@ mod tests {
     use super::*;
     use axum::{
         body::{Body, to_bytes},
+        extract::ConnectInfo,
         http::{Request, header},
     };
+    use secrecy::{ExposeSecret, SecretBox};
     use serde_json::{Value, json};
-    use std::sync::Mutex;
+    use std::{net::SocketAddr, sync::Mutex};
     use time::OffsetDateTime;
     use tower::ServiceExt;
     use uuid::Uuid;
@@ -410,6 +427,10 @@ mod tests {
     use zipship_projects::{
         NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
         ProjectsRepositoryError, UpdateProject,
+    };
+    use zipship_recovery::{
+        ConsumePasswordReset, EnvelopeKeyRing, NewPasswordReset, PasswordRecoveryRepository,
+        PasswordRecoveryRepositoryError, PasswordResetRequestDisposition,
     };
     use zipship_releases::{
         ProjectReleases, Release, ReleaseArtifact, ReleasesRepository, ReleasesRepositoryError,
@@ -455,6 +476,36 @@ mod tests {
     #[derive(Default)]
     struct TestInvitationsRepository {
         invitations: Mutex<Vec<(Invitation, TokenDigest)>>,
+    }
+
+    #[derive(Default)]
+    struct RecoveryState {
+        created: Vec<NewPasswordReset>,
+        consumed: Vec<ConsumePasswordReset>,
+    }
+
+    #[derive(Default)]
+    struct TestRecoveryRepository {
+        state: Mutex<RecoveryState>,
+    }
+
+    #[async_trait]
+    impl PasswordRecoveryRepository for TestRecoveryRepository {
+        async fn create_password_reset(
+            &self,
+            reset: NewPasswordReset,
+        ) -> Result<PasswordResetRequestDisposition, PasswordRecoveryRepositoryError> {
+            self.state.lock().unwrap().created.push(reset);
+            Ok(PasswordResetRequestDisposition::Created)
+        }
+
+        async fn consume_password_reset(
+            &self,
+            reset: ConsumePasswordReset,
+        ) -> Result<(), PasswordRecoveryRepositoryError> {
+            self.state.lock().unwrap().consumed.push(reset);
+            Ok(())
+        }
     }
 
     #[derive(Default)]
@@ -1135,6 +1186,14 @@ mod tests {
         status: CheckStatus,
         secure_cookies: bool,
     ) -> (Router, LocalArtifactStore) {
+        let (app, storage, _) = test_app_with_recovery(status, secure_cookies).await;
+        (app, storage)
+    }
+
+    async fn test_app_with_recovery(
+        status: CheckStatus,
+        secure_cookies: bool,
+    ) -> (Router, LocalArtifactStore, Arc<TestRecoveryRepository>) {
         let auth = AuthService::new(Arc::new(TestAuthRepository::default()))
             .await
             .unwrap();
@@ -1142,6 +1201,15 @@ mod tests {
         let invitations = InvitationsService::new(Arc::new(TestInvitationsRepository::default()));
         let members = MembersService::new(Arc::new(TestMembersRepository));
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
+        let recovery_repository = Arc::new(TestRecoveryRepository::default());
+        let recovery = PasswordRecoveryService::new(
+            recovery_repository.clone(),
+            EnvelopeKeyRing::new(
+                "test",
+                vec![("test".to_owned(), SecretBox::new(Box::new([7_u8; 32])))],
+            )
+            .unwrap(),
+        );
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
         let releases = ReleasesService::new(Arc::new(TestReleasesRepository));
         let uploads = UploadsService::new(
@@ -1167,6 +1235,7 @@ mod tests {
                 invitations,
                 members,
                 projects,
+                recovery,
                 releases,
                 uploads,
             },
@@ -1175,8 +1244,9 @@ mod tests {
                 CookiePolicy::new(secure_cookies),
                 CorsPolicy::try_new(vec!["http://127.0.0.1:4015".to_owned()]).unwrap(),
             ),
+            AnonymousRequestPolicy::direct(),
         ));
-        (app, storage)
+        (app, storage, recovery_repository)
     }
 
     fn register_request() -> Request<Body> {
@@ -1191,6 +1261,38 @@ mod tests {
                 .to_string(),
             ))
             .unwrap()
+    }
+
+    fn password_reset_request(email: &str, peer: &str) -> Request<Body> {
+        let mut request = Request::post("/_api/auth/password-resets")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(json!({ "email": email }).to_string()))
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(
+            peer.parse::<SocketAddr>().expect("test peer is valid"),
+        ));
+        request
+    }
+
+    fn password_reset_confirmation(token: &str, peer: &str) -> Request<Body> {
+        let mut request = Request::post("/_api/auth/password-resets/confirm")
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(
+                header::COOKIE,
+                "zipship_session=old-session; zipship_csrf=old-csrf",
+            )
+            .body(Body::from(
+                json!({
+                    "token": token,
+                    "password": "new correct horse battery staple"
+                })
+                .to_string(),
+            ))
+            .unwrap();
+        request.extensions_mut().insert(ConnectInfo(
+            peer.parse::<SocketAddr>().expect("test peer is valid"),
+        ));
+        request
     }
 
     fn response_cookie(response: &axum::response::Response, name: &str) -> String {
@@ -1314,6 +1416,8 @@ mod tests {
         let document: Value = serde_json::from_slice(&body).unwrap();
         assert!(document["paths"]["/_api/auth/register"].is_object());
         assert!(document["paths"]["/_api/auth/logout"].is_object());
+        assert!(document["paths"]["/_api/auth/password-resets"].is_object());
+        assert!(document["paths"]["/_api/auth/password-resets/confirm"].is_object());
         assert!(
             document["paths"]["/_api/projects/{project_id}/releases/{release_id}/publish"]
                 .is_object()
@@ -1386,6 +1490,97 @@ mod tests {
             .unwrap();
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
         assert_eq!(json_body(response).await, json!({ "code": "INVALID_JSON" }));
+    }
+
+    #[tokio::test]
+    async fn password_reset_requests_are_non_enumerating_and_ip_limited() {
+        let (app, _, repository) = test_app_with_recovery(CheckStatus::Ok, false).await;
+        let peer = "192.0.2.40:43100";
+        for index in 0..6 {
+            let response = app
+                .clone()
+                .oneshot(password_reset_request(
+                    &format!("user{index}@example.com"),
+                    peer,
+                ))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::ACCEPTED);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            assert!(
+                to_bytes(response.into_body(), 1_024)
+                    .await
+                    .unwrap()
+                    .is_empty()
+            );
+        }
+        assert_eq!(repository.state.lock().unwrap().created.len(), 5);
+
+        let other_peer = app
+            .clone()
+            .oneshot(password_reset_request(
+                "other@example.com",
+                "192.0.2.41:43100",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(other_peer.status(), StatusCode::ACCEPTED);
+        let invalid = app
+            .oneshot(password_reset_request("not-an-email", "192.0.2.42:43100"))
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::ACCEPTED);
+        assert_eq!(repository.state.lock().unwrap().created.len(), 6);
+    }
+
+    #[tokio::test]
+    async fn password_reset_confirmation_needs_no_session_and_clears_old_cookies() {
+        let (app, _, repository) = test_app_with_recovery(CheckStatus::Ok, true).await;
+        let token = zipship_auth::OpaqueToken::generate().unwrap();
+        let response = app
+            .oneshot(password_reset_confirmation(
+                token.secret().expose_secret(),
+                "192.0.2.50:43100",
+            ))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let session = response_cookie(&response, "zipship_session").to_ascii_lowercase();
+        let csrf = response_cookie(&response, "zipship_csrf").to_ascii_lowercase();
+        for cookie in [session, csrf] {
+            assert!(cookie.contains("max-age=0"));
+            assert!(cookie.contains("secure"));
+            assert!(cookie.contains("samesite=strict"));
+        }
+        assert_eq!(repository.state.lock().unwrap().consumed.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn password_reset_confirmation_has_a_separate_brute_force_limit() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let peer = "192.0.2.60:43100";
+        for _ in 0..10 {
+            let response = app
+                .clone()
+                .oneshot(password_reset_confirmation("invalid", peer))
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert_eq!(
+                json_body(response).await,
+                json!({ "code": "INVALID_PASSWORD_RESET_TOKEN" })
+            );
+        }
+        let limited = app
+            .oneshot(password_reset_confirmation("invalid", peer))
+            .await
+            .unwrap();
+        assert_eq!(limited.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            json_body(limited).await,
+            json!({ "code": "ANONYMOUS_RATE_LIMITED" })
+        );
     }
 
     #[tokio::test]

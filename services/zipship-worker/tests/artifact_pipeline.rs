@@ -2,18 +2,20 @@ use async_trait::async_trait;
 use axum::{
     Router,
     body::{Body, to_bytes},
+    extract::ConnectInfo,
     http::{Request, StatusCode, header},
 };
+use secrecy::{ExposeSecret, SecretString};
 use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
-use std::{collections::BTreeMap, io::Write, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, io::Write, net::SocketAddr, sync::Arc, time::Duration};
 use tower::ServiceExt;
 use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 use zipship_access::PreviewService;
 use zipship_api::{
-    AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe,
-    build_router,
+    AnonymousRequestPolicy, AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy,
+    CorsPolicy, ReadinessProbe, build_router,
 };
 use zipship_artifact::ArtifactLimits;
 use zipship_audit::AuditService;
@@ -25,10 +27,11 @@ use zipship_jobs::{JobLease, WorkerId};
 use zipship_members::MembersService;
 use zipship_postgres::{
     PgArtifactJobsRepository, PgAuditRepository, PgAuthRepository, PgDeploymentsRepository,
-    PgInvitationsRepository, PgJobsRepository, PgMembersRepository, PgPreviewRepository,
-    PgProjectsRepository, PgUploadsRepository,
+    PgInvitationsRepository, PgJobsRepository, PgMembersRepository, PgPasswordRecoveryRepository,
+    PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
+use zipship_recovery::{EnvelopeKeyRing, PasswordRecoveryService};
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::{UploadLimits, UploadsService};
@@ -480,6 +483,134 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
     assert_eq!(isolated.status(), StatusCode::NOT_FOUND);
 }
 
+#[tokio::test]
+#[ignore = "requires an isolated PostgreSQL database"]
+async fn resets_a_password_through_the_real_http_and_postgres_pipeline() {
+    let pool = test_pool().await;
+    zipship_postgres::migrate(&pool).await.unwrap();
+    sqlx::query("TRUNCATE TABLE organizations, users, artifacts, jobs CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let temp = tempfile::tempdir().unwrap();
+    let storage = LocalArtifactStore::new(temp.path());
+    storage.ensure_layout().await.unwrap();
+    let app = real_app(&pool, &storage).await;
+
+    let registered = app.clone().oneshot(register_request()).await.unwrap();
+    assert_eq!(registered.status(), StatusCode::CREATED);
+    let session = response_cookie(&registered, "zipship_session");
+    let csrf = response_cookie(&registered, "zipship_csrf");
+    let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+
+    let requested = app
+        .clone()
+        .oneshot(with_peer(
+            Request::post("/_api/auth/password-resets")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({ "email": "owner@example.com" }).to_string(),
+                ))
+                .unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(requested.status(), StatusCode::ACCEPTED);
+
+    let (request_id, key_id, nonce, ciphertext) =
+        sqlx::query_as::<_, (Uuid, String, Vec<u8>, Vec<u8>)>(
+            r#"
+            SELECT aggregate_id, key_id, nonce, ciphertext
+            FROM email_outbox
+            WHERE kind = 'password_reset' AND state = 'queued'
+            "#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let delivery = recovery_keys()
+        .open_password_reset(
+            request_id,
+            &zipship_recovery::SealedEnvelope {
+                key_id,
+                nonce: nonce.try_into().unwrap(),
+                ciphertext,
+            },
+        )
+        .unwrap();
+    let confirmed = app
+        .clone()
+        .oneshot(with_peer(
+            Request::post("/_api/auth/password-resets/confirm")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::from(
+                    json!({
+                        "token": delivery.token.expose_secret(),
+                        "password": "replacement correct horse battery staple"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(confirmed.status(), StatusCode::NO_CONTENT);
+    assert!(
+        confirmed
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .filter(|value| value.to_ascii_lowercase().contains("max-age=0"))
+            .count()
+            >= 2
+    );
+
+    let old_session = app
+        .clone()
+        .oneshot(
+            Request::get("/_api/auth/me")
+                .header(header::COOKIE, cookie_pair(&session))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(old_session.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        app.clone()
+            .oneshot(login_request("correct horse battery staple"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        app.oneshot(login_request("replacement correct horse battery staple"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+
+    let reset_state =
+        sqlx::query_scalar::<_, String>("SELECT state FROM password_reset_requests WHERE id = $1")
+            .bind(request_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let outbox = sqlx::query_as::<_, (String, Option<Vec<u8>>)>(
+        "SELECT state, ciphertext FROM email_outbox WHERE aggregate_id = $1",
+    )
+    .bind(request_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(reset_state, "consumed");
+    assert_eq!(outbox, ("cancelled".to_owned(), None));
+}
+
 struct Probe;
 
 #[async_trait]
@@ -500,6 +631,10 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     let invitations = InvitationsService::new(Arc::new(PgInvitationsRepository::new(pool.clone())));
     let members = MembersService::new(Arc::new(PgMembersRepository::new(pool.clone())));
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
+    let recovery = PasswordRecoveryService::new(
+        Arc::new(PgPasswordRecoveryRepository::new(pool.clone())),
+        recovery_keys(),
+    );
     let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
     let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
         pool.clone(),
@@ -517,6 +652,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
             invitations,
             members,
             projects,
+            recovery,
             releases,
             uploads,
         },
@@ -525,7 +661,16 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
             CookiePolicy::new(false),
             CorsPolicy::try_new(vec!["http://127.0.0.1:4015".to_owned()]).unwrap(),
         ),
+        AnonymousRequestPolicy::direct(),
     ))
+}
+
+fn recovery_keys() -> EnvelopeKeyRing {
+    EnvelopeKeyRing::from_base64_config(
+        "test",
+        &SecretString::from("test:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
+    )
+    .unwrap()
 }
 
 struct ProcessedUpload {
@@ -671,6 +816,26 @@ fn register_request() -> Request<Body> {
             .to_string(),
         ))
         .unwrap()
+}
+
+fn login_request(password: &str) -> Request<Body> {
+    Request::post("/_api/auth/login")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({
+                "email": "owner@example.com",
+                "password": password
+            })
+            .to_string(),
+        ))
+        .unwrap()
+}
+
+fn with_peer(mut request: Request<Body>) -> Request<Body> {
+    request.extensions_mut().insert(ConnectInfo(
+        "192.0.2.90:43100".parse::<SocketAddr>().unwrap(),
+    ));
+    request
 }
 
 fn response_cookie(response: &axum::response::Response, name: &str) -> String {

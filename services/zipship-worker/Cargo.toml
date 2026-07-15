@@ -27,6 +27,7 @@ zipship-storage = { path = "../../crates/zipship-storage" }
 [dev-dependencies]
 async-trait.workspace = true
 axum.workspace = true
+secrecy.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 tempfile.workspace = true
@@ -41,6 +42,7 @@ zipship-invitations = { path = "../../crates/zipship-invitations" }
 zipship-members = { path = "../../crates/zipship-members" }
 zipship-projects = { path = "../../crates/zipship-projects" }
 zipship-releases = { path = "../../crates/zipship-releases" }
+zipship-recovery = { path = "../../crates/zipship-recovery" }
 zipship-uploads = { path = "../../crates/zipship-uploads" }
 
 [lints]

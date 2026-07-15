@@ -14,6 +14,7 @@ futures-util.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 time.workspace = true
 tokio-util.workspace = true
 tower-http.workspace = true
@@ -28,6 +29,7 @@ zipship-domain = { path = "../zipship-domain" }
 zipship-invitations = { path = "../zipship-invitations" }
 zipship-members = { path = "../zipship-members" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-recovery = { path = "../zipship-recovery" }
 zipship-releases = { path = "../zipship-releases" }
 zipship-storage = { path = "../zipship-storage" }
 zipship-uploads = { path = "../zipship-uploads" }

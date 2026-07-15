@@ -11,6 +11,44 @@ test("reads the non-HttpOnly CSRF cookie without retaining session secrets", () 
   );
 });
 
+test("binds anonymous password recovery without exposing the token in the URL", async () => {
+  const requests: Request[] = [];
+  const token = "r".repeat(43);
+  const api = createApiClient("https://control.example.test", {
+    fetch: async (input) => {
+      requests.push(input);
+      return new Response(null, {
+        status: input.url.endsWith("/confirm") ? 204 : 202,
+      });
+    },
+  });
+
+  const requested = await api.POST("/_api/auth/password-resets", {
+    body: { email: "owner@example.com" },
+  });
+  const confirmed = await api.POST("/_api/auth/password-resets/confirm", {
+    body: {
+      token,
+      password: "new correct horse battery staple",
+    },
+  });
+
+  expect(requested.error).toBeUndefined();
+  expect(confirmed.error).toBeUndefined();
+  expect(requests[0]?.url).toBe(
+    "https://control.example.test/_api/auth/password-resets",
+  );
+  expect(requests[1]?.url).toBe(
+    "https://control.example.test/_api/auth/password-resets/confirm",
+  );
+  expect(requests[1]?.url).not.toContain(token);
+  expect(requests[1]?.headers.get("x-csrf-token")).toBeNull();
+  expect(await requests[1]?.clone().json()).toEqual({
+    token,
+    password: "new correct horse battery staple",
+  });
+});
+
 test("binds generated deployment paths and includes browser credentials", async () => {
   let request: Request | undefined;
   const api = createApiClient("https://control.example.test/", {

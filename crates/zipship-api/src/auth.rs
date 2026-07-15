@@ -289,7 +289,7 @@ fn session_cookie(
         .build()
 }
 
-fn clear_session_cookies(jar: CookieJar, policy: CookiePolicy) -> CookieJar {
+pub(crate) fn clear_session_cookies(jar: CookieJar, policy: CookiePolicy) -> CookieJar {
     let session = removal_cookie(SESSION_COOKIE, true, policy);
     let csrf = removal_cookie(CSRF_COOKIE, false, policy);
     jar.remove(session).remove(csrf)

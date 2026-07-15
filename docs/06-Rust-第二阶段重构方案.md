@@ -330,9 +330,9 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
 - `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机以及审计游标分页；Rust 全工作区现有 98 项常规测试和 13 项真实 PostgreSQL/端到端测试。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发与审计游标分页；Rust 全工作区现有 116 项常规测试，以及 14 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
-- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新，以及成员列表、角色修改、主动退出、管理员移除和邀请完整生命周期已经完成。下一步实现密码重置，之后统一迁移 Console Store；不交付 Eden/Rust 双 Client 兼容运行模式。
+- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员生命周期、邀请生命周期，以及密码恢复后端与可靠 SMTP Outbox 已经完成。下一步迁移 Console 认证/恢复界面和 Store；不交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
 
 ### 已完成切片：成员移除
@@ -359,7 +359,7 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 7. API 提供组织范围的创建、活动列表、撤销和令牌接受。创建响应返回一次性 `acceptToken` 供当前阶段人工分享；邮件发送必须在后续以可靠 Outbox/Delivery 适配器实现，不能把明文令牌持久化到普通 Job 表冒充可靠邮件。
 8. 验收覆盖并发重复创建、创建与接受竞争、撤销与接受竞争、过期后重新邀请、错误邮箱、同用户接受重放、数据库约束、CSRF、OpenAPI 快照和 TypeScript Client。
 
-### 下一实施切片：密码重置与可靠邮件交付
+### 后端已完成切片：密码重置与可靠邮件交付
 
 密码重置不沿用旧 TypeScript 的“写入令牌后同步尝试发信，再分两次更新密码与令牌”的实现。Rust 版按最终账号恢复模型交付，API、令牌状态、邮件投递与会话失效必须闭环：
 
@@ -373,3 +373,13 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 8. 成功确认必须在一个 PostgreSQL 事务中更新密码哈希、将当前请求标记 consumed、supersede 该用户其他 pending 请求、撤销所有活动 `web_sessions` 和 `api_tokens`，并为用户仍加入的每个活动组织写入不含邮箱/令牌的 `user.password_reset_completed` 审计。相同令牌并发确认只能有一个成功，重放稳定失败。
 9. 确认成功返回 `204 No Content` 并清除当前浏览器的 Session/CSRF Cookie；旧密码、所有旧 Cookie Session 和 API Token 随事务提交立即失效。后续登录只接受新密码，不自动创建新会话，避免账号恢复操作隐式登录错误浏览器环境。
 10. 验收覆盖防枚举响应、账号/匿名限流、密文不可读与 AAD 防篡改、密钥轮换、SMTP 重试和永久失败、过期投递取消、申请/确认及双确认并发、事务回滚、旧凭证全部失效、审计脱敏、Fragment 链接、OpenAPI 快照和 TypeScript Client。
+
+后端实现已完成上述数据库、领域服务、API、匿名地址限流、加密 Outbox、SMTP Worker、生产配置与契约验收。申请接口按客户端地址每十分钟最多处理五次，超限仍返回统一 `202`；确认接口每十分钟最多尝试十次，超限返回稳定的 `ANONYMOUS_RATE_LIMITED`。默认只采用 TCP 对端地址，只有显式列入 `ZIPSHIP_TRUSTED_PROXY_NETWORKS` 的代理才允许参与 `X-Forwarded-For` 解析。
+
+### 下一实施切片：Console 认证与密码恢复界面
+
+1. Console 认证 Store 全面切换到 Rust OpenAPI Client 和 HttpOnly Cookie Session，删除旧 Bearer/`sessionStorage` 路径，不保留双客户端兼容分支。
+2. 登录页增加“忘记密码”入口与统一成功提示；申请页不得根据邮箱、账号状态或限流结果展示差异信息。
+3. `/reset-password` 首次加载从 URL Fragment 读取令牌后立即使用 `history.replaceState` 清除地址栏 Fragment；令牌只保存在页面内存，不进入持久化 Store、日志、分析事件或 URL 查询参数。
+4. 确认表单在本地复用密码策略提示，通过匿名确认 API 提交；成功后跳转登录并提示所有旧会话已失效，不自动登录。
+5. 覆盖无令牌、无效/过期令牌、弱密码、重复提交、网络失败、刷新丢失内存令牌、移动端布局、键盘操作和无障碍状态播报；完成 Console 单元测试、类型检查与浏览器 E2E。

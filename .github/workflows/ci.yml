@@ -53,7 +53,7 @@ jobs:
       - run: cargo test -p zipship-postgres --test releases_repository -- --ignored
       - run: cargo test -p zipship-postgres --test audit_repository -- --ignored
       - run: cargo test -p zipship-postgres --test deployments_repository -- --ignored
-      - run: cargo test -p zipship-worker --test artifact_pipeline -- --ignored
+      - run: cargo test -p zipship-worker --test artifact_pipeline -- --ignored --test-threads=1
 
   quality:
     name: Lint & Typecheck

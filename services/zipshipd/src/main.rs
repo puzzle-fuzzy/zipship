@@ -9,8 +9,8 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use zipship_access::PreviewService;
 use zipship_api::{
-    AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe,
-    build_router,
+    AnonymousRequestPolicy, AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy,
+    CorsPolicy, ReadinessProbe, build_router,
 };
 use zipship_audit::AuditService;
 use zipship_auth::AuthService;
@@ -19,6 +19,7 @@ use zipship_deployments::DeploymentsService;
 use zipship_invitations::InvitationsService;
 use zipship_members::MembersService;
 use zipship_projects::ProjectsService;
+use zipship_recovery::{EnvelopeKeyRing, PasswordRecoveryService};
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::{UploadLimits, UploadsService};
@@ -104,6 +105,16 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let projects = ProjectsService::new(Arc::new(zipship_postgres::PgProjectsRepository::new(
         readiness.pool.clone(),
     )));
+    let recovery_keys = EnvelopeKeyRing::from_base64_config(
+        settings.password_recovery_active_key_id.clone(),
+        &settings.password_recovery_keys,
+    )?;
+    let recovery = PasswordRecoveryService::new(
+        Arc::new(zipship_postgres::PgPasswordRecoveryRepository::new(
+            readiness.pool.clone(),
+        )),
+        recovery_keys,
+    );
     let members = MembersService::new(Arc::new(zipship_postgres::PgMembersRepository::new(
         readiness.pool.clone(),
     )));
@@ -142,6 +153,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
             invitations,
             members,
             projects,
+            recovery,
             releases,
             uploads,
         },
@@ -150,6 +162,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
             cookie_policy,
             CorsPolicy::try_new(settings.control_allowed_origins)?,
         ),
+        AnonymousRequestPolicy::try_new(settings.trusted_proxy_networks)?,
     ));
     let control_listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
     let access_listener = tokio::net::TcpListener::bind(settings.access_bind).await?;
@@ -164,8 +177,11 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
 
     info!(bind = %settings.http_bind, "ZipShip control plane listening");
     info!(bind = %settings.access_bind, "ZipShip access plane listening");
-    let control_server = axum::serve(control_listener, control_app)
-        .with_graceful_shutdown(wait_for_shutdown(shutdown_sender.subscribe()));
+    let control_server = axum::serve(
+        control_listener,
+        control_app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(wait_for_shutdown(shutdown_sender.subscribe()));
     let access_server = axum::serve(access_listener, access_app)
         .with_graceful_shutdown(wait_for_shutdown(shutdown_sender.subscribe()));
     let result = tokio::try_join!(control_server, access_server);

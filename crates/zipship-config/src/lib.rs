@@ -38,6 +38,7 @@ pub struct Settings {
     pub http_bind: SocketAddr,
     pub access_bind: SocketAddr,
     pub control_allowed_origins: Vec<String>,
+    pub trusted_proxy_networks: Vec<String>,
     pub console_public_url: Url,
     pub database_url: SecretString,
     pub database_max_connections: u32,
@@ -97,6 +98,10 @@ impl Settings {
             production,
             DEVELOPMENT_CONTROL_ORIGINS,
         )?)?;
+        let trusted_proxy_networks = parse_optional_list(
+            lookup("ZIPSHIP_TRUSTED_PROXY_NETWORKS"),
+            "ZIPSHIP_TRUSTED_PROXY_NETWORKS",
+        )?;
         let console_public_url = parse_console_public_url(
             required_in_production(
                 &mut lookup,
@@ -201,6 +206,7 @@ impl Settings {
             http_bind,
             access_bind,
             control_allowed_origins,
+            trusted_proxy_networks,
             console_public_url,
             database_url: SecretString::from(database_url),
             database_max_connections: parse_or_default(
@@ -306,6 +312,31 @@ fn parse_origins(value: String) -> Result<Vec<String>, ConfigError> {
     Ok(origins)
 }
 
+fn parse_optional_list(
+    value: Option<String>,
+    key: &'static str,
+) -> Result<Vec<String>, ConfigError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    if value.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    for candidate in value.split(',').map(str::trim) {
+        if candidate.is_empty() {
+            return Err(ConfigError::InvalidValue {
+                key,
+                value: value.clone(),
+            });
+        }
+        if !entries.iter().any(|entry| entry == candidate) {
+            entries.push(candidate.to_owned());
+        }
+    }
+    Ok(entries)
+}
+
 fn parse_nonzero_u64(
     lookup: &mut impl FnMut(&str) -> Option<String>,
     key: &'static str,
@@ -383,6 +414,7 @@ mod tests {
             ]
         );
         assert_eq!(settings.storage_root, PathBuf::from(".zipship"));
+        assert!(settings.trusted_proxy_networks.is_empty());
         assert_eq!(
             settings.console_public_url.as_str(),
             "http://127.0.0.1:4015/"
@@ -553,6 +585,7 @@ mod tests {
             settings_from(&[("ZIPSHIP_CONSOLE_PUBLIC_URL", "http://example.com/path")]).is_err()
         );
         assert!(settings_from(&[("ZIPSHIP_SMTP_URL", "http://example.com")]).is_err());
+        assert!(settings_from(&[("ZIPSHIP_TRUSTED_PROXY_NETWORKS", "10.0.0.0/8,,::1")]).is_err());
         assert!(
             settings_from(&[
                 ("ZIPSHIP_ENV", "production"),
