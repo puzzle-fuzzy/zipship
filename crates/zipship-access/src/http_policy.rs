@@ -72,12 +72,41 @@ pub(super) fn accepts_html(headers: &HeaderMap) -> bool {
     headers
         .get(header::ACCEPT)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|accept| {
-            accept.split(',').any(|item| {
-                let media_type = item.split(';').next().unwrap_or(item).trim();
-                matches!(media_type, "text/html" | "application/xhtml+xml")
-            })
-        })
+        .is_some_and(|accept| accept.split(',').any(is_acceptable_html_range))
+}
+
+fn is_acceptable_html_range(item: &str) -> bool {
+    let mut segments = item.split(';');
+    let media_type = segments.next().unwrap_or(item).trim();
+    if !media_type.eq_ignore_ascii_case("text/html")
+        && !media_type.eq_ignore_ascii_case("application/xhtml+xml")
+    {
+        return false;
+    }
+
+    segments
+        .filter_map(|parameter| parameter.split_once('='))
+        .find(|(name, _)| name.trim().eq_ignore_ascii_case("q"))
+        .map(|(_, quality)| has_positive_quality(quality.trim()))
+        .unwrap_or(true)
+}
+
+fn has_positive_quality(value: &str) -> bool {
+    let (whole, fraction) = value
+        .split_once('.')
+        .map_or((value, None), |(whole, fraction)| (whole, Some(fraction)));
+    let valid_fraction = fraction.is_none_or(|fraction| {
+        fraction.len() <= 3 && fraction.bytes().all(|byte| byte.is_ascii_digit())
+    });
+    if !valid_fraction {
+        return false;
+    }
+
+    match whole {
+        "0" => fraction.is_some_and(|fraction| fraction.bytes().any(|byte| byte != b'0')),
+        "1" => fraction.is_none_or(|fraction| fraction.bytes().all(|byte| byte == b'0')),
+        _ => false,
+    }
 }
 
 pub(super) fn if_none_match(headers: &HeaderMap, etag: &str) -> bool {

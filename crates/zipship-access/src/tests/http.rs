@@ -167,6 +167,18 @@ async fn limits_spa_fallback_to_html_navigation_and_rejects_unsafe_paths() {
     assert_eq!(missing_asset.status(), StatusCode::NOT_FOUND);
     assert_eq!(missing_asset.headers()[header::CACHE_CONTROL], "no-store");
 
+    let rejected_fallback = app
+        .clone()
+        .oneshot(
+            Request::get(&deep_link)
+                .header(header::ACCEPT, "text/html;q=0, application/json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected_fallback.status(), StatusCode::NOT_FOUND);
+
     let traversal = app
         .oneshot(
             Request::get(format!(

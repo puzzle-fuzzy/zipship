@@ -10,11 +10,27 @@ fn recognizes_explicit_html_navigation_media_types() {
     let mut headers = HeaderMap::new();
     headers.insert(
         header::ACCEPT,
-        HeaderValue::from_static("application/json, text/html; charset=utf-8"),
+        HeaderValue::from_static("application/json, Text/HTML; charset=utf-8; q=0.5"),
     );
     assert!(accepts_html(&headers));
 
     headers.insert(header::ACCEPT, HeaderValue::from_static("*/*"));
+    assert!(!accepts_html(&headers));
+}
+
+#[test]
+fn rejects_html_media_ranges_with_zero_or_invalid_quality() {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::ACCEPT,
+        HeaderValue::from_static("text/html;q=0, application/xhtml+xml;Q=0.000"),
+    );
+    assert!(!accepts_html(&headers));
+
+    headers.insert(
+        header::ACCEPT,
+        HeaderValue::from_static("text/html;q=1.001, application/xhtml+xml;q=invalid"),
+    );
     assert!(!accepts_html(&headers));
 }
 
