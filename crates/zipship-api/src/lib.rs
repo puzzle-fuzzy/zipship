@@ -4,13 +4,14 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     extract::DefaultBodyLimit,
-    http::{HeaderName, HeaderValue, StatusCode, header},
+    http::{HeaderName, HeaderValue, Method, StatusCode, header},
     routing::get,
 };
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc, time::Duration};
 use tower_http::{
     catch_panic::CatchPanicLayer,
+    cors::CorsLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     sensitive_headers::SetSensitiveRequestHeadersLayer,
     set_header::SetResponseHeaderLayer,
@@ -33,6 +34,71 @@ mod uploads;
 
 pub use auth::CookiePolicy;
 use error::ErrorResponse;
+
+#[derive(Debug)]
+pub struct InvalidCorsPolicy;
+
+impl std::fmt::Display for InvalidCorsPolicy {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("control-plane CORS policy has no valid origins")
+    }
+}
+
+impl std::error::Error for InvalidCorsPolicy {}
+
+#[derive(Clone)]
+pub struct CorsPolicy {
+    allowed_origins: Vec<HeaderValue>,
+}
+
+impl CorsPolicy {
+    pub fn try_new(origins: impl IntoIterator<Item = String>) -> Result<Self, InvalidCorsPolicy> {
+        let allowed_origins = origins
+            .into_iter()
+            .map(|origin| HeaderValue::from_str(&origin).map_err(|_| InvalidCorsPolicy))
+            .collect::<Result<Vec<_>, _>>()?;
+        if allowed_origins.is_empty() {
+            return Err(InvalidCorsPolicy);
+        }
+        Ok(Self { allowed_origins })
+    }
+
+    fn layer(&self) -> CorsLayer {
+        CorsLayer::new()
+            .allow_origin(self.allowed_origins.clone())
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+            ])
+            .allow_headers([
+                header::CONTENT_TYPE,
+                HeaderName::from_static("idempotency-key"),
+                HeaderName::from_static("x-csrf-token"),
+                HeaderName::from_static("x-request-id"),
+            ])
+            .allow_credentials(true)
+            .expose_headers([HeaderName::from_static("x-request-id")])
+            .max_age(Duration::from_secs(600))
+    }
+}
+
+#[derive(Clone)]
+pub struct BrowserPolicy {
+    cookie_policy: CookiePolicy,
+    cors_policy: CorsPolicy,
+}
+
+impl BrowserPolicy {
+    pub fn new(cookie_policy: CookiePolicy, cors_policy: CorsPolicy) -> Self {
+        Self {
+            cookie_policy,
+            cors_policy,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
@@ -63,6 +129,7 @@ pub struct AppState {
     pub(crate) uploads: UploadsService,
     pub(crate) storage: LocalArtifactStore,
     pub(crate) cookie_policy: CookiePolicy,
+    pub(crate) cors_policy: CorsPolicy,
 }
 
 impl AppState {
@@ -73,7 +140,7 @@ impl AppState {
         projects: ProjectsService,
         uploads: UploadsService,
         storage: LocalArtifactStore,
-        cookie_policy: CookiePolicy,
+        browser_policy: BrowserPolicy,
     ) -> Self {
         Self {
             readiness,
@@ -82,7 +149,8 @@ impl AppState {
             projects,
             uploads,
             storage,
-            cookie_policy,
+            cookie_policy: browser_policy.cookie_policy,
+            cors_policy: browser_policy.cors_policy,
         }
     }
 }
@@ -151,6 +219,7 @@ pub fn openapi_document() -> utoipa::openapi::OpenApi {
 
 pub fn build_router(state: AppState) -> Router {
     let request_id_header = HeaderName::from_static("x-request-id");
+    let cors = state.cors_policy.layer();
 
     let standard_routes = Router::new()
         .route("/_health/live", get(liveness))
@@ -179,6 +248,7 @@ pub fn build_router(state: AppState) -> Router {
         ]))
         .layer(CatchPanicLayer::new())
         .layer(TraceLayer::new_for_http())
+        .layer(cors)
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
         .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid))
 }
@@ -747,7 +817,10 @@ mod tests {
             projects,
             uploads,
             storage.clone(),
-            CookiePolicy::new(secure_cookies),
+            BrowserPolicy::new(
+                CookiePolicy::new(secure_cookies),
+                CorsPolicy::try_new(vec!["http://127.0.0.1:4015".to_owned()]).unwrap(),
+            ),
         ));
         (app, storage)
     }
@@ -808,6 +881,54 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[tokio::test]
+    async fn cors_allows_only_configured_credentialed_console_origins() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let preflight = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::OPTIONS)
+                    .uri("/_api/projects/project/releases/release/publish")
+                    .header(header::ORIGIN, "http://127.0.0.1:4015")
+                    .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                    .header(
+                        header::ACCESS_CONTROL_REQUEST_HEADERS,
+                        "content-type,idempotency-key,x-csrf-token",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preflight.status(), StatusCode::OK);
+        assert_eq!(
+            preflight.headers()[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+            "http://127.0.0.1:4015"
+        );
+        assert_eq!(
+            preflight.headers()[header::ACCESS_CONTROL_ALLOW_CREDENTIALS],
+            "true"
+        );
+
+        let rejected = app
+            .oneshot(
+                Request::get("/_health/live")
+                    .header(header::ORIGIN, "https://untrusted.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected.status(), StatusCode::OK);
+        assert!(
+            rejected
+                .headers()
+                .get(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+                .is_none()
+        );
     }
 
     #[tokio::test]

@@ -8,7 +8,9 @@ use tokio::sync::watch;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use zipship_access::PreviewService;
-use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
+use zipship_api::{
+    AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe, build_router,
+};
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
 use zipship_deployments::DeploymentsService;
@@ -121,7 +123,10 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         projects,
         uploads,
         storage,
-        cookie_policy,
+        BrowserPolicy::new(
+            cookie_policy,
+            CorsPolicy::try_new(settings.control_allowed_origins)?,
+        ),
     ));
     let control_listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
     let access_listener = tokio::net::TcpListener::bind(settings.access_bind).await?;

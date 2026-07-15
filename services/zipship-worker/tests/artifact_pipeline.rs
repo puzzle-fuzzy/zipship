@@ -11,7 +11,9 @@ use tower::ServiceExt;
 use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 use zipship_access::PreviewService;
-use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
+use zipship_api::{
+    AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe, build_router,
+};
 use zipship_artifact::ArtifactLimits;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
@@ -424,7 +426,10 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
         projects,
         uploads,
         storage.clone(),
-        CookiePolicy::new(false),
+        BrowserPolicy::new(
+            CookiePolicy::new(false),
+            CorsPolicy::try_new(vec!["http://127.0.0.1:4015".to_owned()]).unwrap(),
+        ),
     ))
 }
 

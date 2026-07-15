@@ -3,6 +3,10 @@
 use secrecy::SecretString;
 use std::{net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 use thiserror::Error;
+use url::Url;
+
+const DEVELOPMENT_CONTROL_ORIGINS: &str =
+    "http://127.0.0.1:4015,http://127.0.0.1:1420,http://localhost:1420";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
@@ -32,6 +36,7 @@ pub struct Settings {
     pub environment: Environment,
     pub http_bind: SocketAddr,
     pub access_bind: SocketAddr,
+    pub control_allowed_origins: Vec<String>,
     pub database_url: SecretString,
     pub database_max_connections: u32,
     pub storage_root: PathBuf,
@@ -80,6 +85,12 @@ impl Settings {
         )?;
         let storage_root =
             required_in_production(&mut lookup, "ZIPSHIP_STORAGE_ROOT", production, ".zipship")?;
+        let control_allowed_origins = parse_origins(required_in_production(
+            &mut lookup,
+            "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+            production,
+            DEVELOPMENT_CONTROL_ORIGINS,
+        )?)?;
 
         let upload_max_bytes =
             parse_nonzero_u64(&mut lookup, "ZIPSHIP_UPLOAD_MAX_BYTES", "524288000")?;
@@ -147,6 +158,7 @@ impl Settings {
             environment,
             http_bind,
             access_bind,
+            control_allowed_origins,
             database_url: SecretString::from(database_url),
             database_max_connections: parse_or_default(
                 &mut lookup,
@@ -169,6 +181,41 @@ impl Settings {
             artifact_compression_ratio_grace_bytes,
         })
     }
+}
+
+fn parse_origins(value: String) -> Result<Vec<String>, ConfigError> {
+    let invalid = || ConfigError::InvalidValue {
+        key: "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+        value: value.clone(),
+    };
+    let mut origins = Vec::new();
+    for candidate in value.split(',').map(str::trim) {
+        if candidate.is_empty() {
+            return Err(invalid());
+        }
+        let url = Url::parse(candidate).map_err(|_| invalid())?;
+        if !matches!(url.scheme(), "http" | "https")
+            || url.host().is_none()
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(invalid());
+        }
+        let origin = url.origin().ascii_serialization();
+        if origin == "null" {
+            return Err(invalid());
+        }
+        if !origins.contains(&origin) {
+            origins.push(origin);
+        }
+    }
+    if origins.is_empty() {
+        return Err(invalid());
+    }
+    Ok(origins)
 }
 
 fn parse_nonzero_u64(
@@ -239,6 +286,14 @@ mod tests {
         assert_eq!(settings.environment, Environment::Development);
         assert_eq!(settings.http_bind.to_string(), "127.0.0.1:5006");
         assert_eq!(settings.access_bind.to_string(), "127.0.0.1:5007");
+        assert_eq!(
+            settings.control_allowed_origins,
+            [
+                "http://127.0.0.1:4015",
+                "http://127.0.0.1:1420",
+                "http://localhost:1420"
+            ]
+        );
         assert_eq!(settings.storage_root, PathBuf::from(".zipship"));
         assert!(settings.database_url.expose_secret().contains("127.0.0.1"));
         assert_eq!(settings.upload_max_bytes, 500 * 1_024 * 1_024);
@@ -267,6 +322,15 @@ mod tests {
             .unwrap_err(),
             ConfigError::Missing("ZIPSHIP_STORAGE_ROOT"),
         );
+        assert_eq!(
+            settings_from(&[
+                ("ZIPSHIP_ENV", "production"),
+                ("ZIPSHIP_DATABASE_URL", "postgres://example"),
+                ("ZIPSHIP_STORAGE_ROOT", "/srv/zipship"),
+            ])
+            .unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_CONTROL_ALLOWED_ORIGINS"),
+        );
     }
 
     #[test]
@@ -294,6 +358,12 @@ mod tests {
             .is_err(),
         );
         assert!(settings_from(&[("ZIPSHIP_ARTIFACT_MAX_ENTRIES", "0")]).is_err());
+        for origins in ["*", "http://example.com/path", "https://user@example.com"] {
+            assert!(
+                settings_from(&[("ZIPSHIP_CONTROL_ALLOWED_ORIGINS", origins)]).is_err(),
+                "{origins}"
+            );
+        }
         assert!(
             settings_from(&[
                 ("ZIPSHIP_ARTIFACT_MAX_FILE_BYTES", "2048"),

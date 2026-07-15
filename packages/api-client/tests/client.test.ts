@@ -1,5 +1,15 @@
 import { expect, test } from "bun:test";
-import { createApiClient } from "../src";
+import { createApiClient, csrfHeaders, readCsrfToken } from "../src";
+
+test("reads the non-HttpOnly CSRF cookie without retaining session secrets", () => {
+  const cookies = "theme=night; zipship_csrf=token%2Evalue; ignored=1";
+  expect(readCsrfToken(cookies)).toBe("token.value");
+  expect(csrfHeaders(cookies)).toEqual({ "x-csrf-token": "token.value" });
+  expect(readCsrfToken("zipship_session=secret")).toBeNull();
+  expect(() => csrfHeaders("zipship_session=secret")).toThrow(
+    "CSRF token cookie is missing",
+  );
+});
 
 test("binds generated deployment paths and includes browser credentials", async () => {
   let request: Request | undefined;
