@@ -80,62 +80,6 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
     let project = json_body(project).await;
     let project_id = project["project"]["id"].as_str().unwrap();
 
-    let archive = site_zip();
-    let upload = app
-        .clone()
-        .oneshot(
-            Request::post(format!("/_api/projects/{project_id}/uploads"))
-                .header(header::COOKIE, &cookie_header)
-                .header(header::CONTENT_TYPE, "application/json")
-                .header("x-csrf-token", cookie_value(&csrf))
-                .body(Body::from(
-                    json!({
-                        "filename": "frontend.zip",
-                        "sizeBytes": archive.len()
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(upload.status(), StatusCode::CREATED);
-    let upload = json_body(upload).await;
-    let upload_id = upload["upload"]["id"].as_str().unwrap();
-    let upload_uuid = Uuid::parse_str(upload_id).unwrap();
-
-    let uploaded = app
-        .clone()
-        .oneshot(
-            Request::put(format!("/_api/uploads/{upload_id}/content"))
-                .header(header::COOKIE, &cookie_header)
-                .header(header::CONTENT_TYPE, "application/zip")
-                .header(header::CONTENT_LENGTH, archive.len())
-                .header("x-csrf-token", cookie_value(&csrf))
-                .body(Body::from(archive))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(uploaded.status(), StatusCode::OK);
-    assert_eq!(json_body(uploaded).await["upload"]["status"], "uploaded");
-
-    let completed = app
-        .clone()
-        .oneshot(
-            Request::post(format!("/_api/uploads/{upload_id}/complete"))
-                .header(header::COOKIE, &cookie_header)
-                .header("x-csrf-token", cookie_value(&csrf))
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(completed.status(), StatusCode::ACCEPTED);
-    let completed = json_body(completed).await;
-    let release_id = Uuid::parse_str(completed["releaseId"].as_str().unwrap()).unwrap();
-    assert_eq!(completed["upload"]["status"], "processing");
-
     let worker = ArtifactWorker::new(
         Arc::new(PgJobsRepository::new(pool.clone())),
         Arc::new(PgArtifactJobsRepository::new(pool.clone())),
@@ -144,15 +88,19 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
         JobLease::parse(Duration::from_secs(60)).unwrap(),
         ArtifactLimits::default(),
     );
-    let outcome = worker.process_next().await.unwrap();
-    let WorkOutcome::Completed {
-        artifact_id,
-        cleanup_pending: false,
-        ..
-    } = outcome
-    else {
-        panic!("expected the artifact worker to complete, got {outcome:?}");
-    };
+    let first = upload_and_process(
+        &app,
+        &worker,
+        project_id,
+        &cookie_header,
+        cookie_value(&csrf),
+        "frontend-v1.zip",
+        site_zip("<main>ZipShip worker ready</main>", "console.log('ready')"),
+    )
+    .await;
+    let upload_id = first.upload_id;
+    let release_id = first.release_id;
+    let artifact_id = first.artifact_id;
 
     let detail = app
         .clone()
@@ -195,12 +143,23 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
         std::fs::read_to_string(storage.artifact_path(&digest).join("index.html")).unwrap(),
         "<main>ZipShip worker ready</main>",
     );
-    assert!(!storage.upload_staging_path(upload_uuid).exists());
+    assert!(!storage.upload_staging_path(upload_id).exists());
 
     let access = zipship_access::build_router(PreviewService::new(
         Arc::new(PgPreviewRepository::new(pool.clone())),
         storage.clone(),
     ));
+    let unpublished = access
+        .clone()
+        .oneshot(
+            Request::get("/marketing-site/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unpublished.status(), StatusCode::NOT_FOUND);
+
     let preview_url = format!("/_sites/marketing-site/{release_id}/");
     let preview = access
         .clone()
@@ -248,6 +207,183 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
         "<main>ZipShip worker ready</main>"
     );
 
+    let first_publish = deploy_release(
+        &app,
+        project_id,
+        release_id,
+        "publish",
+        "publish-v1",
+        &cookie_header,
+        cookie_value(&csrf),
+    )
+    .await;
+    assert_eq!(first_publish["deployment"]["action"], "publish");
+    assert_eq!(
+        first_publish["deployment"]["previousReleaseId"],
+        Value::Null
+    );
+    assert_eq!(first_publish["activeReleaseId"], release_id.to_string());
+    assert_eq!(first_publish["replayed"], false);
+    let replayed = deploy_release(
+        &app,
+        project_id,
+        release_id,
+        "publish",
+        "publish-v1",
+        &cookie_header,
+        cookie_value(&csrf),
+    )
+    .await;
+    assert_eq!(replayed["replayed"], true);
+    assert_eq!(
+        replayed["deployment"]["id"],
+        first_publish["deployment"]["id"]
+    );
+
+    let live_v1 = access
+        .clone()
+        .oneshot(
+            Request::get("/marketing-site/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(live_v1.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(live_v1.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip worker ready</main>"
+    );
+
+    let second = upload_and_process(
+        &app,
+        &worker,
+        project_id,
+        &cookie_header,
+        cookie_value(&csrf),
+        "frontend-v2.zip",
+        site_zip(
+            "<main>ZipShip second release</main>",
+            "console.log('second')",
+        ),
+    )
+    .await;
+    assert_ne!(second.release_id, release_id);
+    assert_ne!(second.artifact_id, artifact_id);
+
+    let second_preview_url = format!("/_sites/marketing-site/{}/", second.release_id);
+    let second_preview = access
+        .clone()
+        .oneshot(
+            Request::get(&second_preview_url)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second_preview.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(second_preview.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip second release</main>"
+    );
+
+    let second_publish = deploy_release(
+        &app,
+        project_id,
+        second.release_id,
+        "publish",
+        "publish-v2",
+        &cookie_header,
+        cookie_value(&csrf),
+    )
+    .await;
+    assert_eq!(
+        second_publish["deployment"]["previousReleaseId"],
+        release_id.to_string()
+    );
+    let live_v2 = access
+        .clone()
+        .oneshot(
+            Request::get("/marketing-site/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(live_v2.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(live_v2.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip second release</main>"
+    );
+
+    let rollback = deploy_release(
+        &app,
+        project_id,
+        release_id,
+        "rollback",
+        "rollback-v1",
+        &cookie_header,
+        cookie_value(&csrf),
+    )
+    .await;
+    assert_eq!(rollback["deployment"]["action"], "rollback");
+    assert_eq!(
+        rollback["deployment"]["previousReleaseId"],
+        second.release_id.to_string()
+    );
+    assert_eq!(rollback["activeReleaseId"], release_id.to_string());
+
+    let live_rollback = access
+        .clone()
+        .oneshot(
+            Request::get("/marketing-site/")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(live_rollback.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(live_rollback.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip worker ready</main>"
+    );
+    let immutable_v2 = access
+        .clone()
+        .oneshot(
+            Request::get(second_preview_url)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(immutable_v2.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(immutable_v2.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip second release</main>"
+    );
+
+    let history = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/_api/projects/{project_id}/deployments"))
+                .header(header::COOKIE, &cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(history.status(), StatusCode::OK);
+    let history = json_body(history).await;
+    assert_eq!(history["deployments"].as_array().unwrap().len(), 3);
+    assert_eq!(history["deployments"][0]["action"], "rollback");
+    let deployment_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM deployments WHERE project_id = $1")
+            .bind(Uuid::parse_str(project_id).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(deployment_count, 3);
+
     let isolated = access
         .oneshot(
             Request::get("/_api/openapi.json")
@@ -292,6 +428,137 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     ))
 }
 
+struct ProcessedUpload {
+    upload_id: Uuid,
+    release_id: Uuid,
+    artifact_id: Uuid,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_and_process(
+    app: &Router,
+    worker: &ArtifactWorker,
+    project_id: &str,
+    cookie_header: &str,
+    csrf: &str,
+    filename: &str,
+    archive: Vec<u8>,
+) -> ProcessedUpload {
+    let upload = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/_api/projects/{project_id}/uploads"))
+                .header(header::COOKIE, cookie_header)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-csrf-token", csrf)
+                .body(Body::from(
+                    json!({
+                        "filename": filename,
+                        "sizeBytes": archive.len()
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(upload.status(), StatusCode::CREATED);
+    let upload = json_body(upload).await;
+    let upload_id = Uuid::parse_str(upload["upload"]["id"].as_str().unwrap()).unwrap();
+
+    let uploaded = app
+        .clone()
+        .oneshot(
+            Request::put(format!("/_api/uploads/{upload_id}/content"))
+                .header(header::COOKIE, cookie_header)
+                .header(header::CONTENT_TYPE, "application/zip")
+                .header(header::CONTENT_LENGTH, archive.len())
+                .header("x-csrf-token", csrf)
+                .body(Body::from(archive))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(uploaded.status(), StatusCode::OK);
+    assert_eq!(json_body(uploaded).await["upload"]["status"], "uploaded");
+
+    let completed = app
+        .clone()
+        .oneshot(
+            Request::post(format!("/_api/uploads/{upload_id}/complete"))
+                .header(header::COOKIE, cookie_header)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(completed.status(), StatusCode::ACCEPTED);
+    let completed = json_body(completed).await;
+    let release_id = Uuid::parse_str(completed["releaseId"].as_str().unwrap()).unwrap();
+    assert_eq!(completed["upload"]["status"], "processing");
+
+    let outcome = worker.process_next().await.unwrap();
+    let WorkOutcome::Completed {
+        artifact_id,
+        cleanup_pending: false,
+        ..
+    } = outcome
+    else {
+        panic!("expected the artifact worker to complete, got {outcome:?}");
+    };
+    let detail = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/_api/uploads/{upload_id}"))
+                .header(header::COOKIE, cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail.status(), StatusCode::OK);
+    let detail = json_body(detail).await;
+    assert_eq!(detail["upload"]["status"], "completed");
+    assert_eq!(detail["upload"]["releaseId"], release_id.to_string());
+
+    ProcessedUpload {
+        upload_id,
+        release_id,
+        artifact_id,
+    }
+}
+
+async fn deploy_release(
+    app: &Router,
+    project_id: &str,
+    release_id: Uuid,
+    action: &str,
+    idempotency_key: &str,
+    cookie_header: &str,
+    csrf: &str,
+) -> Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post(format!(
+                "/_api/projects/{project_id}/releases/{release_id}/{action}"
+            ))
+            .header(header::COOKIE, cookie_header)
+            .header(header::CONTENT_TYPE, "application/json")
+            .header("x-csrf-token", csrf)
+            .header("idempotency-key", idempotency_key)
+            .body(Body::from(
+                json!({ "message": format!("E2E {action} {release_id}") }).to_string(),
+            ))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    json_body(response).await
+}
+
 fn register_request() -> Request<Body> {
     Request::post("/_api/auth/register")
         .header(header::CONTENT_TYPE, "application/json")
@@ -329,15 +596,13 @@ async fn json_body(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1_024).await.unwrap()).unwrap()
 }
 
-fn site_zip() -> Vec<u8> {
+fn site_zip(index_html: &str, script: &str) -> Vec<u8> {
     let mut writer = ZipWriter::new(std::io::Cursor::new(Vec::new()));
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
     writer.start_file("dist/index.html", options).unwrap();
-    writer
-        .write_all(b"<main>ZipShip worker ready</main>")
-        .unwrap();
+    writer.write_all(index_html.as_bytes()).unwrap();
     writer.start_file("dist/assets/app.js", options).unwrap();
-    writer.write_all(b"console.log('ready')").unwrap();
+    writer.write_all(script.as_bytes()).unwrap();
     writer.finish().unwrap().into_inner()
 }
 
