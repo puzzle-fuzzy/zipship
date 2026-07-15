@@ -1,14 +1,16 @@
 import { createBrowserRouter, Navigate } from 'react-router';
-import { AppLayout } from './features/layout/AppLayout';
-import { ProjectListPage } from './pages/ProjectListPage';
-import { ProjectDetailPage } from './pages/ProjectDetailPage';
-import { LogsPage } from './pages/LogsPage';
-import { StoragePage } from './pages/StoragePage';
-import { LoginPage } from './pages/LoginPage';
-import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
-import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
 import { AuthenticatedOnly, HomeRedirect, PublicOnly } from './features/auth/AuthRouteGuards';
+import {
+  AppLayout,
+  ForgotPasswordPage,
+  InvitationAcceptPage,
+  LoginPage,
+  LogsPage,
+  ProjectDetailPage,
+  ProjectListPage,
+  ResetPasswordPage,
+  StoragePage,
+} from './lazyRoutes';
 
 export const router = createBrowserRouter([
   {

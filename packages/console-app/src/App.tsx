@@ -1,6 +1,6 @@
 import type { RuntimeAdapter } from '@zipship/runtime';
 import { LoaderCircle } from 'lucide-react';
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
 import { useAuthStore } from './stores';
@@ -32,20 +32,26 @@ export function App({ apiBaseUrl, accessBaseUrl }: AppProps) {
   }, [initSession]);
 
   if (status === 'loading') {
-    return (
-      <main className="flex min-h-dvh items-center justify-center bg-background text-muted-foreground">
-        <div className="flex items-center gap-2 text-sm" role="status">
-          <LoaderCircle className="animate-spin" aria-hidden="true" />
-          <span>{t('common.loading')}</span>
-        </div>
-      </main>
-    );
+    return <AppLoadingState label={t('common.loading')} />;
   }
 
   return (
     <ErrorBoundary>
-      <RouterProvider router={router} />
+      <Suspense fallback={<AppLoadingState label={t('common.loading')} />}>
+        <RouterProvider router={router} />
+      </Suspense>
       <Toaster />
     </ErrorBoundary>
+  );
+}
+
+function AppLoadingState({ label }: { label: string }) {
+  return (
+    <main className="flex min-h-dvh items-center justify-center bg-background text-muted-foreground">
+      <div className="flex items-center gap-2 text-sm" role="status">
+        <LoaderCircle className="animate-spin" aria-hidden="true" />
+        <span>{label}</span>
+      </div>
+    </main>
   );
 }
