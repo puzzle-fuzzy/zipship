@@ -1,15 +1,15 @@
 use async_trait::async_trait;
 use serde_json::json;
-use sqlx::{FromRow, PgPool};
-use std::str::FromStr;
-use thiserror::Error;
-use time::OffsetDateTime;
+use sqlx::PgPool;
 use uuid::Uuid;
-use zipship_domain::MemberRole;
 use zipship_members::{
     Member, MembersRepository, MembersRepositoryError, RemoveMember, RoleChangePolicyError,
     UpdateMemberRole, validate_member_removal, validate_role_change,
 };
+
+mod row;
+
+use row::{MemberRow, parse_role};
 
 #[derive(Debug, Clone)]
 pub struct PgMembersRepository {
@@ -313,45 +313,8 @@ fn map_policy_error(error: RoleChangePolicyError) -> MembersRepositoryError {
     }
 }
 
-fn parse_role(value: &str) -> Result<MemberRole, MembersRepositoryError> {
-    MemberRole::from_str(value).map_err(|_| corrupt_record("memberships.role"))
-}
-
 fn corrupt_owner_count(error: std::num::TryFromIntError) -> MembersRepositoryError {
     MembersRepositoryError::unavailable(error)
-}
-
-#[derive(Debug, FromRow)]
-struct MemberRow {
-    user_id: Uuid,
-    email: String,
-    display_name: String,
-    role: String,
-    joined_at: OffsetDateTime,
-}
-
-impl TryFrom<MemberRow> for Member {
-    type Error = MembersRepositoryError;
-
-    fn try_from(row: MemberRow) -> Result<Self, Self::Error> {
-        Ok(Self {
-            user_id: row.user_id,
-            email: row.email,
-            display_name: row.display_name,
-            role: parse_role(&row.role)?,
-            joined_at: row.joined_at,
-        })
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("database contains an invalid members value in {field}")]
-struct CorruptMemberRecord {
-    field: &'static str,
-}
-
-fn corrupt_record(field: &'static str) -> MembersRepositoryError {
-    MembersRepositoryError::unavailable(CorruptMemberRecord { field })
 }
 
 #[cfg(test)]

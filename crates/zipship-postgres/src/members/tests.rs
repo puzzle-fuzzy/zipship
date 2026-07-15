@@ -1,4 +1,4 @@
-use super::*;
+use super::row::parse_role;
 
 #[test]
 fn rejects_unknown_roles() {
