@@ -1,41 +1,24 @@
-import type { components } from "@zipship/api-client";
 import { create } from "zustand";
 import { getApi, getCsrfHeaders } from "../api/client";
 import { ApiClientError, API_ERROR_MESSAGES, mapApiError } from "../api/errors";
+import {
+  acceptedInvitationView,
+  invitationUrl,
+  invitationView,
+  memberRoleView,
+  memberView,
+  type AcceptedInvitation,
+  type Invitation,
+  type Member,
+} from "./memberViews";
 
-type MemberRole = components["schemas"]["MemberRoleDto"];
-type MemberDto = components["schemas"]["MemberResponse"];
-type InvitationDto = components["schemas"]["InvitationResponse"];
-type AcceptedInvitationDto =
-  components["schemas"]["AcceptedInvitationResponse"];
-
-export interface Member {
-  id: string;
-  userId: string;
-  name: string;
-  email: string;
-  role: string;
-  joinedAt: string;
-}
-
-export interface Invitation {
-  id: string;
-  organizationId: string;
-  email: string;
-  role: MemberRole;
-  state: components["schemas"]["InvitationStateDto"];
-  invitedBy: string | null;
-  createdAt: string;
-  expiresAt: string;
-}
-
-export interface AcceptedInvitation {
-  invitationId: string;
-  organizationId: string;
-  userId: string;
-  role: MemberRole;
-  replayed: boolean;
-}
+export type {
+  AcceptedInvitation,
+  Invitation,
+  InvitationState,
+  Member,
+  MemberRole,
+} from "./memberViews";
 
 interface MembersState {
   members: Member[];
@@ -70,36 +53,6 @@ interface MembersState {
 
 let membersRequestSequence = 0;
 let invitationsRequestSequence = 0;
-
-function memberView(member: MemberDto): Member {
-  return {
-    id: member.userId,
-    userId: member.userId,
-    name: member.displayName,
-    email: member.email,
-    role: member.role,
-    joinedAt: member.joinedAt,
-  };
-}
-
-function invitationView(invitation: InvitationDto): Invitation {
-  return {
-    id: invitation.id,
-    organizationId: invitation.organizationId,
-    email: invitation.email,
-    role: invitation.role,
-    state: invitation.state,
-    invitedBy: invitation.invitedBy ?? null,
-    createdAt: invitation.createdAt,
-    expiresAt: invitation.expiresAt,
-  };
-}
-
-function invitationUrl(token: string): string {
-  const url = new URL("/invitations/accept", window.location.origin);
-  url.hash = `token=${encodeURIComponent(token)}`;
-  return url.toString();
-}
 
 export const useMembersStore = create<MembersState>((set) => ({
   members: [],
@@ -204,7 +157,7 @@ export const useMembersStore = create<MembersState>((set) => ({
           path: { organization_id: organizationId },
           header: getCsrfHeaders(),
         },
-        body: { email, role: role as MemberRole },
+        body: { email, role: memberRoleView(role) },
       },
     );
     if (result.error || !result.data) {
@@ -229,7 +182,9 @@ export const useMembersStore = create<MembersState>((set) => ({
           }
         : {},
     );
-    return { inviteUrl: invitationUrl(result.data.acceptToken) };
+    return {
+      inviteUrl: invitationUrl(result.data.acceptToken, window.location.origin),
+    };
   },
 
   updateMemberRole: async (organizationId, userId, role) => {
@@ -240,7 +195,7 @@ export const useMembersStore = create<MembersState>((set) => ({
           path: { organization_id: organizationId, user_id: userId },
           header: getCsrfHeaders(),
         },
-        body: { role: role as MemberRole },
+        body: { role: memberRoleView(role) },
       },
     );
     if (result.error) {
@@ -340,6 +295,6 @@ export const useMembersStore = create<MembersState>((set) => ({
         fallback: "Failed to accept invitation",
       });
     }
-    return result.data as AcceptedInvitationDto;
+    return acceptedInvitationView(result.data);
   },
 }));
