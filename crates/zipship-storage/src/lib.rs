@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 use tokio::{
     fs,
@@ -28,6 +28,12 @@ pub enum StorageError {
     InvalidStagingPath,
     #[error("staging path is not a directory")]
     InvalidStagingDirectory,
+    #[error("artifact asset path is unsafe")]
+    InvalidArtifactPath,
+    #[error("artifact root is not a regular directory")]
+    InvalidArtifactDirectory,
+    #[error("artifact asset is not a regular file")]
+    InvalidArtifactFile,
     #[error("upload contained more bytes than declared: expected {expected}")]
     UploadTooLarge { expected: u64 },
     #[error(
@@ -114,6 +120,44 @@ impl LocalArtifactStore {
             }
         }
         Ok(())
+    }
+
+    pub async fn open_artifact_file(
+        &self,
+        digest: &ArtifactDigest,
+        asset_path: &str,
+    ) -> Result<fs::File, StorageError> {
+        let components = regular_path_components(asset_path)?;
+        let artifact_root = self.artifact_path(digest);
+        let root_metadata = fs::symlink_metadata(&artifact_root).await?;
+        if !root_metadata.file_type().is_dir() || root_metadata.file_type().is_symlink() {
+            return Err(StorageError::InvalidArtifactDirectory);
+        }
+
+        let mut current = artifact_root;
+        for (index, component) in components.iter().enumerate() {
+            current.push(component);
+            let metadata = fs::symlink_metadata(&current).await?;
+            let final_component = index + 1 == components.len();
+            let valid = if final_component {
+                metadata.file_type().is_file() && !metadata.file_type().is_symlink()
+            } else {
+                metadata.file_type().is_dir() && !metadata.file_type().is_symlink()
+            };
+            if !valid {
+                return Err(if final_component {
+                    StorageError::InvalidArtifactFile
+                } else {
+                    StorageError::InvalidArtifactDirectory
+                });
+            }
+        }
+
+        let file = fs::OpenOptions::new().read(true).open(current).await?;
+        if !file.metadata().await?.is_file() {
+            return Err(StorageError::InvalidArtifactFile);
+        }
+        Ok(file)
     }
 
     pub async fn commit_artifact_directory(
@@ -236,6 +280,23 @@ impl LocalArtifactStore {
         }
         Ok(())
     }
+}
+
+fn regular_path_components(asset_path: &str) -> Result<Vec<&std::ffi::OsStr>, StorageError> {
+    if asset_path.is_empty() || asset_path.contains(['\\', '\0']) {
+        return Err(StorageError::InvalidArtifactPath);
+    }
+    let components = Path::new(asset_path)
+        .components()
+        .map(|component| match component {
+            Component::Normal(value) => Ok(value),
+            _ => Err(StorageError::InvalidArtifactPath),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if components.is_empty() {
+        return Err(StorageError::InvalidArtifactPath);
+    }
+    Ok(components)
 }
 
 #[cfg(unix)]
@@ -414,5 +475,53 @@ mod tests {
                 .unwrap(),
             b"retry",
         );
+    }
+
+    #[tokio::test]
+    async fn opens_only_regular_files_beneath_an_artifact_root() {
+        let temp = tempdir().unwrap();
+        let storage = LocalArtifactStore::new(temp.path());
+        storage.ensure_layout().await.unwrap();
+        let root = storage.artifact_path(&digest());
+        fs::create_dir_all(root.join("assets")).await.unwrap();
+        fs::write(root.join("assets/app.js"), b"ready")
+            .await
+            .unwrap();
+
+        let mut file = storage
+            .open_artifact_file(&digest(), "assets/app.js")
+            .await
+            .unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).await.unwrap();
+        assert_eq!(contents, "ready");
+        assert!(matches!(
+            storage.open_artifact_file(&digest(), "../secret").await,
+            Err(StorageError::InvalidArtifactPath)
+        ));
+        assert!(matches!(
+            storage.open_artifact_file(&digest(), "assets").await,
+            Err(StorageError::InvalidArtifactFile)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refuses_symlinks_inside_artifact_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().unwrap();
+        let storage = LocalArtifactStore::new(temp.path());
+        storage.ensure_layout().await.unwrap();
+        let root = storage.artifact_path(&digest());
+        fs::create_dir_all(&root).await.unwrap();
+        let outside = temp.path().join("secret.txt");
+        fs::write(&outside, b"secret").await.unwrap();
+        symlink(&outside, root.join("index.html")).unwrap();
+
+        assert!(matches!(
+            storage.open_artifact_file(&digest(), "index.html").await,
+            Err(StorageError::InvalidArtifactFile)
+        ));
     }
 }
