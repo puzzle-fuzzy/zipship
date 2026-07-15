@@ -330,12 +330,12 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
 - `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色并发更新以及审计游标分页；Rust 全工作区现有 88 项常规测试和 12 项真实 PostgreSQL/端到端测试。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新以及审计游标分页；Rust 全工作区现有 90 项常规测试和 12 项真实 PostgreSQL/端到端测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
-- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员列表与成员角色修改已经完成。下一步先闭合成员移除，再实现邀请与密码重置，之后统一迁移 Console Store；不交付 Eden/Rust 双 Client 兼容运行模式。
+- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新，以及成员列表、角色修改、主动退出与管理员移除已经完成。下一步实现邀请与密码重置，之后统一迁移 Console Store；不交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
 
-### 下一实施切片：成员移除
+### 已完成切片：成员移除
 
 目标是闭合组织成员生命周期，同时复用角色修改已经建立的组织级串行化边界：
 

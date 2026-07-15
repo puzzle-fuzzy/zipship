@@ -215,6 +215,7 @@ impl AppState {
         projects::list_organizations,
         members::list_members,
         members::update_member_role,
+        members::remove_member,
         projects::list_projects,
         projects::create_project,
         projects::get_project,
@@ -402,7 +403,9 @@ mod tests {
         DeploymentsRepositoryError, DeploymentsService, NewDeployment,
     };
     use zipship_domain::{ArtifactDigest, CachePolicy, MemberRole, ReleaseStatus, UploadStatus};
-    use zipship_members::{Member, MembersRepository, MembersRepositoryError, UpdateMemberRole};
+    use zipship_members::{
+        Member, MembersRepository, MembersRepositoryError, RemoveMember, UpdateMemberRole,
+    };
     use zipship_projects::{
         NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
         ProjectsRepositoryError, UpdateProject,
@@ -899,6 +902,16 @@ mod tests {
                 role: update.role,
                 joined_at: OffsetDateTime::UNIX_EPOCH,
             })
+        }
+
+        async fn remove_member(&self, removal: RemoveMember) -> Result<(), MembersRepositoryError> {
+            if removal.organization_id != TEST_ORGANIZATION_ID {
+                return Err(MembersRepositoryError::Forbidden);
+            }
+            if removal.target_user_id == removal.actor_id {
+                return Err(MembersRepositoryError::LastOwner);
+            }
+            Ok(())
         }
     }
 
@@ -1411,7 +1424,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn member_role_updates_require_csrf_and_return_the_updated_member() {
+    async fn member_mutations_require_csrf_and_preserve_the_last_owner() {
         let app = test_app(CheckStatus::Ok, false).await;
         let registered = app.clone().oneshot(register_request()).await.unwrap();
         let session = response_cookie(&registered, "zipship_session");
@@ -1474,12 +1487,68 @@ mod tests {
         assert_eq!(listed.status(), StatusCode::OK);
         assert_eq!(json_body(listed).await["members"][0]["role"], "owner");
 
+        let missing_remove_csrf = app
+            .clone()
+            .oneshot(
+                Request::delete(&path)
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_remove_csrf.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            json_body(missing_remove_csrf).await,
+            json!({ "code": "INVALID_CSRF_TOKEN" })
+        );
+
+        let invalid_target = app
+            .clone()
+            .oneshot(
+                Request::delete(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/members/not-a-uuid"
+                ))
+                .header(header::COOKIE, &cookie_header)
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid_target.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            json_body(invalid_target).await,
+            json!({ "code": "INVALID_PATH_PARAMETER" })
+        );
+
+        let removed = app
+            .clone()
+            .oneshot(
+                Request::delete(&path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(removed.status(), StatusCode::NO_CONTENT);
+        assert_eq!(removed.headers()[header::CACHE_CONTROL], "no-store");
+        assert!(
+            to_bytes(removed.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
         let last_owner = app
+            .clone()
             .oneshot(
                 Request::patch(format!(
                     "/_api/organizations/{TEST_ORGANIZATION_ID}/members/{actor_id}"
                 ))
-                .header(header::COOKIE, cookie_header)
+                .header(header::COOKIE, &cookie_header)
                 .header(header::CONTENT_TYPE, "application/json")
                 .header("x-csrf-token", cookie_value(&csrf))
                 .body(Body::from(json!({ "role": "viewer" }).to_string()))
@@ -1489,6 +1558,24 @@ mod tests {
             .unwrap();
         assert_eq!(last_owner.status(), StatusCode::CONFLICT);
         assert_eq!(json_body(last_owner).await, json!({ "code": "LAST_OWNER" }));
+
+        let remove_last_owner = app
+            .oneshot(
+                Request::delete(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/members/{actor_id}"
+                ))
+                .header(header::COOKIE, cookie_header)
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(remove_last_owner.status(), StatusCode::CONFLICT);
+        assert_eq!(
+            json_body(remove_last_owner).await,
+            json!({ "code": "LAST_OWNER" })
+        );
     }
 
     #[tokio::test]

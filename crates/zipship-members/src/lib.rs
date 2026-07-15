@@ -33,6 +33,21 @@ pub struct UpdateMemberRoleCommand {
     pub role: String,
 }
 
+#[derive(Debug)]
+pub struct RemoveMember {
+    pub organization_id: Uuid,
+    pub actor_id: Uuid,
+    pub target_user_id: Uuid,
+    pub removed_at: OffsetDateTime,
+}
+
+#[derive(Debug)]
+pub struct RemoveMemberCommand {
+    pub organization_id: Uuid,
+    pub actor_id: Uuid,
+    pub target_user_id: Uuid,
+}
+
 #[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
 pub enum RoleChangePolicyError {
     #[error("the actor cannot manage this role")]
@@ -56,6 +71,26 @@ pub fn validate_role_change(
         return Err(RoleChangePolicyError::Forbidden);
     }
     if target_role == MemberRole::Owner && desired_role != MemberRole::Owner && owner_count <= 1 {
+        return Err(RoleChangePolicyError::LastOwner);
+    }
+    Ok(())
+}
+
+pub fn validate_member_removal(
+    is_self_removal: bool,
+    actor_role: MemberRole,
+    target_role: MemberRole,
+    owner_count: u64,
+) -> Result<(), RoleChangePolicyError> {
+    if !is_self_removal {
+        if !actor_role.can(PermissionAction::ManageMember) {
+            return Err(RoleChangePolicyError::Forbidden);
+        }
+        if actor_role != MemberRole::Owner && target_role == MemberRole::Owner {
+            return Err(RoleChangePolicyError::Forbidden);
+        }
+    }
+    if target_role == MemberRole::Owner && owner_count <= 1 {
         return Err(RoleChangePolicyError::LastOwner);
     }
     Ok(())
@@ -94,6 +129,8 @@ pub trait MembersRepository: Send + Sync + 'static {
 
     async fn update_role(&self, update: UpdateMemberRole)
     -> Result<Member, MembersRepositoryError>;
+
+    async fn remove_member(&self, removal: RemoveMember) -> Result<(), MembersRepositoryError>;
 }
 
 pub trait Clock: Send + Sync + 'static {
@@ -177,6 +214,18 @@ impl MembersService {
             .await
             .map_err(map_repository_error)
     }
+
+    pub async fn remove_member(&self, command: RemoveMemberCommand) -> Result<(), MembersError> {
+        self.repository
+            .remove_member(RemoveMember {
+                organization_id: command.organization_id,
+                actor_id: command.actor_id,
+                target_user_id: command.target_user_id,
+                removed_at: self.clock.now(),
+            })
+            .await
+            .map_err(map_repository_error)
+    }
 }
 
 fn map_repository_error(error: MembersRepositoryError) -> MembersError {
@@ -198,6 +247,7 @@ mod tests {
     #[derive(Default)]
     struct TestRepository {
         updates: Mutex<Vec<UpdateMemberRole>>,
+        removals: Mutex<Vec<RemoveMember>>,
     }
 
     #[async_trait]
@@ -223,6 +273,11 @@ mod tests {
             };
             self.updates.lock().unwrap().push(update);
             Ok(member)
+        }
+
+        async fn remove_member(&self, removal: RemoveMember) -> Result<(), MembersRepositoryError> {
+            self.removals.lock().unwrap().push(removal);
+            Ok(())
         }
     }
 
@@ -271,6 +326,28 @@ mod tests {
         );
     }
 
+    #[test]
+    fn enforces_member_removal_boundaries() {
+        assert!(validate_member_removal(true, MemberRole::Viewer, MemberRole::Viewer, 1).is_ok());
+        assert_eq!(
+            validate_member_removal(true, MemberRole::Owner, MemberRole::Owner, 1),
+            Err(RoleChangePolicyError::LastOwner)
+        );
+        assert!(validate_member_removal(true, MemberRole::Owner, MemberRole::Owner, 2).is_ok());
+        assert_eq!(
+            validate_member_removal(false, MemberRole::Viewer, MemberRole::Developer, 1),
+            Err(RoleChangePolicyError::Forbidden)
+        );
+        assert_eq!(
+            validate_member_removal(false, MemberRole::Admin, MemberRole::Owner, 2),
+            Err(RoleChangePolicyError::Forbidden)
+        );
+        assert!(
+            validate_member_removal(false, MemberRole::Admin, MemberRole::Developer, 1).is_ok()
+        );
+        assert!(validate_member_removal(false, MemberRole::Owner, MemberRole::Owner, 2).is_ok());
+    }
+
     #[tokio::test]
     async fn validates_and_forwards_typed_role_updates() {
         let repository = Arc::new(TestRepository::default());
@@ -313,5 +390,30 @@ mod tests {
         assert_eq!(error, MembersError::InvalidRole);
         assert_eq!(error.code(), "INVALID_MEMBER_ROLE");
         assert!(repository.updates.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn forwards_member_removals_with_a_stable_timestamp() {
+        let repository = Arc::new(TestRepository::default());
+        let service = MembersService::with_clock(repository.clone(), Arc::new(FixedClock));
+        let actor_id = Uuid::new_v4();
+        let target_user_id = Uuid::new_v4();
+        let organization_id = Uuid::new_v4();
+
+        service
+            .remove_member(RemoveMemberCommand {
+                organization_id,
+                actor_id,
+                target_user_id,
+            })
+            .await
+            .unwrap();
+
+        let removals = repository.removals.lock().unwrap();
+        assert_eq!(removals.len(), 1);
+        assert_eq!(removals[0].organization_id, organization_id);
+        assert_eq!(removals[0].actor_id, actor_id);
+        assert_eq!(removals[0].target_user_id, target_user_id);
+        assert_eq!(removals[0].removed_at, NOW);
     }
 }

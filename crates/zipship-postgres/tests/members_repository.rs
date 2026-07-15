@@ -5,13 +5,13 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_auth::{AuthService, RegisterCommand};
 use zipship_domain::MemberRole;
-use zipship_members::{MembersError, MembersService, UpdateMemberRoleCommand};
+use zipship_members::{MembersError, MembersService, RemoveMemberCommand, UpdateMemberRoleCommand};
 use zipship_postgres::{PgAuthRepository, PgMembersRepository, PgProjectsRepository};
 use zipship_projects::ProjectsService;
 
 #[tokio::test]
 #[ignore = "requires an isolated PostgreSQL database"]
-async fn serializes_role_changes_and_preserves_the_last_owner() {
+async fn serializes_member_mutations_and_preserves_the_last_owner() {
     let pool = test_pool().await;
     zipship_postgres::migrate(&pool).await.unwrap();
     sqlx::query("TRUNCATE TABLE organizations, users CASCADE")
@@ -34,20 +34,36 @@ async fn serializes_role_changes_and_preserves_the_last_owner() {
         .register(register_command("admin@example.com", "Administrator"))
         .await
         .unwrap();
+    let leaver = auth
+        .register(register_command("leaver@example.com", "Leaver"))
+        .await
+        .unwrap();
+    let managed = auth
+        .register(register_command("managed@example.com", "Managed"))
+        .await
+        .unwrap();
     let owner_id = owner.user.id;
     let member_id = member.user.id;
     let administrator_id = administrator.user.id;
+    let leaver_id = leaver.user.id;
+    let managed_id = managed.user.id;
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
     let organization_id = projects.list_organizations(owner_id).await.unwrap()[0].id;
     sqlx::query(
         r#"
         INSERT INTO memberships (organization_id, user_id, role)
-        VALUES ($1, $2, 'viewer'), ($1, $3, 'admin')
+        VALUES
+            ($1, $2, 'viewer'),
+            ($1, $3, 'admin'),
+            ($1, $4, 'viewer'),
+            ($1, $5, 'developer')
         "#,
     )
     .bind(organization_id)
     .bind(member_id)
     .bind(administrator_id)
+    .bind(leaver_id)
+    .bind(managed_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -57,7 +73,7 @@ async fn serializes_role_changes_and_preserves_the_last_owner() {
         .list_members(member_id, organization_id)
         .await
         .unwrap();
-    assert_eq!(visible.len(), 3);
+    assert_eq!(visible.len(), 5);
     assert_eq!(visible[0].user_id, owner_id);
 
     let administered = members
@@ -171,22 +187,12 @@ async fn serializes_role_changes_and_preserves_the_last_owner() {
         owner_id,
         "viewer",
     ));
-    let demote_promoted_owner = members.update_role(update_command(
-        owner_id,
-        organization_id,
-        member_id,
-        "viewer",
-    ));
-    let (first, second) = tokio::join!(demote_original_owner, demote_promoted_owner);
+    let remove_promoted_owner =
+        members.remove_member(remove_command(owner_id, organization_id, member_id));
+    let (demotion, removal) = tokio::join!(demote_original_owner, remove_promoted_owner);
     assert!(matches!(
-        (first, second),
-        (
-            Ok(_),
-            Err(MembersError::Forbidden | MembersError::LastOwner)
-        ) | (
-            Err(MembersError::Forbidden | MembersError::LastOwner),
-            Ok(_)
-        )
+        (demotion, removal),
+        (Ok(_), Err(MembersError::Forbidden)) | (Err(MembersError::LastOwner), Ok(()))
     ));
     let remaining_owner_id: Uuid = sqlx::query_scalar(
         "SELECT user_id FROM memberships WHERE organization_id = $1 AND role = 'owner'",
@@ -205,6 +211,16 @@ async fn serializes_role_changes_and_preserves_the_last_owner() {
     assert_eq!(owner_count, 1);
     assert_eq!(
         members
+            .remove_member(remove_command(
+                administrator_id,
+                organization_id,
+                remaining_owner_id,
+            ))
+            .await,
+        Err(MembersError::Forbidden)
+    );
+    assert_eq!(
+        members
             .update_role(update_command(
                 remaining_owner_id,
                 organization_id,
@@ -214,7 +230,47 @@ async fn serializes_role_changes_and_preserves_the_last_owner() {
             .await,
         Err(MembersError::LastOwner)
     );
-    assert_eq!(role_update_audit_count(&pool, organization_id).await, 3);
+
+    members
+        .remove_member(remove_command(leaver_id, organization_id, leaver_id))
+        .await
+        .unwrap();
+    assert!(!membership_exists(&pool, organization_id, leaver_id).await);
+    assert_eq!(
+        members
+            .remove_member(remove_command(leaver_id, organization_id, leaver_id))
+            .await,
+        Err(MembersError::Forbidden)
+    );
+
+    members
+        .remove_member(remove_command(
+            administrator_id,
+            organization_id,
+            managed_id,
+        ))
+        .await
+        .unwrap();
+    assert!(!membership_exists(&pool, organization_id, managed_id).await);
+    assert_eq!(
+        members
+            .remove_member(remove_command(
+                administrator_id,
+                organization_id,
+                managed_id,
+            ))
+            .await,
+        Err(MembersError::NotFound)
+    );
+    assert_eq!(
+        removal_audit_metadata(&pool, organization_id, leaver_id).await,
+        serde_json::json!({ "role": "viewer", "selfRemoval": true })
+    );
+    assert_eq!(
+        removal_audit_metadata(&pool, organization_id, managed_id).await,
+        serde_json::json!({ "role": "developer", "selfRemoval": false })
+    );
+    assert_eq!(member_mutation_audit_count(&pool, organization_id).await, 5);
 }
 
 async fn role_update_audit_count(pool: &PgPool, organization_id: Uuid) -> i64 {
@@ -222,6 +278,53 @@ async fn role_update_audit_count(pool: &PgPool, organization_id: Uuid) -> i64 {
         "SELECT count(*) FROM audit_logs WHERE organization_id = $1 AND action = 'member.role_updated'",
     )
     .bind(organization_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn member_mutation_audit_count(pool: &PgPool, organization_id: Uuid) -> i64 {
+    sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM audit_logs
+        WHERE organization_id = $1
+          AND action IN ('member.role_updated', 'member.removed')
+        "#,
+    )
+    .bind(organization_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn membership_exists(pool: &PgPool, organization_id: Uuid, user_id: Uuid) -> bool {
+    sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM memberships WHERE organization_id = $1 AND user_id = $2)",
+    )
+    .bind(organization_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .unwrap()
+}
+
+async fn removal_audit_metadata(
+    pool: &PgPool,
+    organization_id: Uuid,
+    target_user_id: Uuid,
+) -> serde_json::Value {
+    sqlx::query_scalar(
+        r#"
+        SELECT metadata
+        FROM audit_logs
+        WHERE organization_id = $1
+          AND action = 'member.removed'
+          AND target_id = $2
+        "#,
+    )
+    .bind(organization_id)
+    .bind(target_user_id)
     .fetch_one(pool)
     .await
     .unwrap()
@@ -238,6 +341,18 @@ fn update_command(
         actor_id,
         target_user_id,
         role: role.to_owned(),
+    }
+}
+
+fn remove_command(
+    actor_id: Uuid,
+    organization_id: Uuid,
+    target_user_id: Uuid,
+) -> RemoveMemberCommand {
+    RemoveMemberCommand {
+        organization_id,
+        actor_id,
+        target_user_id,
     }
 }
 

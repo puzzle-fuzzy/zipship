@@ -135,3 +135,34 @@ test("binds the generated member role update contract", async () => {
   expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
   expect(await request?.clone().json()).toEqual({ role: "owner" });
 });
+
+test("binds the generated member removal contract", async () => {
+  let request: Request | undefined;
+  const api = createApiClient("https://control.example.test", {
+    fetch: async (input) => {
+      request = input;
+      return new Response(null, { status: 204 });
+    },
+  });
+
+  const result = await api.DELETE(
+    "/_api/organizations/{organization_id}/members/{user_id}",
+    {
+      params: {
+        path: {
+          organization_id: "00000000-0000-0000-0000-000000000001",
+          user_id: "00000000-0000-0000-0000-000000000002",
+        },
+        header: { "x-csrf-token": "csrf-token" },
+      },
+    },
+  );
+
+  expect(result.error).toBeUndefined();
+  expect(request?.method).toBe("DELETE");
+  expect(request?.url).toBe(
+    "https://control.example.test/_api/organizations/00000000-0000-0000-0000-000000000001/members/00000000-0000-0000-0000-000000000002",
+  );
+  expect(request?.credentials).toBe("include");
+  expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
+});

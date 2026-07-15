@@ -7,8 +7,8 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_domain::MemberRole;
 use zipship_members::{
-    Member, MembersRepository, MembersRepositoryError, RoleChangePolicyError, UpdateMemberRole,
-    validate_role_change,
+    Member, MembersRepository, MembersRepositoryError, RemoveMember, RoleChangePolicyError,
+    UpdateMemberRole, validate_member_removal, validate_role_change,
 };
 
 #[derive(Debug, Clone)]
@@ -194,6 +194,115 @@ impl MembersRepository for PgMembersRepository {
 
         target.role = update.role;
         Ok(target)
+    }
+
+    async fn remove_member(&self, removal: RemoveMember) -> Result<(), MembersRepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(MembersRepositoryError::unavailable)?;
+        let organization_exists = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id
+            FROM organizations
+            WHERE id = $1 AND deleted_at IS NULL
+            FOR UPDATE
+            "#,
+        )
+        .bind(removal.organization_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(MembersRepositoryError::unavailable)?
+        .is_some();
+        if !organization_exists {
+            return Err(MembersRepositoryError::Forbidden);
+        }
+
+        let actor_role = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT role
+            FROM memberships
+            WHERE organization_id = $1 AND user_id = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(removal.organization_id)
+        .bind(removal.actor_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(MembersRepositoryError::unavailable)?
+        .ok_or(MembersRepositoryError::Forbidden)?;
+        let actor_role = parse_role(&actor_role)?;
+
+        let target_role = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT role
+            FROM memberships
+            WHERE organization_id = $1 AND user_id = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(removal.organization_id)
+        .bind(removal.target_user_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(MembersRepositoryError::unavailable)?
+        .ok_or(MembersRepositoryError::NotFound)?;
+        let target_role = parse_role(&target_role)?;
+        let owner_count = sqlx::query_scalar::<_, i64>(
+            "SELECT count(*) FROM memberships WHERE organization_id = $1 AND role = 'owner'",
+        )
+        .bind(removal.organization_id)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(MembersRepositoryError::unavailable)?;
+        let owner_count = u64::try_from(owner_count).map_err(corrupt_owner_count)?;
+        let is_self_removal = removal.actor_id == removal.target_user_id;
+        validate_member_removal(is_self_removal, actor_role, target_role, owner_count)
+            .map_err(map_policy_error)?;
+
+        let deleted =
+            sqlx::query("DELETE FROM memberships WHERE organization_id = $1 AND user_id = $2")
+                .bind(removal.organization_id)
+                .bind(removal.target_user_id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(MembersRepositoryError::unavailable)?;
+        if deleted.rows_affected() != 1 {
+            return Err(MembersRepositoryError::NotFound);
+        }
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (
+                organization_id,
+                actor_id,
+                action,
+                target_type,
+                target_id,
+                metadata,
+                created_at
+            )
+            VALUES ($1, $2, 'member.removed', 'member', $3, $4, $5)
+            "#,
+        )
+        .bind(removal.organization_id)
+        .bind(removal.actor_id)
+        .bind(removal.target_user_id)
+        .bind(json!({
+            "role": target_role.as_str(),
+            "selfRemoval": is_self_removal,
+        }))
+        .bind(removal.removed_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(MembersRepositoryError::unavailable)?;
+        transaction
+            .commit()
+            .await
+            .map_err(MembersRepositoryError::unavailable)?;
+
+        Ok(())
     }
 }
 
