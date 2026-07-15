@@ -1,196 +1,23 @@
+use super::{
+    error::AuthError,
+    model::{
+        AuthOutcome, LoginCommand, NewPersonalOrganization, NewSession, NewUser, RegisterCommand,
+        ResolvedSession, UserProfile, profile_from_new_user, profile_from_stored_user,
+    },
+    repository::{AuthRepository, AuthRepositoryError, Clock, SystemClock},
+};
 use crate::{
     DisplayName, EncodedPasswordHash, IdentityValidationError, NormalizedEmail, PasswordEngine,
-    SessionCredentials, TokenDigest, digest_token, validate_password, verify_token_digest,
+    SessionCredentials, digest_token, validate_password, verify_token_digest,
 };
-use async_trait::async_trait;
-use secrecy::SecretString;
-use std::{error::Error as StdError, sync::Arc};
-use thiserror::Error;
+use secrecy::{ExposeSecret, SecretString};
+use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 use zipship_domain::{OrganizationName, OrganizationSlug};
 
-const DEFAULT_SESSION_TTL: Duration = Duration::days(7);
+pub(super) const DEFAULT_SESSION_TTL: Duration = Duration::days(7);
 const DUMMY_PASSWORD: &str = "zipship dummy credential value";
-
-#[derive(Debug)]
-pub struct RegisterCommand {
-    pub email: String,
-    pub display_name: String,
-    pub password: SecretString,
-}
-
-#[derive(Debug)]
-pub struct LoginCommand {
-    pub email: String,
-    pub password: SecretString,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserProfile {
-    pub id: Uuid,
-    pub email: String,
-    pub display_name: String,
-}
-
-#[derive(Debug)]
-pub struct AuthOutcome {
-    pub user: UserProfile,
-    pub session_id: Uuid,
-    pub credentials: SessionCredentials,
-    pub expires_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewUser {
-    pub id: Uuid,
-    pub email: NormalizedEmail,
-    pub display_name: DisplayName,
-    pub password_hash: EncodedPasswordHash,
-    pub created_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewSession {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub token_digest: TokenDigest,
-    pub csrf_digest: TokenDigest,
-    pub expires_at: OffsetDateTime,
-    pub created_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone)]
-pub struct NewPersonalOrganization {
-    pub id: Uuid,
-    pub name: OrganizationName,
-    pub slug: OrganizationSlug,
-    pub created_at: OffsetDateTime,
-}
-
-#[derive(Debug, Clone)]
-pub struct StoredUser {
-    pub id: Uuid,
-    pub email: NormalizedEmail,
-    pub display_name: DisplayName,
-    pub password_hash: EncodedPasswordHash,
-    pub disabled_at: Option<OffsetDateTime>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ResolvedSession {
-    pub session_id: Uuid,
-    pub user: StoredUser,
-    pub csrf_digest: TokenDigest,
-}
-
-#[derive(Debug, Error)]
-pub enum AuthRepositoryError {
-    #[error("email already exists")]
-    DuplicateEmail,
-    #[error("user does not exist")]
-    UserNotFound,
-    #[error("authentication repository is unavailable")]
-    Unavailable {
-        #[source]
-        source: Box<dyn StdError + Send + Sync>,
-    },
-}
-
-impl AuthRepositoryError {
-    pub fn unavailable(source: impl StdError + Send + Sync + 'static) -> Self {
-        Self::Unavailable {
-            source: Box::new(source),
-        }
-    }
-}
-
-#[async_trait]
-pub trait AuthRepository: Send + Sync + 'static {
-    async fn create_user_with_session(
-        &self,
-        user: NewUser,
-        organization: NewPersonalOrganization,
-        session: NewSession,
-    ) -> Result<(), AuthRepositoryError>;
-
-    async fn find_user_by_email(
-        &self,
-        email: &NormalizedEmail,
-    ) -> Result<Option<StoredUser>, AuthRepositoryError>;
-
-    async fn create_session(&self, session: NewSession) -> Result<(), AuthRepositoryError>;
-
-    async fn update_display_name(
-        &self,
-        user_id: Uuid,
-        display_name: DisplayName,
-        updated_at: OffsetDateTime,
-    ) -> Result<StoredUser, AuthRepositoryError>;
-
-    async fn resolve_session(
-        &self,
-        token_digest: TokenDigest,
-        now: OffsetDateTime,
-    ) -> Result<Option<ResolvedSession>, AuthRepositoryError>;
-
-    async fn revoke_session(
-        &self,
-        token_digest: TokenDigest,
-        revoked_at: OffsetDateTime,
-    ) -> Result<(), AuthRepositoryError>;
-}
-
-pub trait Clock: Send + Sync + 'static {
-    fn now(&self) -> OffsetDateTime;
-}
-
-#[derive(Debug, Default)]
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> OffsetDateTime {
-        OffsetDateTime::now_utc()
-    }
-}
-
-#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
-pub enum AuthError {
-    #[error("invalid email")]
-    InvalidEmail,
-    #[error("invalid display name")]
-    InvalidDisplayName,
-    #[error("password does not satisfy the policy")]
-    InvalidPassword,
-    #[error("email already exists")]
-    DuplicateEmail,
-    #[error("invalid credentials")]
-    InvalidCredentials,
-    #[error("account is disabled")]
-    AccountDisabled,
-    #[error("authentication is required")]
-    Unauthenticated,
-    #[error("csrf token is invalid")]
-    InvalidCsrfToken,
-    #[error("authentication infrastructure failed")]
-    Infrastructure,
-}
-
-impl AuthError {
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::InvalidEmail => "INVALID_EMAIL",
-            Self::InvalidDisplayName => "INVALID_DISPLAY_NAME",
-            Self::InvalidPassword => "INVALID_PASSWORD",
-            Self::DuplicateEmail => "DUPLICATE_EMAIL",
-            Self::InvalidCredentials => "INVALID_CREDENTIALS",
-            Self::AccountDisabled => "ACCOUNT_DISABLED",
-            Self::Unauthenticated => "UNAUTHENTICATED",
-            Self::InvalidCsrfToken => "INVALID_CSRF_TOKEN",
-            Self::Infrastructure => "AUTH_INFRASTRUCTURE_FAILURE",
-        }
-    }
-}
 
 #[derive(Clone)]
 pub struct AuthService {
@@ -406,28 +233,6 @@ fn new_personal_organization(
     })
 }
 
-impl ResolvedSession {
-    pub fn profile(&self) -> UserProfile {
-        profile_from_stored_user(&self.user)
-    }
-}
-
-fn profile_from_new_user(user: &NewUser) -> UserProfile {
-    UserProfile {
-        id: user.id,
-        email: user.email.as_str().to_owned(),
-        display_name: user.display_name.as_str().to_owned(),
-    }
-}
-
-fn profile_from_stored_user(user: &StoredUser) -> UserProfile {
-    UserProfile {
-        id: user.id,
-        email: user.email.as_str().to_owned(),
-        display_name: user.display_name.as_str().to_owned(),
-    }
-}
-
 fn map_identity_error(error: IdentityValidationError) -> AuthError {
     match error {
         IdentityValidationError::InvalidEmail => AuthError::InvalidEmail,
@@ -443,8 +248,3 @@ fn map_repository_error(error: AuthRepositoryError) -> AuthError {
         AuthRepositoryError::Unavailable { .. } => AuthError::Infrastructure,
     }
 }
-
-use secrecy::ExposeSecret;
-
-#[cfg(test)]
-mod tests;
