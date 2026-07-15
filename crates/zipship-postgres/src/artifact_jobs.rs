@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
+use sqlx::{PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_artifact::{
@@ -8,6 +8,10 @@ use zipship_artifact::{
     ArtifactJobsRepositoryError, ReadyArtifact,
 };
 use zipship_jobs::WorkerId;
+
+mod row;
+
+use row::{ContextRow, ExistingArtifactRow, FailureContextRow, FailureJobRow};
 
 #[derive(Debug, Clone)]
 pub struct PgArtifactJobsRepository {
@@ -516,56 +520,4 @@ fn validate_ready_artifact(artifact: &ReadyArtifact) -> Result<(), ArtifactJobsR
         return Err(ArtifactJobsRepositoryError::ArtifactConflict);
     }
     Ok(())
-}
-
-#[derive(Debug, FromRow)]
-struct ContextRow {
-    upload_id: Uuid,
-    project_id: Uuid,
-    release_id: Option<Uuid>,
-    staging_key: String,
-}
-
-impl ContextRow {
-    fn try_into_context(
-        self,
-        job_id: Uuid,
-    ) -> Result<ArtifactJobContext, ArtifactJobsRepositoryError> {
-        if self.staging_key != format!("uploads/{}/archive.zip", self.upload_id) {
-            return Err(ArtifactJobsRepositoryError::InvalidContext);
-        }
-        Ok(ArtifactJobContext {
-            job_id,
-            upload_id: self.upload_id,
-            project_id: self.project_id,
-            release_id: self
-                .release_id
-                .ok_or(ArtifactJobsRepositoryError::InvalidContext)?,
-        })
-    }
-}
-
-#[derive(Debug, FromRow)]
-struct ExistingArtifactRow {
-    id: Uuid,
-    storage_key: String,
-    state: String,
-    file_count: i32,
-    total_size: i64,
-    manifest: Value,
-}
-
-#[derive(Debug, FromRow)]
-struct FailureJobRow {
-    domain_id: Option<Uuid>,
-    attempts: i32,
-    max_attempts: i32,
-}
-
-#[derive(Debug, FromRow)]
-struct FailureContextRow {
-    release_id: Uuid,
-    project_id: Uuid,
-    organization_id: Uuid,
-    created_by: Uuid,
 }
