@@ -18,6 +18,7 @@ members = [
   "crates/zipship-recovery",
   "crates/zipship-releases",
   "crates/zipship-storage",
+  "crates/zipship-tokens",
   "crates/zipship-uploads",
   "services/zipship-worker",
   "services/zipshipd",

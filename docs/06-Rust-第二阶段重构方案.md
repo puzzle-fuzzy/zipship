@@ -330,7 +330,7 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
 - `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发与审计游标分页；Rust 全工作区现有 116 项常规测试，以及 14 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发与审计游标分页；Rust 全工作区现有 125 项常规测试，以及 15 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
 - R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员生命周期、邀请生命周期、密码恢复后端与可靠 SMTP Outbox，以及 Console 全 Store/认证恢复界面切换已经完成；未交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
@@ -395,9 +395,13 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 实现已完成：`/invitations/accept` 只消费 URL Fragment 中的一次性凭证，进入页面后立即清除地址栏和历史记录，并只在当前文档内存中保存；误放到查询参数的 token 不会被接受且会被立即移除。未登录用户通过固定、无凭证的内存 continuation 完成登录或注册往返；错误账号只展示稳定隐私提示，不显示目标邮箱；成功与安全重放共用完成态。Members 页面已接入活动邀请列表、一次性人工分享链接、撤销、角色边界、加载/空/错误状态和无原生 `confirm` 的可访问确认对话框。组织切换使用请求序列隔离，旧组织响应不会覆盖当前成员或邀请。Web/Desktop Shell 使用固定 `ZipShip` 标题，避免初始含 Fragment 的 URL 被浏览器临时作为标签标题；中英文设置同步更新 `<html lang>`。Console 155 项测试、TypeScript、OpenAPI 漂移、Lint、Web 生产构建及桌面/390px 浏览器验收通过，浏览器控制台 0 warning/error；主包约 955 KB 的拆包警告继续作为独立性能问题处理。
 
-### 下一实施切片：个人 API Token 领域与管理闭环
+### 进行中切片：个人 API Token 领域与管理闭环
 
 1. Rust 新建独立 API Token 领域服务与 PostgreSQL 仓储，不复用 Cookie Session：令牌仅创建时返回一次，数据库只保存摘要，名称、scope、过期、最后使用、撤销和账号停用边界均显式建模。
 2. Control Plane 增加本人 Token 的创建、活动列表和撤销接口；创建/撤销要求 Cookie Session + CSRF，Bearer Token 只用于受 scope 约束的 API 认证，不得访问 Console 会话接口或扩大当前用户权限。
 3. Console 增加安全设置入口；创建后的明文 Token 只保存在当前对话框内存并支持一次复制，关闭后不可恢复；列表只显示名称、前缀、scope、创建/过期/最后使用时间和状态，撤销使用可访问确认对话框。
 4. 覆盖明文不落库/日志、摘要校验、并发撤销与认证、scope 最小权限、过期/停用、CSRF、OpenAPI、移动端、键盘和浏览器控制台，并保持无旧 TypeScript 兼容分支。
+
+领域切片已完成：新建独立 `zipship-tokens` crate，以 `zps_` 前缀加 32 字节操作系统随机数生成凭证，明文仅通过 `SecretString` 的创建结果交付，持久化命令只含 SHA-256 摘要和用于识别的短前缀，所有 `Debug` 路径显式脱敏。Token 名称、四个稳定 scope、1–365 天强制过期、每用户最多 20 个活动 Token、撤销/过期/账号停用以及稳定错误码已建模。Bearer 解析先在仓储访问前校验格式，认证结果只携带 Token 原有 scope，后续 HTTP 权限层必须再与用户组织 RBAC 取交集，不得因 Token 扩权。
+
+下一个独立问题是 PostgreSQL API Token 仓储：直接建立最终 schema 约束和索引，用用户行锁串行化活动 Token 上限与账号状态；创建、列表、幂等撤销、摘要解析与 `last_used_at` 更新都在真实 PostgreSQL 事务测试中验证，并覆盖并发创建、撤销/认证竞争和已停用账号。

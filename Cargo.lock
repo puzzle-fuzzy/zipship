@@ -2882,6 +2882,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-tokens"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "secrecy",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+ "zipship-auth",
+]
+
+[[package]]
 name = "zipship-uploads"
 version = "0.1.0"
 dependencies = [
