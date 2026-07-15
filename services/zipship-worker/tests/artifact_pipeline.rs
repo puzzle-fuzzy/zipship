@@ -10,14 +10,15 @@ use std::{collections::BTreeMap, io::Write, sync::Arc, time::Duration};
 use tower::ServiceExt;
 use uuid::Uuid;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+use zipship_access::PreviewService;
 use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
 use zipship_artifact::ArtifactLimits;
 use zipship_auth::AuthService;
 use zipship_domain::ArtifactDigest;
 use zipship_jobs::{JobLease, WorkerId};
 use zipship_postgres::{
-    PgArtifactJobsRepository, PgAuthRepository, PgJobsRepository, PgProjectsRepository,
-    PgUploadsRepository,
+    PgArtifactJobsRepository, PgAuthRepository, PgJobsRepository, PgPreviewRepository,
+    PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
 use zipship_storage::LocalArtifactStore;
@@ -26,7 +27,7 @@ use zipship_worker::{ArtifactWorker, WorkOutcome};
 
 #[tokio::test]
 #[ignore = "requires an isolated PostgreSQL database"]
-async fn processes_the_real_http_upload_pipeline_into_a_ready_artifact() {
+async fn processes_and_serves_the_real_http_upload_pipeline() {
     let pool = test_pool().await;
     zipship_postgres::migrate(&pool).await.unwrap();
     sqlx::query("TRUNCATE TABLE organizations, users, artifacts, jobs CASCADE")
@@ -194,6 +195,67 @@ async fn processes_the_real_http_upload_pipeline_into_a_ready_artifact() {
         "<main>ZipShip worker ready</main>",
     );
     assert!(!storage.upload_staging_path(upload_uuid).exists());
+
+    let access = zipship_access::build_router(PreviewService::new(
+        Arc::new(PgPreviewRepository::new(pool.clone())),
+        storage.clone(),
+    ));
+    let preview_url = format!("/_sites/marketing-site/{release_id}/");
+    let preview = access
+        .clone()
+        .oneshot(Request::get(&preview_url).body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(preview.status(), StatusCode::OK);
+    assert_eq!(preview.headers()[header::CACHE_CONTROL], "no-cache");
+    assert_eq!(
+        preview.headers()[header::CONTENT_TYPE],
+        "text/html; charset=utf-8"
+    );
+    assert_eq!(
+        to_bytes(preview.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip worker ready</main>"
+    );
+
+    let partial = access
+        .clone()
+        .oneshot(
+            Request::get(format!("{preview_url}assets/app.js"))
+                .header(header::RANGE, "bytes=0-6")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(partial.status(), StatusCode::PARTIAL_CONTENT);
+    assert_eq!(partial.headers()[header::CONTENT_RANGE], "bytes 0-6/20");
+    assert_eq!(to_bytes(partial.into_body(), 16).await.unwrap(), "console");
+
+    let deep_link = access
+        .clone()
+        .oneshot(
+            Request::get(format!("{preview_url}dashboard/settings"))
+                .header(header::ACCEPT, "text/html")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deep_link.status(), StatusCode::OK);
+    assert_eq!(
+        to_bytes(deep_link.into_body(), 1_024).await.unwrap(),
+        "<main>ZipShip worker ready</main>"
+    );
+
+    let isolated = access
+        .oneshot(
+            Request::get("/_api/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(isolated.status(), StatusCode::NOT_FOUND);
 }
 
 struct Probe;

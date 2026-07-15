@@ -30,6 +30,7 @@ sqlx.workspace = true
 tempfile.workspace = true
 tower.workspace = true
 zip.workspace = true
+zipship-access = { path = "../../crates/zipship-access" }
 zipship-api = { path = "../../crates/zipship-api" }
 zipship-auth = { path = "../../crates/zipship-auth" }
 zipship-projects = { path = "../../crates/zipship-projects" }

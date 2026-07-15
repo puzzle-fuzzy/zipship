@@ -340,9 +340,11 @@ fn cleanup_work_directory(extracted: &ExtractedArtifact) {
 fn storage_error_code(error: &StorageError) -> &'static str {
     match error {
         StorageError::Io(_) => "ARTIFACT_STORAGE_FAILURE",
-        StorageError::InvalidStagingPath | StorageError::InvalidStagingDirectory => {
-            "ARTIFACT_STORAGE_INVARIANT_FAILED"
-        }
+        StorageError::InvalidStagingPath
+        | StorageError::InvalidStagingDirectory
+        | StorageError::InvalidArtifactPath
+        | StorageError::InvalidArtifactDirectory
+        | StorageError::InvalidArtifactFile => "ARTIFACT_STORAGE_INVARIANT_FAILED",
         StorageError::UploadTooLarge { .. } | StorageError::UploadSizeMismatch { .. } => {
             "ARTIFACT_STORAGE_INVARIANT_FAILED"
         }

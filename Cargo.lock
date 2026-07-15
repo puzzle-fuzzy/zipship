@@ -2657,6 +2657,7 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "zip",
+ "zipship-access",
  "zipship-api",
  "zipship-artifact",
  "zipship-auth",
