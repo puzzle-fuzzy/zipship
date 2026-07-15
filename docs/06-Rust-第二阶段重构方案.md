@@ -330,7 +330,18 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - 发布/回滚以 `project_active_releases` 为唯一事实源：Project 行锁串行化并发切换，Release 与 Artifact ready 状态在事务内加锁校验，活动指针、Deployment 和 Audit 原子提交；Release 保持不可变 ready 状态，不写 `current` 软链接。
 - `Idempotency-Key` 以 Project 为作用域；相同键和相同命令重放原结果，相同键用于不同动作或目标会稳定冲突。回滚目标必须曾有成功部署记录，当前活动版本不能再次发布或回滚。
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
-- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格以及审计游标分页；Rust 全工作区现有 79 项常规测试和 11 项真实 PostgreSQL/端到端测试。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色并发更新以及审计游标分页；Rust 全工作区现有 88 项常规测试和 12 项真实 PostgreSQL/端到端测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
-- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史和组织审计读取已经完成。下一步补齐一次性切换仍需的成员/邀请与账号设置接口，再统一迁移 Console Store；不交付 Eden/Rust 双 Client 兼容运行模式。
+- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员列表与成员角色修改已经完成。下一步先闭合成员移除，再实现邀请与密码重置，之后统一迁移 Console Store；不交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
+
+### 下一实施切片：成员移除
+
+目标是闭合组织成员生命周期，同时复用角色修改已经建立的组织级串行化边界：
+
+1. 开放 `DELETE /_api/organizations/{organization_id}/members/{user_id}`，要求有效 Cookie Session 与 CSRF Header，成功返回 `204 No Content`。
+2. 允许任何成员主动退出；唯一 owner 不得退出。管理其他成员时，owner 可以移除任意非最后 owner，admin 只能移除非 owner，其他角色不得移除他人。
+3. PostgreSQL 事务必须先锁 organization，再读取 actor、target 与 owner 数量；删除 membership 和写入 `member.removed` 审计记录必须在同一事务提交，延续角色修改的统一锁顺序。
+4. 不存在或已删除的 organization、非成员 actor 统一返回 `FORBIDDEN`；合法 actor 操作不存在的 target 返回 `MEMBER_NOT_FOUND`；破坏最后 owner 约束返回 `LAST_OWNER`。
+5. 测试覆盖完整角色矩阵、主动退出、最后 owner、重复请求、角色修改与成员移除并发竞争、事务回滚、HTTP 鉴权/CSRF/路径参数，以及 OpenAPI 快照和 TypeScript Client 一致性。
+6. 本切片不处理待接受邀请、用户账号删除、项目删除或 Artifact GC；这些状态机分别实现，避免把成员关系删除扩张为数据生命周期删除。
