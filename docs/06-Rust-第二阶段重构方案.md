@@ -417,4 +417,13 @@ Control Plane HTTP 与鉴权切片已完成：
 5. OpenAPI 同时声明 `cookieAuth` 与 `apiToken` 安全方案，支持 Bearer 的操作使用 OR security requirement，Cookie 专属接口保持单一安全方案；CORS 明确允许 `Authorization`。Rust 快照和 TypeScript Client 已重新生成并通过漂移检查。
 6. 验收覆盖一次性密钥、摘要不出响应、CSRF、Bearer 禁止管理 Token、scope 拒绝、Authorization 优先级、跨用户项目不可见、幂等撤销和撤销后立即失效。真实 PostgreSQL 测试继续覆盖摘要、活动上限、最后使用节流、账号停用和并发竞争；完整 HTTP E2E 已增加 Cookie 创建 Token → Bearer 读取 → Cookie 撤销 → Bearer 失效链路。
 
-下一个独立问题是 Console API Token 安全设置：接入生成 Client，交付创建、一次复制、列表、状态和可访问撤销对话框，并补齐中英文文案、移动端、键盘操作、单元测试和浏览器验收。明文只能存在于当前创建对话框内存，关闭后不可恢复，也不得进入 Zustand、Storage、URL、日志或分析事件。
+### 已完成切片：Console API Token 安全设置
+
+1. Console 直接接入 Rust 生成 Client，不保留 Eden 或旧 TypeScript API 兼容分支；安全设置中的列表、创建和撤销都使用最终 `/_api/api-tokens` 契约、Cookie Session 与 CSRF。
+2. 创建表单要求名称、1–365 天内的预设有效期和至少一个显式 scope；一次性明文 Token 只存在于创建对话框子组件的本地内存，不进入 Zustand、Storage、URL、Toast、日志或错误对象。
+3. 创建完成后只提供一次查看、全选和复制；完成、取消、关闭设置、按 Escape 或组件卸载都会销毁明文状态，重新打开无法恢复。列表始终只展示名称、短前缀、scope、创建/过期/最后使用时间和活动、过期、已撤销状态。
+4. 撤销使用可访问确认对话框并调用真实 Rust API；加载骨架、空状态、稳定错误码、重试、重复请求隔离、焦点环和屏幕阅读器标签均已覆盖，中英文、日间/夜间和窄屏布局使用同一信息架构。
+5. Console 新增 10 项针对 Client、安全内存边界、创建校验、复制、撤销、错误重试和设置导航的测试，当前 38 个测试文件共 165 项通过；11 个工作区类型检查、Lint、Web/Desktop 生产构建和 OpenAPI 生成契约均保持通过。
+6. 真实浏览器验收覆盖桌面与 390px、中英文、日间/夜间、真实创建/复制/清除/撤销、Escape 与设置关闭重开；浏览器控制台 0 warning/error，且明文在关闭后从 DOM 完全消失。主包约 976 KB 的拆包警告继续作为独立性能问题处理。
+
+下一个独立问题是删除旧 TypeScript API 及其仅为兼容旧后端保留的工作区依赖、脚本和测试入口。Rust 已覆盖当前控制面纵向能力，后续不再用安装旧依赖的方式修补根构建；删除前先建立引用清单和 Rust 对等能力门禁，确保只移除已被最终 Rust 架构取代的代码。
