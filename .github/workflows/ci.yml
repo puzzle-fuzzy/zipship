@@ -36,6 +36,7 @@ jobs:
       - run: cargo run -p zipshipd -- migrate
       - run: cargo test --workspace --all-targets
       - run: cargo test -p zipship-postgres --test auth_repository -- --ignored
+      - run: cargo test -p zipship-postgres --test projects_repository -- --ignored
 
   quality:
     name: Lint & Typecheck

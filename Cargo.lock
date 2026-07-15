@@ -2448,6 +2448,8 @@ dependencies = [
  "uuid",
  "zipship-auth",
  "zipship-config",
+ "zipship-domain",
+ "zipship-projects",
 ]
 
 [[package]]

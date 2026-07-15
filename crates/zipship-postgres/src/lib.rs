@@ -6,8 +6,10 @@ use std::time::Duration;
 use zipship_config::Settings;
 
 mod auth;
+mod projects;
 
 pub use auth::PgAuthRepository;
+pub use projects::PgProjectsRepository;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
