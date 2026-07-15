@@ -19,7 +19,9 @@ zipship-artifact = { path = "../../crates/zipship-artifact" }
 zipship-config = { path = "../../crates/zipship-config" }
 zipship-domain = { path = "../../crates/zipship-domain" }
 zipship-jobs = { path = "../../crates/zipship-jobs" }
+zipship-mail = { path = "../../crates/zipship-mail" }
 zipship-postgres = { path = "../../crates/zipship-postgres" }
+zipship-recovery = { path = "../../crates/zipship-recovery" }
 zipship-storage = { path = "../../crates/zipship-storage" }
 
 [dev-dependencies]

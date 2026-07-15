@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit, Payload},
@@ -100,6 +101,26 @@ impl fmt::Debug for EnvelopeKeyRing {
 }
 
 impl EnvelopeKeyRing {
+    pub fn from_base64_config(
+        active_key_id: impl Into<String>,
+        encoded_keys: &SecretString,
+    ) -> Result<Self, EnvelopeError> {
+        let mut keys = Vec::new();
+        for entry in encoded_keys.expose_secret().split(',') {
+            let (key_id, encoded_key) = entry.split_once(':').ok_or(EnvelopeError::InvalidKeyId)?;
+            let mut decoded = URL_SAFE_NO_PAD
+                .decode(encoded_key)
+                .map_err(|_| EnvelopeError::EncryptionFailed)?;
+            let key: Result<[u8; 32], _> = decoded
+                .as_slice()
+                .try_into()
+                .map_err(|_| EnvelopeError::EncryptionFailed);
+            decoded.zeroize();
+            keys.push((key_id.to_owned(), SecretBox::new(Box::new(key?))));
+        }
+        Self::new(active_key_id, keys)
+    }
+
     pub fn new(
         active_key_id: impl Into<String>,
         keys: Vec<(String, SecretBox<[u8; 32]>)>,
@@ -647,6 +668,28 @@ mod tests {
             )
             .unwrap_err(),
             EnvelopeError::InvalidKeyId
+        );
+    }
+
+    #[test]
+    fn parses_base64_key_rotation_configuration() {
+        let configured = EnvelopeKeyRing::from_base64_config(
+            "primary",
+            &SecretString::from(format!(
+                "primary:{},previous:{}",
+                URL_SAFE_NO_PAD.encode([7_u8; 32]),
+                URL_SAFE_NO_PAD.encode([3_u8; 32])
+            )),
+        )
+        .unwrap();
+        assert_eq!(configured.active_key_id.as_ref(), "primary");
+        assert_eq!(configured.keys.len(), 2);
+        assert!(
+            EnvelopeKeyRing::from_base64_config(
+                "primary",
+                &SecretString::from("primary:dG9vLXNob3J0".to_owned())
+            )
+            .is_err()
         );
     }
 

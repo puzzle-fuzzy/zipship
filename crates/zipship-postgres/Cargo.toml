@@ -22,6 +22,7 @@ zipship-config = { path = "../zipship-config" }
 zipship-deployments = { path = "../zipship-deployments" }
 zipship-domain = { path = "../zipship-domain" }
 zipship-jobs = { path = "../zipship-jobs" }
+zipship-mail = { path = "../zipship-mail" }
 zipship-invitations = { path = "../zipship-invitations" }
 zipship-members = { path = "../zipship-members" }
 zipship-projects = { path = "../zipship-projects" }

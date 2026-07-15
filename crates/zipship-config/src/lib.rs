@@ -7,6 +7,7 @@ use url::Url;
 
 const DEVELOPMENT_CONTROL_ORIGINS: &str =
     "http://127.0.0.1:4015,http://127.0.0.1:1420,http://localhost:1420";
+const DEVELOPMENT_RECOVERY_KEY: &str = "development:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Environment {
@@ -37,10 +38,15 @@ pub struct Settings {
     pub http_bind: SocketAddr,
     pub access_bind: SocketAddr,
     pub control_allowed_origins: Vec<String>,
+    pub console_public_url: Url,
     pub database_url: SecretString,
     pub database_max_connections: u32,
     pub storage_root: PathBuf,
     pub log_filter: String,
+    pub password_recovery_active_key_id: String,
+    pub password_recovery_keys: SecretString,
+    pub smtp_url: SecretString,
+    pub smtp_from: String,
     pub worker_poll_interval: Duration,
     pub worker_lease_duration: Duration,
     pub worker_sweep_interval: Duration,
@@ -91,6 +97,42 @@ impl Settings {
             production,
             DEVELOPMENT_CONTROL_ORIGINS,
         )?)?;
+        let console_public_url = parse_console_public_url(
+            required_in_production(
+                &mut lookup,
+                "ZIPSHIP_CONSOLE_PUBLIC_URL",
+                production,
+                "http://127.0.0.1:4015/",
+            )?,
+            production,
+        )?;
+        let password_recovery_active_key_id = required_in_production(
+            &mut lookup,
+            "ZIPSHIP_PASSWORD_RECOVERY_ACTIVE_KEY_ID",
+            production,
+            "development",
+        )?;
+        let password_recovery_keys = required_in_production(
+            &mut lookup,
+            "ZIPSHIP_PASSWORD_RECOVERY_KEYS",
+            production,
+            DEVELOPMENT_RECOVERY_KEY,
+        )?;
+        let smtp_url = validate_smtp_url(
+            required_in_production(
+                &mut lookup,
+                "ZIPSHIP_SMTP_URL",
+                production,
+                "smtp://127.0.0.1:1025",
+            )?,
+            production,
+        )?;
+        let smtp_from = required_in_production(
+            &mut lookup,
+            "ZIPSHIP_SMTP_FROM",
+            production,
+            "ZipShip <security@localhost>",
+        )?;
 
         let upload_max_bytes =
             parse_nonzero_u64(&mut lookup, "ZIPSHIP_UPLOAD_MAX_BYTES", "524288000")?;
@@ -159,6 +201,7 @@ impl Settings {
             http_bind,
             access_bind,
             control_allowed_origins,
+            console_public_url,
             database_url: SecretString::from(database_url),
             database_max_connections: parse_or_default(
                 &mut lookup,
@@ -167,6 +210,10 @@ impl Settings {
             )?,
             storage_root: PathBuf::from(storage_root),
             log_filter: lookup("ZIPSHIP_LOG").unwrap_or_else(|| "info,sqlx=warn".to_owned()),
+            password_recovery_active_key_id,
+            password_recovery_keys: SecretString::from(password_recovery_keys),
+            smtp_url: SecretString::from(smtp_url),
+            smtp_from,
             worker_poll_interval: Duration::from_millis(worker_poll_ms),
             worker_lease_duration: Duration::from_secs(worker_lease_secs),
             worker_sweep_interval: Duration::from_secs(worker_sweep_secs),
@@ -181,6 +228,47 @@ impl Settings {
             artifact_compression_ratio_grace_bytes,
         })
     }
+}
+
+fn parse_console_public_url(value: String, production: bool) -> Result<Url, ConfigError> {
+    let invalid = || ConfigError::InvalidValue {
+        key: "ZIPSHIP_CONSOLE_PUBLIC_URL",
+        value: value.clone(),
+    };
+    let url = Url::parse(&value).map_err(|_| invalid())?;
+    if !matches!(url.scheme(), "http" | "https")
+        || url.host().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || (production && url.scheme() != "https")
+    {
+        return Err(invalid());
+    }
+    Ok(url)
+}
+
+fn validate_smtp_url(value: String, production: bool) -> Result<String, ConfigError> {
+    let invalid = || ConfigError::InvalidValue {
+        key: "ZIPSHIP_SMTP_URL",
+        value: "[redacted]".to_owned(),
+    };
+    let url = Url::parse(&value).map_err(|_| invalid())?;
+    let secure = url.scheme() == "smtps"
+        || (url.scheme() == "smtp"
+            && url
+                .query_pairs()
+                .any(|(key, value)| key == "tls" && value == "required"));
+    if !matches!(url.scheme(), "smtp" | "smtps")
+        || url.host().is_none()
+        || url.fragment().is_some()
+        || (production && !secure)
+    {
+        return Err(invalid());
+    }
+    Ok(value)
 }
 
 fn parse_origins(value: String) -> Result<Vec<String>, ConfigError> {
@@ -295,6 +383,18 @@ mod tests {
             ]
         );
         assert_eq!(settings.storage_root, PathBuf::from(".zipship"));
+        assert_eq!(
+            settings.console_public_url.as_str(),
+            "http://127.0.0.1:4015/"
+        );
+        assert_eq!(settings.password_recovery_active_key_id, "development");
+        assert!(
+            settings
+                .password_recovery_keys
+                .expose_secret()
+                .starts_with("development:")
+        );
+        assert_eq!(settings.smtp_url.expose_secret(), "smtp://127.0.0.1:1025");
         assert!(settings.database_url.expose_secret().contains("127.0.0.1"));
         assert_eq!(settings.upload_max_bytes, 500 * 1_024 * 1_024);
         assert_eq!(settings.upload_ttl, Duration::from_secs(24 * 60 * 60));
@@ -334,6 +434,91 @@ mod tests {
     }
 
     #[test]
+    fn production_requires_secure_password_recovery_delivery() {
+        let base = [
+            ("ZIPSHIP_ENV", "production"),
+            ("ZIPSHIP_DATABASE_URL", "postgres://example"),
+            ("ZIPSHIP_STORAGE_ROOT", "/srv/zipship"),
+            (
+                "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+                "https://console.example.com",
+            ),
+        ];
+        assert_eq!(
+            settings_from(&base).unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_CONSOLE_PUBLIC_URL")
+        );
+        let with_console = [
+            base[0],
+            base[1],
+            base[2],
+            base[3],
+            ("ZIPSHIP_CONSOLE_PUBLIC_URL", "https://console.example.com"),
+        ];
+        assert_eq!(
+            settings_from(&with_console).unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_PASSWORD_RECOVERY_ACTIVE_KEY_ID")
+        );
+        let with_active_key = [
+            with_console[0],
+            with_console[1],
+            with_console[2],
+            with_console[3],
+            with_console[4],
+            ("ZIPSHIP_PASSWORD_RECOVERY_ACTIVE_KEY_ID", "primary"),
+        ];
+        assert_eq!(
+            settings_from(&with_active_key).unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_PASSWORD_RECOVERY_KEYS")
+        );
+        let with_keys = [
+            with_active_key[0],
+            with_active_key[1],
+            with_active_key[2],
+            with_active_key[3],
+            with_active_key[4],
+            with_active_key[5],
+            (
+                "ZIPSHIP_PASSWORD_RECOVERY_KEYS",
+                "primary:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            ),
+        ];
+        assert_eq!(
+            settings_from(&with_keys).unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_SMTP_URL")
+        );
+        let with_smtp = [
+            with_keys[0],
+            with_keys[1],
+            with_keys[2],
+            with_keys[3],
+            with_keys[4],
+            with_keys[5],
+            with_keys[6],
+            (
+                "ZIPSHIP_SMTP_URL",
+                "smtp://smtp.example.com:587?tls=required",
+            ),
+        ];
+        assert_eq!(
+            settings_from(&with_smtp).unwrap_err(),
+            ConfigError::Missing("ZIPSHIP_SMTP_FROM")
+        );
+        let complete = [
+            with_smtp[0],
+            with_smtp[1],
+            with_smtp[2],
+            with_smtp[3],
+            with_smtp[4],
+            with_smtp[5],
+            with_smtp[6],
+            with_smtp[7],
+            ("ZIPSHIP_SMTP_FROM", "ZipShip <security@example.com>"),
+        ];
+        assert!(settings_from(&complete).is_ok());
+    }
+
+    #[test]
     fn rejects_invalid_typed_values() {
         assert!(settings_from(&[("ZIPSHIP_HTTP_BIND", "not-an-address")]).is_err());
         assert!(settings_from(&[("ZIPSHIP_ACCESS_BIND", "not-an-address")]).is_err());
@@ -364,6 +549,30 @@ mod tests {
                 "{origins}"
             );
         }
+        assert!(
+            settings_from(&[("ZIPSHIP_CONSOLE_PUBLIC_URL", "http://example.com/path")]).is_err()
+        );
+        assert!(settings_from(&[("ZIPSHIP_SMTP_URL", "http://example.com")]).is_err());
+        assert!(
+            settings_from(&[
+                ("ZIPSHIP_ENV", "production"),
+                ("ZIPSHIP_DATABASE_URL", "postgres://example"),
+                ("ZIPSHIP_STORAGE_ROOT", "/srv/zipship"),
+                (
+                    "ZIPSHIP_CONTROL_ALLOWED_ORIGINS",
+                    "https://console.example.com",
+                ),
+                ("ZIPSHIP_CONSOLE_PUBLIC_URL", "https://console.example.com"),
+                ("ZIPSHIP_PASSWORD_RECOVERY_ACTIVE_KEY_ID", "primary"),
+                (
+                    "ZIPSHIP_PASSWORD_RECOVERY_KEYS",
+                    "primary:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                ),
+                ("ZIPSHIP_SMTP_URL", "smtp://smtp.example.com:587"),
+                ("ZIPSHIP_SMTP_FROM", "ZipShip <security@example.com>"),
+            ])
+            .is_err()
+        );
         assert!(
             settings_from(&[
                 ("ZIPSHIP_ARTIFACT_MAX_FILE_BYTES", "2048"),

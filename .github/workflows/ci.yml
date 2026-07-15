@@ -23,6 +23,10 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      mailpit:
+        image: axllent/mailpit:v1.30.3
+        ports:
+          - 1025:1025
     env:
       ZIPSHIP_DATABASE_URL: postgres://zipship:zipship@localhost:5432/zipship_rust_test
       ZIPSHIP_TEST_DATABASE_URL: postgres://zipship:zipship@localhost:5432/zipship_rust_test
@@ -35,6 +39,7 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo run -p zipshipd -- migrate
       - run: cargo test --workspace --all-targets
+      - run: ZIPSHIP_TEST_SMTP_URL=smtp://localhost:1025 cargo test -p zipship-mail --test smtp_mailpit -- --ignored
       - run: cargo test -p zipship-postgres --test auth_repository -- --ignored
       - run: cargo test -p zipship-postgres --test invitations_repository -- --ignored
       - run: cargo test -p zipship-postgres --test members_repository -- --ignored
@@ -42,6 +47,7 @@ jobs:
       - run: cargo test -p zipship-postgres --test recovery_repository -- --ignored
       - run: cargo test -p zipship-postgres --test uploads_repository -- --ignored
       - run: cargo test -p zipship-postgres --test jobs_repository -- --ignored --test-threads=1
+      - run: cargo test -p zipship-postgres --test mail_outbox_repository -- --ignored
       - run: cargo test -p zipship-postgres --test artifact_jobs_repository -- --ignored
       - run: cargo test -p zipship-postgres --test previews_repository -- --ignored
       - run: cargo test -p zipship-postgres --test releases_repository -- --ignored
