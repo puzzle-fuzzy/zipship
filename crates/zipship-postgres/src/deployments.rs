@@ -1,13 +1,17 @@
 use async_trait::async_trait;
 use serde_json::json;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
-use std::{fmt, str::FromStr};
+use sqlx::{PgPool, Postgres, Transaction};
+use std::str::FromStr;
 use uuid::Uuid;
 use zipship_deployments::{
     Deployment, DeploymentAction, DeploymentResult, DeploymentStatus, DeploymentsRepository,
     DeploymentsRepositoryError, NewDeployment,
 };
 use zipship_domain::{MemberRole, PermissionAction};
+
+mod row;
+
+use row::{DeploymentRow, ProjectAccessRow, ProjectRow, ReleaseReadinessRow, corrupt_record};
 
 #[derive(Clone)]
 pub struct PgDeploymentsRepository {
@@ -362,70 +366,4 @@ async fn was_previously_active(
     .fetch_one(&mut **transaction)
     .await
     .map_err(DeploymentsRepositoryError::unavailable)
-}
-
-fn corrupt_record() -> DeploymentsRepositoryError {
-    DeploymentsRepositoryError::unavailable(CorruptDeploymentRecord)
-}
-
-#[derive(Debug)]
-struct CorruptDeploymentRecord;
-
-impl fmt::Display for CorruptDeploymentRecord {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("database returned an invalid deployment record")
-    }
-}
-
-impl std::error::Error for CorruptDeploymentRecord {}
-
-#[derive(Debug, FromRow)]
-struct ProjectRow {
-    #[allow(dead_code)]
-    id: Uuid,
-    organization_id: Uuid,
-}
-
-#[derive(Debug, FromRow)]
-struct ProjectAccessRow {
-    #[allow(dead_code)]
-    id: Uuid,
-    role: String,
-}
-
-#[derive(Debug, FromRow)]
-struct ReleaseReadinessRow {
-    release_state: String,
-    artifact_id: Option<Uuid>,
-}
-
-#[derive(Debug, FromRow)]
-struct DeploymentRow {
-    id: Uuid,
-    project_id: Uuid,
-    release_id: Uuid,
-    previous_release_id: Option<Uuid>,
-    action: String,
-    status: String,
-    actor_id: Uuid,
-    message: Option<String>,
-    created_at: time::OffsetDateTime,
-    finished_at: time::OffsetDateTime,
-}
-
-impl DeploymentRow {
-    fn try_into_deployment(self) -> Result<Deployment, DeploymentsRepositoryError> {
-        Ok(Deployment {
-            id: self.id,
-            project_id: self.project_id,
-            release_id: self.release_id,
-            previous_release_id: self.previous_release_id,
-            action: DeploymentAction::from_str(&self.action).map_err(|_| corrupt_record())?,
-            status: DeploymentStatus::from_str(&self.status).map_err(|_| corrupt_record())?,
-            actor_id: self.actor_id,
-            message: self.message,
-            created_at: self.created_at,
-            finished_at: self.finished_at,
-        })
-    }
 }
