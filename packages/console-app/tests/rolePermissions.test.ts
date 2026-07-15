@@ -3,7 +3,7 @@ import { getProjectRolePermissions } from "../src/features/project-detail/rolePe
 
 describe("getProjectRolePermissions", () => {
   it("maps owner and admin to full project management", () => {
-    for (const role of ["owner", "admin"]) {
+    for (const role of ["owner", "admin"] as const) {
       expect(getProjectRolePermissions({ role })).toEqual({
         canUploadRelease: true,
         canDeployRelease: true,

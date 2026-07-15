@@ -42,7 +42,7 @@ const deployment = {
   actorId: 'u1',
   message: null,
   createdAt: '2026-07-15T00:00:00Z',
-  finishedAt: null,
+  finishedAt: '2026-07-15T00:00:01Z',
 } as const;
 
 describe('project API views', () => {
