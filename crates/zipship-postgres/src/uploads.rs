@@ -1,8 +1,6 @@
 use async_trait::async_trait;
 use serde_json::json;
-use sqlx::{FromRow, PgPool};
-use std::str::FromStr;
-use thiserror::Error;
+use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_domain::{MemberRole, UploadStatus};
@@ -10,6 +8,10 @@ use zipship_uploads::{
     BeginReceiveResult, FinalizeResult, FinalizedUpload, NewUpload, ReceiveLease, UploadRecord,
     UploadsRepository, UploadsRepositoryError,
 };
+
+mod row;
+
+use row::{UploadRow, corrupt_record, parse_role};
 
 #[derive(Debug, Clone)]
 pub struct PgUploadsRepository {
@@ -544,68 +546,6 @@ async fn existing_finalization(
         release_id,
         job_id,
     })
-}
-
-fn parse_role(value: &str) -> Result<MemberRole, UploadsRepositoryError> {
-    MemberRole::from_str(value).map_err(|_| corrupt_record("memberships.role"))
-}
-
-#[derive(Debug, FromRow)]
-struct UploadRow {
-    id: Uuid,
-    project_id: Uuid,
-    release_id: Option<Uuid>,
-    original_filename: String,
-    state: String,
-    expected_size: i64,
-    received_size: i64,
-    staging_key: String,
-    created_by: Uuid,
-    created_at: OffsetDateTime,
-    uploaded_at: Option<OffsetDateTime>,
-    completed_at: Option<OffsetDateTime>,
-    expires_at: OffsetDateTime,
-    error_code: Option<String>,
-}
-
-impl TryFrom<UploadRow> for UploadRecord {
-    type Error = UploadsRepositoryError;
-
-    fn try_from(row: UploadRow) -> Result<Self, Self::Error> {
-        let expected_staging_key = format!("uploads/{}/archive.zip", row.id);
-        if row.staging_key != expected_staging_key {
-            return Err(corrupt_record("uploads.staging_key"));
-        }
-        Ok(Self {
-            id: row.id,
-            project_id: row.project_id,
-            release_id: row.release_id,
-            original_filename: row.original_filename,
-            status: UploadStatus::from_str(&row.state)
-                .map_err(|_| corrupt_record("uploads.state"))?,
-            expected_size: u64::try_from(row.expected_size)
-                .map_err(|_| corrupt_record("uploads.expected_size"))?,
-            received_size: u64::try_from(row.received_size)
-                .map_err(|_| corrupt_record("uploads.received_size"))?,
-            staging_key: row.staging_key,
-            created_by: row.created_by,
-            created_at: row.created_at,
-            uploaded_at: row.uploaded_at,
-            completed_at: row.completed_at,
-            expires_at: row.expires_at,
-            error_code: row.error_code,
-        })
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("database contains an invalid upload value in {field}")]
-struct CorruptUploadRecord {
-    field: &'static str,
-}
-
-fn corrupt_record(field: &'static str) -> UploadsRepositoryError {
-    UploadsRepositoryError::unavailable(CorruptUploadRecord { field })
 }
 
 #[cfg(test)]

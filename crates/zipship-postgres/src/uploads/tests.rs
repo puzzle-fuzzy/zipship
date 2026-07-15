@@ -1,3 +1,4 @@
+use super::row::UploadRow;
 use super::*;
 
 #[test]
