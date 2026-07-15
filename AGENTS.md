@@ -66,6 +66,7 @@ services/zipship-worker    Artifact and mail worker binary
 ## Backend architecture
 
 - Domain crates own invariants, commands, repository traits and stable errors. They do not depend on Axum or SQLx.
+- `zipship-domain` groups organization, project, upload, job, release, artifact and permission values/state machines by module; `lib.rs` is the stable re-export facade and must not become a new aggregate implementation file.
 - `zipship-postgres` implements repository traits. Transactions and row-lock ordering live here; schema migrations are embedded from `crates/zipship-postgres/migrations`.
 - `zipship-api` maps HTTP DTOs/authentication to domain services. Responses return stable `code` values, never localized user-facing messages.
 - `zipship-api` route-contract tests live under `src/tests/`, grouped by feature; shared in-memory boundary fixtures stay in `src/tests/mod.rs` instead of the production assembly module.
