@@ -15,8 +15,20 @@ const RESERVED_SLUGS: &[&str] = &[
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum DomainError {
+    #[error("invalid organization name")]
+    InvalidOrganizationName,
+    #[error("invalid organization slug")]
+    InvalidOrganizationSlug,
+    #[error("invalid project name")]
+    InvalidProjectName,
     #[error("invalid project slug")]
     InvalidProjectSlug,
+    #[error("invalid project description")]
+    InvalidProjectDescription,
+    #[error("invalid member role")]
+    InvalidMemberRole,
+    #[error("invalid cache policy")]
+    InvalidCachePolicy,
     #[error("invalid SHA-256 artifact digest")]
     InvalidArtifactDigest,
     #[error("invalid state transition from {from} to {to}")]
@@ -28,29 +40,122 @@ pub enum DomainError {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct ProjectSlug(String);
+pub struct OrganizationName(String);
 
-impl ProjectSlug {
+impl OrganizationName {
     pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
-        let value = value.as_ref();
-        let valid_length = !value.is_empty() && value.len() <= 63;
-        let valid_start = value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
-            || value.as_bytes().first().is_some_and(u8::is_ascii_digit);
-        let valid_chars = value.bytes().all(|byte| {
-            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
-        });
-        let reserved = RESERVED_SLUGS.contains(&value);
-
-        if valid_length && valid_start && valid_chars && !reserved {
-            Ok(Self(value.to_owned()))
-        } else {
-            Err(DomainError::InvalidProjectSlug)
-        }
+        normalize_bounded_name(value.as_ref(), 160)
+            .map(Self)
+            .ok_or(DomainError::InvalidOrganizationName)
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OrganizationSlug(String);
+
+impl OrganizationSlug {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        parse_slug(value.as_ref(), false)
+            .map(Self)
+            .ok_or(DomainError::InvalidOrganizationSlug)
+    }
+
+    pub fn parse_normalized(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        Self::parse(value.as_ref().trim().to_ascii_lowercase())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectName(String);
+
+impl ProjectName {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        normalize_bounded_name(value.as_ref(), 160)
+            .map(Self)
+            .ok_or(DomainError::InvalidProjectName)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectDescription(Option<String>);
+
+impl ProjectDescription {
+    pub fn parse(value: Option<&str>) -> Result<Self, DomainError> {
+        let Some(value) = value else {
+            return Ok(Self(None));
+        };
+        let normalized = value.trim();
+        if normalized.is_empty() {
+            return Ok(Self(None));
+        }
+        if normalized.chars().count() > 2_000 || normalized.contains('\0') {
+            return Err(DomainError::InvalidProjectDescription);
+        }
+        Ok(Self(Some(normalized.to_owned())))
+    }
+
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+
+    pub fn into_inner(self) -> Option<String> {
+        self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectSlug(String);
+
+impl ProjectSlug {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        parse_slug(value.as_ref(), true)
+            .map(Self)
+            .ok_or(DomainError::InvalidProjectSlug)
+    }
+
+    pub fn parse_normalized(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        Self::parse(value.as_ref().trim().to_ascii_lowercase())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn parse_slug(value: &str, check_reserved: bool) -> Option<String> {
+    let valid_length = !value.is_empty() && value.len() <= 63;
+    let valid_start = value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+        || value.as_bytes().first().is_some_and(u8::is_ascii_digit);
+    let valid_chars = value.bytes().all(|byte| {
+        byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+    });
+    let reserved = check_reserved && RESERVED_SLUGS.contains(&value);
+    (valid_length && valid_start && valid_chars && !reserved).then(|| value.to_owned())
+}
+
+fn normalize_bounded_name(value: &str, max_characters: usize) -> Option<String> {
+    let normalized = value.trim();
+    let character_count = normalized.chars().count();
+    (character_count > 0
+        && character_count <= max_characters
+        && !normalized.chars().any(char::is_control))
+    .then(|| normalized.to_owned())
 }
 
 impl fmt::Display for ProjectSlug {
@@ -213,17 +318,108 @@ pub enum MemberRole {
     Viewer,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionAction {
+    ViewOrganization,
+    InviteMember,
+    ManageMember,
+    ViewProject,
+    CreateProject,
+    ManageProject,
+    UploadRelease,
+    PublishRelease,
+    RollbackRelease,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CachePolicy {
+    Standard,
+    Aggressive,
+}
+
+impl CachePolicy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Aggressive => "aggressive",
+        }
+    }
+}
+
+impl FromStr for CachePolicy {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "standard" => Ok(Self::Standard),
+            "aggressive" => Ok(Self::Aggressive),
+            _ => Err(DomainError::InvalidCachePolicy),
+        }
+    }
+}
+
 impl MemberRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Owner => "owner",
+            Self::Admin => "admin",
+            Self::Developer => "developer",
+            Self::Deployer => "deployer",
+            Self::Viewer => "viewer",
+        }
+    }
+
+    pub const fn can(self, action: PermissionAction) -> bool {
+        match self {
+            Self::Owner | Self::Admin => true,
+            Self::Developer => matches!(
+                action,
+                PermissionAction::ViewOrganization
+                    | PermissionAction::ViewProject
+                    | PermissionAction::CreateProject
+                    | PermissionAction::UploadRelease
+            ),
+            Self::Deployer => matches!(
+                action,
+                PermissionAction::ViewOrganization
+                    | PermissionAction::ViewProject
+                    | PermissionAction::PublishRelease
+                    | PermissionAction::RollbackRelease
+            ),
+            Self::Viewer => matches!(
+                action,
+                PermissionAction::ViewOrganization | PermissionAction::ViewProject
+            ),
+        }
+    }
+
     pub const fn can_manage_members(self) -> bool {
-        matches!(self, Self::Owner | Self::Admin)
+        self.can(PermissionAction::ManageMember)
     }
 
     pub const fn can_upload(self) -> bool {
-        matches!(self, Self::Owner | Self::Admin | Self::Developer)
+        self.can(PermissionAction::UploadRelease)
     }
 
     pub const fn can_deploy(self) -> bool {
-        matches!(self, Self::Owner | Self::Admin | Self::Deployer)
+        self.can(PermissionAction::PublishRelease)
+    }
+}
+
+impl FromStr for MemberRole {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "owner" => Ok(Self::Owner),
+            "admin" => Ok(Self::Admin),
+            "developer" => Ok(Self::Developer),
+            "deployer" => Ok(Self::Deployer),
+            "viewer" => Ok(Self::Viewer),
+            _ => Err(DomainError::InvalidMemberRole),
+        }
     }
 }
 
@@ -241,6 +437,42 @@ mod tests {
         assert!(ProjectSlug::parse("Uppercase").is_err());
         assert!(ProjectSlug::parse("-leading").is_err());
         assert!(ProjectSlug::parse("a".repeat(64)).is_err());
+        assert_eq!(
+            ProjectSlug::parse_normalized(" Marketing-Site ")
+                .unwrap()
+                .as_str(),
+            "marketing-site",
+        );
+    }
+
+    #[test]
+    fn normalizes_organization_and_project_metadata() {
+        assert_eq!(
+            OrganizationName::parse("  Puzzle Fuzzy  ")
+                .unwrap()
+                .as_str(),
+            "Puzzle Fuzzy",
+        );
+        assert_eq!(
+            OrganizationSlug::parse_normalized(" Puzzle-Fuzzy ")
+                .unwrap()
+                .as_str(),
+            "puzzle-fuzzy",
+        );
+        assert_eq!(
+            ProjectName::parse("  Marketing Site  ").unwrap().as_str(),
+            "Marketing Site",
+        );
+        assert_eq!(
+            ProjectDescription::parse(Some("  Static campaign site  "))
+                .unwrap()
+                .as_deref(),
+            Some("Static campaign site"),
+        );
+        assert_eq!(
+            ProjectDescription::parse(Some("  ")).unwrap().as_deref(),
+            None,
+        );
     }
 
     #[test]
@@ -288,5 +520,11 @@ mod tests {
         assert!(!MemberRole::Developer.can_deploy());
         assert!(MemberRole::Deployer.can_deploy());
         assert!(!MemberRole::Viewer.can_upload());
+        assert!(MemberRole::Admin.can(PermissionAction::ManageProject));
+        assert!(MemberRole::Developer.can(PermissionAction::CreateProject));
+        assert!(!MemberRole::Developer.can(PermissionAction::ManageProject));
+        assert!(MemberRole::Deployer.can(PermissionAction::RollbackRelease));
+        assert!(!MemberRole::Viewer.can(PermissionAction::CreateProject));
+        assert_eq!("deployer".parse(), Ok(MemberRole::Deployer));
     }
 }
