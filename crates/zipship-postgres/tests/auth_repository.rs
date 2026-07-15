@@ -1,6 +1,7 @@
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
+use time::OffsetDateTime;
 use zipship_auth::{AuthError, AuthService, RegisterCommand};
 use zipship_postgres::PgAuthRepository;
 
@@ -74,6 +75,65 @@ async fn persists_registration_and_revokes_session() {
     let token = outcome.credentials.session_token().expose_secret();
     let session = service.authenticate(token).await.unwrap();
     assert_eq!(session.profile(), outcome.user);
+    let initial_updated_at: OffsetDateTime =
+        sqlx::query_scalar("SELECT updated_at FROM users WHERE id = $1")
+            .bind(outcome.user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let updated = service
+        .update_profile(&session, "  Product Owner  ".to_owned())
+        .await
+        .unwrap();
+    assert_eq!(updated.display_name, "Product Owner");
+    assert_eq!(updated.email, outcome.user.email);
+    let updated_at: OffsetDateTime =
+        sqlx::query_scalar("SELECT updated_at FROM users WHERE id = $1")
+            .bind(outcome.user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(updated_at > initial_updated_at);
+    let profile_audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM audit_logs
+        WHERE actor_id = $1
+          AND target_id = $1
+          AND action = 'user.profile_updated'
+          AND metadata = '{"changedFields":["displayName"]}'::jsonb
+        "#,
+    )
+    .bind(outcome.user.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(profile_audit_count, 1);
+
+    let unchanged = service
+        .update_profile(&session, "Product Owner".to_owned())
+        .await
+        .unwrap();
+    assert_eq!(unchanged, updated);
+    let unchanged_updated_at: OffsetDateTime =
+        sqlx::query_scalar("SELECT updated_at FROM users WHERE id = $1")
+            .bind(outcome.user.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let unchanged_audit_count: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM audit_logs WHERE actor_id = $1 AND action = 'user.profile_updated'",
+    )
+    .bind(outcome.user.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(unchanged_updated_at, updated_at);
+    assert_eq!(unchanged_audit_count, 1);
+    assert_eq!(
+        service.authenticate(token).await.unwrap().profile(),
+        updated
+    );
     service.logout(token).await.unwrap();
     assert!(matches!(
         service.authenticate(token).await,

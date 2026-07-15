@@ -88,6 +88,8 @@ pub struct ResolvedSession {
 pub enum AuthRepositoryError {
     #[error("email already exists")]
     DuplicateEmail,
+    #[error("user does not exist")]
+    UserNotFound,
     #[error("authentication repository is unavailable")]
     Unavailable {
         #[source]
@@ -118,6 +120,13 @@ pub trait AuthRepository: Send + Sync + 'static {
     ) -> Result<Option<StoredUser>, AuthRepositoryError>;
 
     async fn create_session(&self, session: NewSession) -> Result<(), AuthRepositoryError>;
+
+    async fn update_display_name(
+        &self,
+        user_id: Uuid,
+        display_name: DisplayName,
+        updated_at: OffsetDateTime,
+    ) -> Result<StoredUser, AuthRepositoryError>;
 
     async fn resolve_session(
         &self,
@@ -306,6 +315,20 @@ impl AuthService {
         Ok(session)
     }
 
+    pub async fn update_profile(
+        &self,
+        session: &ResolvedSession,
+        display_name: String,
+    ) -> Result<UserProfile, AuthError> {
+        let display_name = DisplayName::parse(&display_name).map_err(map_identity_error)?;
+        let user = self
+            .repository
+            .update_display_name(session.user.id, display_name, self.clock.now())
+            .await
+            .map_err(map_repository_error)?;
+        Ok(profile_from_stored_user(&user))
+    }
+
     pub fn verify_csrf(
         &self,
         session: &ResolvedSession,
@@ -416,6 +439,7 @@ fn map_identity_error(error: IdentityValidationError) -> AuthError {
 fn map_repository_error(error: AuthRepositoryError) -> AuthError {
     match error {
         AuthRepositoryError::DuplicateEmail => AuthError::DuplicateEmail,
+        AuthRepositoryError::UserNotFound => AuthError::Unauthenticated,
         AuthRepositoryError::Unavailable { .. } => AuthError::Infrastructure,
     }
 }
@@ -486,6 +510,22 @@ mod tests {
         async fn create_session(&self, session: NewSession) -> Result<(), AuthRepositoryError> {
             self.state.lock().unwrap().sessions.push(session);
             Ok(())
+        }
+
+        async fn update_display_name(
+            &self,
+            user_id: Uuid,
+            display_name: DisplayName,
+            _updated_at: OffsetDateTime,
+        ) -> Result<StoredUser, AuthRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            let user = state
+                .users
+                .iter_mut()
+                .find(|user| user.id == user_id)
+                .ok_or(AuthRepositoryError::UserNotFound)?;
+            user.display_name = display_name;
+            Ok(user.clone())
         }
 
         async fn resolve_session(
@@ -639,5 +679,61 @@ mod tests {
             service.authenticate(token).await,
             Err(AuthError::Unauthenticated),
         ));
+    }
+
+    #[tokio::test]
+    async fn updates_and_normalizes_the_current_users_display_name() {
+        let repository = Arc::new(InMemoryRepository::default());
+        let service = service(repository.clone()).await;
+        let outcome = service
+            .register(register_command("owner@example.com"))
+            .await
+            .unwrap();
+        let session = service
+            .authenticate(outcome.credentials.session_token().expose_secret())
+            .await
+            .unwrap();
+
+        let profile = service
+            .update_profile(&session, "  Product Owner  ".to_owned())
+            .await
+            .unwrap();
+
+        assert_eq!(profile.display_name, "Product Owner");
+        assert_eq!(profile.email, "owner@example.com");
+        assert_eq!(
+            repository.state.lock().unwrap().users[0]
+                .display_name
+                .as_str(),
+            "Product Owner"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_display_name_updates_without_mutating_the_user() {
+        let repository = Arc::new(InMemoryRepository::default());
+        let service = service(repository.clone()).await;
+        let outcome = service
+            .register(register_command("owner@example.com"))
+            .await
+            .unwrap();
+        let session = service
+            .authenticate(outcome.credentials.session_token().expose_secret())
+            .await
+            .unwrap();
+
+        let error = service
+            .update_profile(&session, "   ".to_owned())
+            .await
+            .unwrap_err();
+
+        assert_eq!(error, AuthError::InvalidDisplayName);
+        assert_eq!(error.code(), "INVALID_DISPLAY_NAME");
+        assert_eq!(
+            repository.state.lock().unwrap().users[0]
+                .display_name
+                .as_str(),
+            "Owner"
+        );
     }
 }

@@ -198,6 +198,7 @@ impl AppState {
         auth::register,
         auth::login,
         auth::me,
+        auth::update_profile,
         auth::logout,
         audit::list_audit_logs,
         deployments::publish,
@@ -220,6 +221,7 @@ impl AppState {
         HealthResponse,
         auth::RegisterRequest,
         auth::LoginRequest,
+        auth::UpdateProfileRequest,
         auth::AuthResponse,
         auth::UserResponse,
         audit::AuditLogsResponse,
@@ -898,6 +900,22 @@ mod tests {
             Ok(())
         }
 
+        async fn update_display_name(
+            &self,
+            user_id: Uuid,
+            display_name: zipship_auth::DisplayName,
+            _updated_at: OffsetDateTime,
+        ) -> Result<StoredUser, AuthRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            let user = state
+                .users
+                .iter_mut()
+                .find(|user| user.id == user_id)
+                .ok_or(AuthRepositoryError::UserNotFound)?;
+            user.display_name = display_name;
+            Ok(user.clone())
+        }
+
         async fn resolve_session(
             &self,
             token_digest: TokenDigest,
@@ -1255,6 +1273,84 @@ mod tests {
         assert_eq!(
             json_body(rejected).await,
             json!({ "code": "UNAUTHENTICATED" }),
+        );
+    }
+
+    #[tokio::test]
+    async fn profile_update_requires_csrf_and_refreshes_the_current_user() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let body = json!({ "displayName": "  Product Owner  " }).to_string();
+
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::patch("/_api/auth/me")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            json_body(missing_csrf).await,
+            json!({ "code": "INVALID_CSRF_TOKEN" })
+        );
+
+        let updated = app
+            .clone()
+            .oneshot(
+                Request::patch("/_api/auth/me")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.status(), StatusCode::OK);
+        assert_eq!(updated.headers()[header::CACHE_CONTROL], "no-store");
+        let updated = json_body(updated).await;
+        assert_eq!(updated["user"]["displayName"], "Product Owner");
+        assert_eq!(updated["user"]["email"], "owner@example.com");
+
+        let current = app
+            .clone()
+            .oneshot(
+                Request::get("/_api/auth/me")
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(current.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(current).await["user"]["displayName"],
+            "Product Owner"
+        );
+
+        let invalid = app
+            .oneshot(
+                Request::patch("/_api/auth/me")
+                    .header(header::COOKIE, cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(json!({ "displayName": " " }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            json_body(invalid).await,
+            json!({ "code": "INVALID_DISPLAY_NAME" })
         );
     }
 

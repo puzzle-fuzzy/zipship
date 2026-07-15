@@ -1,5 +1,6 @@
 use super::AppState;
 use crate::error::{ApiError, ErrorResponse};
+use crate::request::{authenticate, require_csrf};
 use axum::{
     Json, Router,
     extract::{State, rejection::JsonRejection},
@@ -45,6 +46,12 @@ pub(crate) struct LoginRequest {
     password: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateProfileRequest {
+    display_name: String,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct AuthResponse {
     user: UserResponse,
@@ -77,7 +84,7 @@ pub(crate) fn router() -> Router<AppState> {
     Router::new()
         .route("/_api/auth/register", post(register))
         .route("/_api/auth/login", post(login))
-        .route("/_api/auth/me", get(me))
+        .route("/_api/auth/me", get(me).patch(update_profile))
         .route("/_api/auth/logout", post(logout))
 }
 
@@ -172,6 +179,40 @@ pub(crate) async fn me(
         Json(AuthResponse {
             user: session.profile().into(),
         }),
+    ))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/_api/auth/me",
+    tag = "auth",
+    params(("x-csrf-token" = String, Header, description = "CSRF token issued with the session")),
+    request_body = UpdateProfileRequest,
+    responses(
+        (status = 200, description = "Current user profile updated", body = AuthResponse),
+        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "CSRF token is absent or invalid", body = ErrorResponse),
+        (status = 422, description = "Display name is invalid", body = ErrorResponse),
+        (status = 503, description = "Authentication storage is unavailable", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn update_profile(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    payload: Result<Json<UpdateProfileRequest>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
+    let session = authenticate(&state, &jar).await?;
+    require_csrf(&state, &session, &headers)?;
+    let Json(payload) = payload.map_err(|_| ApiError::invalid_json())?;
+    let user = state
+        .auth
+        .update_profile(&session, payload.display_name)
+        .await?;
+    Ok((
+        StatusCode::OK,
+        [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+        Json(AuthResponse { user: user.into() }),
     ))
 }
 

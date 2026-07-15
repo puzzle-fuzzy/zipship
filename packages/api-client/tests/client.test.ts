@@ -61,3 +61,36 @@ test("binds generated deployment paths and includes browser credentials", async 
   expect(request?.headers.get("idempotency-key")).toBe("publish-v1");
   expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
 });
+
+test("binds the generated current-user profile update contract", async () => {
+  let request: Request | undefined;
+  const api = createApiClient("https://control.example.test", {
+    fetch: async (input) => {
+      request = input;
+      return Response.json({
+        user: {
+          id: "00000000-0000-0000-0000-000000000001",
+          email: "owner@example.com",
+          displayName: "Product Owner",
+        },
+      });
+    },
+  });
+
+  const result = await api.PATCH("/_api/auth/me", {
+    params: {
+      header: { "x-csrf-token": "csrf-token" },
+    },
+    body: { displayName: "Product Owner" },
+  });
+
+  expect(result.error).toBeUndefined();
+  expect(result.data?.user.displayName).toBe("Product Owner");
+  expect(request?.method).toBe("PATCH");
+  expect(request?.url).toBe("https://control.example.test/_api/auth/me");
+  expect(request?.credentials).toBe("include");
+  expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
+  expect(await request?.clone().json()).toEqual({
+    displayName: "Product Owner",
+  });
+});

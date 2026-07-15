@@ -138,6 +138,92 @@ impl AuthRepository for PgAuthRepository {
             .map_err(AuthRepositoryError::unavailable)
     }
 
+    async fn update_display_name(
+        &self,
+        user_id: Uuid,
+        display_name: DisplayName,
+        updated_at: OffsetDateTime,
+    ) -> Result<StoredUser, AuthRepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(AuthRepositoryError::unavailable)?;
+        let current = sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, email, display_name, password_hash, disabled_at
+            FROM users
+            WHERE id = $1
+            FOR UPDATE
+            "#,
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?
+        .ok_or(AuthRepositoryError::UserNotFound)?;
+        let current = StoredUser::try_from(current)?;
+
+        if current.display_name == display_name {
+            transaction
+                .commit()
+                .await
+                .map_err(AuthRepositoryError::unavailable)?;
+            return Ok(current);
+        }
+
+        let updated = sqlx::query_as::<_, UserRow>(
+            r#"
+            UPDATE users
+            SET display_name = $2, updated_at = $3
+            WHERE id = $1
+            RETURNING id, email, display_name, password_hash, disabled_at
+            "#,
+        )
+        .bind(user_id)
+        .bind(display_name.as_str())
+        .bind(updated_at)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (
+                organization_id,
+                actor_id,
+                action,
+                target_type,
+                target_id,
+                metadata,
+                created_at
+            )
+            SELECT
+                memberships.organization_id,
+                $1,
+                'user.profile_updated',
+                'user',
+                $1,
+                '{"changedFields":["displayName"]}'::jsonb,
+                $2
+            FROM memberships
+            INNER JOIN organizations ON organizations.id = memberships.organization_id
+            WHERE memberships.user_id = $1 AND organizations.deleted_at IS NULL
+            "#,
+        )
+        .bind(user_id)
+        .bind(updated_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?;
+
+        transaction
+            .commit()
+            .await
+            .map_err(AuthRepositoryError::unavailable)?;
+        StoredUser::try_from(updated)
+    }
+
     async fn resolve_session(
         &self,
         token_digest: TokenDigest,

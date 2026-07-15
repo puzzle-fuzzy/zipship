@@ -49,7 +49,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_profile"];
         trace?: never;
     };
     "/_api/auth/register": {
@@ -499,6 +499,9 @@ export interface components {
         ReleasesResponse: {
             releases: components["schemas"]["ReleaseResponse"][];
         };
+        UpdateProfileRequest: {
+            displayName: string;
+        };
         UpdateProjectRequest: {
             cachePolicy?: components["schemas"]["ProjectCachePolicyRequest"];
             description?: string | null;
@@ -664,6 +667,69 @@ export interface operations {
             };
             /** @description Session is absent or invalid */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Authentication storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_profile: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token issued with the session */
+                "x-csrf-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProfileRequest"];
+            };
+        };
+        responses: {
+            /** @description Current user profile updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF token is absent or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Display name is invalid */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
