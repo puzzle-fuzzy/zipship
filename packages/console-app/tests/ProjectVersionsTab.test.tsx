@@ -207,6 +207,28 @@ describe("ProjectVersionsTab", () => {
     expect(screen.getByText("Watching release processing")).toBeInTheDocument();
   });
 
+  it("keeps ready releases read-only without deployment permission", () => {
+    render(
+      <ProjectVersionsTab
+        loading={false}
+        error={null}
+        autoRefreshing={false}
+        canUpload={true}
+        canDeploy={false}
+        canDelete={false}
+        onUploadClick={() => {}}
+        onRetry={() => {}}
+        onPreview={() => {}}
+        onPublish={async () => {}}
+        onRollback={async () => {}}
+        releases={[makeRelease()]}
+      />,
+    );
+
+    expect(screen.getByText("Publishing is read-only for your role")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Publish" })).toBeDisabled();
+  });
+
   it("highlights and expands the release selected after upload", () => {
     render(
       <ProjectVersionsTab
