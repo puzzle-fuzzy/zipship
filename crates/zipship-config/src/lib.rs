@@ -37,6 +37,9 @@ pub struct Settings {
     pub log_filter: String,
     pub worker_poll_interval: Duration,
     pub worker_lease_duration: Duration,
+    pub upload_max_bytes: u64,
+    pub upload_ttl: Duration,
+    pub upload_receive_lease: Duration,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -70,6 +73,24 @@ impl Settings {
         let storage_root =
             required_in_production(&mut lookup, "ZIPSHIP_STORAGE_ROOT", production, ".zipship")?;
 
+        let upload_max_bytes =
+            parse_nonzero_u64(&mut lookup, "ZIPSHIP_UPLOAD_MAX_BYTES", "524288000")?;
+        if upload_max_bytes > i64::MAX as u64 {
+            return Err(ConfigError::InvalidValue {
+                key: "ZIPSHIP_UPLOAD_MAX_BYTES",
+                value: upload_max_bytes.to_string(),
+            });
+        }
+        let upload_ttl_secs = parse_nonzero_u64(&mut lookup, "ZIPSHIP_UPLOAD_TTL_SECS", "86400")?;
+        let upload_receive_lease_secs =
+            parse_nonzero_u64(&mut lookup, "ZIPSHIP_UPLOAD_RECEIVE_LEASE_SECS", "3600")?;
+        if upload_receive_lease_secs > upload_ttl_secs {
+            return Err(ConfigError::InvalidValue {
+                key: "ZIPSHIP_UPLOAD_RECEIVE_LEASE_SECS",
+                value: upload_receive_lease_secs.to_string(),
+            });
+        }
+
         Ok(Self {
             environment,
             http_bind: parse_or_default(&mut lookup, "ZIPSHIP_HTTP_BIND", "127.0.0.1:5006")?,
@@ -91,7 +112,22 @@ impl Settings {
                 "ZIPSHIP_WORKER_LEASE_SECS",
                 "60",
             )?),
+            upload_max_bytes,
+            upload_ttl: Duration::from_secs(upload_ttl_secs),
+            upload_receive_lease: Duration::from_secs(upload_receive_lease_secs),
         })
+    }
+}
+
+fn parse_nonzero_u64(
+    lookup: &mut impl FnMut(&str) -> Option<String>,
+    key: &'static str,
+    default: &str,
+) -> Result<u64, ConfigError> {
+    let value = lookup(key).unwrap_or_else(|| default.to_owned());
+    match value.parse::<u64>() {
+        Ok(parsed) if parsed > 0 => Ok(parsed),
+        _ => Err(ConfigError::InvalidValue { key, value }),
     }
 }
 
@@ -140,6 +176,9 @@ mod tests {
         assert_eq!(settings.http_bind.to_string(), "127.0.0.1:5006");
         assert_eq!(settings.storage_root, PathBuf::from(".zipship"));
         assert!(settings.database_url.expose_secret().contains("127.0.0.1"));
+        assert_eq!(settings.upload_max_bytes, 500 * 1_024 * 1_024);
+        assert_eq!(settings.upload_ttl, Duration::from_secs(24 * 60 * 60));
+        assert_eq!(settings.upload_receive_lease, Duration::from_secs(60 * 60),);
     }
 
     #[test]
@@ -162,5 +201,14 @@ mod tests {
     fn rejects_invalid_typed_values() {
         assert!(settings_from(&[("ZIPSHIP_HTTP_BIND", "not-an-address")]).is_err());
         assert!(settings_from(&[("ZIPSHIP_WORKER_LEASE_SECS", "never")]).is_err());
+        assert!(settings_from(&[("ZIPSHIP_UPLOAD_MAX_BYTES", "0")]).is_err());
+        assert!(settings_from(&[("ZIPSHIP_UPLOAD_TTL_SECS", "never")]).is_err());
+        assert!(
+            settings_from(&[
+                ("ZIPSHIP_UPLOAD_TTL_SECS", "60"),
+                ("ZIPSHIP_UPLOAD_RECEIVE_LEASE_SECS", "61"),
+            ])
+            .is_err(),
+        );
     }
 }
