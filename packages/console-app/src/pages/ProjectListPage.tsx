@@ -4,12 +4,11 @@ import { useNavigate, useOutletContext } from 'react-router';
 import { Badge } from '../components/ui/badge';
 import { Button } from '../components/ui/button';
 import { useTranslation } from '../i18n';
-import { useAuthStore, useProjectsStore } from '../stores';
+import { useProjectsStore } from '../stores';
 import type { Project } from '../stores/projectsStore';
 
 export function ProjectListPage() {
   const { t } = useTranslation();
-  const { refreshToken } = useAuthStore();
   const { projects, loading, fetchProjects } = useProjectsStore();
   const navigate = useNavigate();
   const { setShowCreate } = useOutletContext<{ setShowCreate: (v: boolean) => void }>();
@@ -32,7 +31,7 @@ export function ProjectListPage() {
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{t('projects.subtitle')}</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => refreshToken && fetchProjects()} disabled={loading}>
+          <Button variant="outline" onClick={() => void fetchProjects()} disabled={loading}>
             <RefreshCw className="size-4" />
             {t('projects.refresh')}
           </Button>

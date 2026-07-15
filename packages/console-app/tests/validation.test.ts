@@ -87,18 +87,18 @@ describe("emailSchema", () => {
 });
 
 describe("passwordSchema", () => {
-  test("requires at least 8 and at most 128 characters", () => {
-    expect(passwordSchema.safeParse("1234567").success).toBe(false);
-    expect(passwordSchema.safeParse("12345678").success).toBe(true);
+  test("matches the Rust API's 12 to 128 character policy", () => {
+    expect(passwordSchema.safeParse("a".repeat(11)).success).toBe(false);
+    expect(passwordSchema.safeParse("a".repeat(12)).success).toBe(true);
     expect(passwordSchema.safeParse("a".repeat(128)).success).toBe(true);
     expect(passwordSchema.safeParse("a".repeat(129)).success).toBe(false);
   });
 
-  test("reports a minimum-length message", () => {
+  test("reports the structural minimum for localized forms", () => {
     const result = passwordSchema.safeParse("short");
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues[0].message).toBe("Password must be at least 8 characters");
+      expect(result.error.issues[0]).toMatchObject({ code: "too_small", minimum: 12 });
     }
   });
 });

@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProjectProductionPanel, buildProductionUrls } from "../src/features/project-detail/ProjectProductionPanel";
+import { ProjectProductionPanel } from "../src/features/project-detail/ProjectProductionPanel";
+import { buildProductionUrls } from "../src/features/project-detail/projectProductionUrls";
 import type { Release } from "../src/stores/projectsStore";
 import { useSettingsStore } from "../src/stores/settingsStore";
 

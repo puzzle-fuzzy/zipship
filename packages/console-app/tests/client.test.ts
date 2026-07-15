@@ -1,46 +1,31 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  authHeaders,
-  clearAccessToken,
-  getAccessToken,
-  getApi,
-  getApiBaseUrl,
-  setAccessToken,
-} from '../src/api/client';
+import { getApi, getApiBaseUrl, getCsrfHeaders } from '../src/api/client';
 
-describe('token storage', () => {
-  beforeEach(() => sessionStorage.clear());
-
-  it('round-trips a token through sessionStorage', () => {
-    expect(getAccessToken()).toBeNull();
-    setAccessToken('rt_secret');
-    expect(getAccessToken()).toBe('rt_secret');
-    clearAccessToken();
-    expect(getAccessToken()).toBeNull();
+describe('Rust API client boundary', () => {
+  beforeEach(() => {
+    document.cookie = 'zipship_csrf=; Max-Age=0; Path=/';
+    window.__ZIPSHIP_API_BASE_URL = undefined;
   });
 
-  it('authHeaders returns a Bearer header when logged in, empty object when not', () => {
-    expect(authHeaders()).toEqual({});
-    setAccessToken('rt_secret');
-    expect(authHeaders()).toEqual({ authorization: 'Bearer rt_secret' });
-  });
-});
-
-describe('getApiBaseUrl', () => {
-  it('reads the shell-injected value from window', () => {
-    (window as unknown as { __ZIPSHIP_API_BASE_URL?: string }).__ZIPSHIP_API_BASE_URL =
-      'http://api.test';
+  it('reads the shell-injected API base URL', () => {
+    window.__ZIPSHIP_API_BASE_URL = 'http://api.test';
     expect(getApiBaseUrl()).toBe('http://api.test');
   });
 
-  it('falls back to empty string when unset', () => {
-    (window as unknown as { __ZIPSHIP_API_BASE_URL?: string }).__ZIPSHIP_API_BASE_URL = undefined;
+  it('falls back to a same-origin base URL', () => {
     expect(getApiBaseUrl()).toBe('');
   });
-});
 
-describe('getApi client cache', () => {
-  it('returns the same client instance across calls (created lazily)', () => {
+  it('builds mutation headers from the CSRF cookie', () => {
+    document.cookie = 'zipship_csrf=csrf%20value; Path=/';
+    expect(getCsrfHeaders()).toEqual({ 'x-csrf-token': 'csrf value' });
+  });
+
+  it('fails closed when the CSRF cookie is absent', () => {
+    expect(() => getCsrfHeaders()).toThrow('CSRF token cookie is missing');
+  });
+
+  it('reuses one cookie-authenticated OpenAPI client', () => {
     expect(getApi()).toBe(getApi());
   });
 });

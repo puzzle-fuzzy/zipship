@@ -1,162 +1,162 @@
-import { Lock, Mail, User } from 'lucide-react';
+import { AlertCircle, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router';
+import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
 import { Button } from '../components/ui/button';
+import { Field, FieldError, FieldGroup, FieldLabel } from '../components/ui/field';
 import { Input } from '../components/ui/input';
+import { AuthShell } from '../features/auth/AuthShell';
+import { authErrorMessage } from '../features/auth/authErrorMessage';
 import { useTranslation } from '../i18n';
 import { displayNameSchema, emailSchema, passwordSchema } from '../lib/validation';
+import { useAuthStore } from '../stores/authStore';
 
 type Mode = 'login' | 'register';
+type FieldErrors = Partial<Record<'name' | 'email' | 'password', string>>;
 
-interface LoginPageProps {
-  onLogin: (email: string, password: string) => Promise<void>;
-  onRegister: (name: string, email: string, password: string) => Promise<void>;
-}
-
-export function LoginPage({ onLogin, onRegister }: LoginPageProps) {
+export function LoginPage() {
   const { t } = useTranslation();
+  const login = useAuthStore((state) => state.login);
+  const register = useAuthStore((state) => state.register);
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [requestError, setRequestError] = useState('');
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRequestError('');
 
-    const emailResult = emailSchema.safeParse(email);
-    if (!emailResult.success) {
-      setError(emailResult.error.issues[0].message);
-      return;
-    }
-
-    const passwordResult = passwordSchema.safeParse(password);
-    if (!passwordResult.success) {
-      setError(passwordResult.error.issues[0].message);
-      return;
-    }
-
-    if (mode === 'register') {
-      const nameResult = displayNameSchema.safeParse(name);
-      if (!nameResult.success) {
-        setError(nameResult.error.issues[0].message);
-        return;
-      }
-    }
+    const nextErrors: FieldErrors = {};
+    const parsedEmail = emailSchema.safeParse(email);
+    const parsedPassword = passwordSchema.safeParse(password);
+    const parsedName = mode === 'register' ? displayNameSchema.safeParse(name) : null;
+    if (!parsedEmail.success) nextErrors.email = t('auth.invalidEmail');
+    if (!parsedPassword.success) nextErrors.password = t('auth.passwordPolicy');
+    if (parsedName && !parsedName.success) nextErrors.name = t('auth.invalidName');
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0 || !parsedEmail.success || !parsedPassword.success) return;
 
     setLoading(true);
     try {
       if (mode === 'login') {
-        await onLogin(emailResult.data, passwordResult.data);
-      } else {
-        await onRegister(name.trim(), emailResult.data, passwordResult.data);
+        await login(parsedEmail.data, parsedPassword.data);
+      } else if (parsedName?.success) {
+        await register(parsedName.data, parsedEmail.data, parsedPassword.data);
       }
+    } catch (error) {
+      setRequestError(authErrorMessage(error, t, mode === 'login' ? 'auth.loginFailed' : 'auth.registrationFailed'));
     } finally {
       setLoading(false);
     }
   };
 
   const toggleMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login');
-    setError('');
+    setMode((current) => (current === 'login' ? 'register' : 'login'));
+    setFieldErrors({});
+    setRequestError('');
   };
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-10">
-      <section className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">{t('app.name')}</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{t('auth.productDesc')}</p>
-        </div>
+    <AuthShell
+      title={mode === 'login' ? t('auth.welcome') : t('auth.createAccount')}
+      description={mode === 'login' ? t('auth.welcomeDesc') : t('auth.createAccountDesc')}
+    >
+      <form onSubmit={handleSubmit} noValidate>
+        <FieldGroup>
+          {requestError && (
+            <Alert variant="destructive">
+              <AlertCircle aria-hidden="true" />
+              <AlertTitle>{t('auth.couldNotContinue')}</AlertTitle>
+              <AlertDescription>{requestError}</AlertDescription>
+            </Alert>
+          )}
 
-        <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold tracking-tight">
-              {mode === 'login' ? t('auth.welcome') : t('auth.createAccount')}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {mode === 'login' ? t('auth.welcomeDesc') : t('auth.createAccountDesc')}
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-
-            {mode === 'register' && (
-              <FieldIcon icon={User}>
-                <Input
-                  placeholder={t('auth.name')}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="pl-9"
-                />
-              </FieldIcon>
-            )}
-
-            <FieldIcon icon={Mail}>
+          {mode === 'register' && (
+            <Field data-invalid={Boolean(fieldErrors.name)}>
+              <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
               <Input
-                type="email"
-                placeholder="you@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-9"
+                id="name"
+                name="name"
+                autoComplete="name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                aria-invalid={Boolean(fieldErrors.name)}
+                aria-describedby={fieldErrors.name ? 'name-error' : undefined}
+                disabled={loading}
               />
-            </FieldIcon>
+              <FieldError id="name-error">{fieldErrors.name}</FieldError>
+            </Field>
+          )}
 
-            <FieldIcon icon={Lock}>
-              <Input
-                type="password"
-                placeholder={mode === 'register' ? t('auth.passwordHint') : t('auth.password')}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="pl-9"
-              />
-            </FieldIcon>
+          <Field data-invalid={Boolean(fieldErrors.email)}>
+            <FieldLabel htmlFor="email">{t('auth.email')}</FieldLabel>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+              disabled={loading}
+            />
+            <FieldError id="email-error">{fieldErrors.email}</FieldError>
+          </Field>
 
-            <Button type="submit" className="w-full" disabled={loading || !email || !password || (mode === 'register' && !name)}>
-              {loading
-                ? mode === 'login'
-                  ? t('auth.signingIn')
-                  : t('auth.registering')
-                : mode === 'login'
-                  ? t('auth.signIn')
-                  : t('auth.register')}
-            </Button>
-          </form>
+          <Field data-invalid={Boolean(fieldErrors.password)}>
+            <div className="flex items-center justify-between gap-4">
+              <FieldLabel htmlFor="password">{t('auth.password')}</FieldLabel>
+              {mode === 'login' && (
+                <Link className="text-sm font-medium underline underline-offset-4" to="/forgot-password">
+                  {t('auth.forgotPassword')}
+                </Link>
+              )}
+            </div>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? 'password-error' : undefined}
+              disabled={loading}
+            />
+            <FieldError id="password-error">{fieldErrors.password}</FieldError>
+          </Field>
 
-          <div className="mt-5 text-center text-sm text-muted-foreground">
-            {mode === 'login' ? (
-              <>
-                {t('auth.noAccount')}{' '}
-                <button type="button" className="font-medium text-foreground underline underline-offset-4" onClick={toggleMode}>
-                  {t('auth.createOne')}
-                </button>
-              </>
-            ) : (
-              <>
-                {t('auth.hasAccount')}{' '}
-                <button type="button" className="font-medium text-foreground underline underline-offset-4" onClick={toggleMode}>
-                  {t('auth.signInLink')}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
+          <Button type="submit" size="lg" className="w-full" disabled={loading}>
+            {loading && <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />}
+            {loading
+              ? mode === 'login'
+                ? t('auth.signingIn')
+                : t('auth.registering')
+              : mode === 'login'
+                ? t('auth.signIn')
+                : t('auth.register')}
+          </Button>
+        </FieldGroup>
+      </form>
 
-function FieldIcon({ icon: Icon, children }: { icon: typeof Mail; children: React.ReactNode }) {
-  return (
-    <div className="relative">
-      <Icon className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-      {children}
-    </div>
+      <p className="mt-5 text-center text-sm text-muted-foreground">
+        {mode === 'login' ? t('auth.noAccount') : t('auth.hasAccount')}{' '}
+        <button
+          type="button"
+          className="font-medium text-foreground underline underline-offset-4"
+          onClick={toggleMode}
+          disabled={loading}
+        >
+          {mode === 'login' ? t('auth.createOne') : t('auth.signInLink')}
+        </button>
+      </p>
+    </AuthShell>
   );
 }

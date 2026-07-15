@@ -4,6 +4,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { useTranslation } from "../../i18n";
 import type { Release } from "../../stores/projectsStore";
+import { buildProductionUrls } from "./projectProductionUrls";
 import { parseReleaseReport, summarizeReleaseGate } from "./releaseReport";
 
 interface ProjectProductionPanelProps {
@@ -109,16 +110,6 @@ export function ProjectProductionPanel({
       </div>
     </section>
   );
-}
-
-export function buildProductionUrls(projectSlug: string, releaseHash: string) {
-  const origin =
-    typeof window === "undefined" || !window.location?.origin ? "" : window.location.origin.replace(/\/+$/, "");
-
-  return {
-    liveUrl: `${origin}/${projectSlug}/`,
-    pinnedUrl: `${origin}/${projectSlug}/${releaseHash}/`,
-  };
 }
 
 function UrlLine({

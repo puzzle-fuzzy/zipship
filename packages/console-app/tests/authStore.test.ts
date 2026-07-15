@@ -1,227 +1,119 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockApi, type MockApi } from "./helpers/mockApi";
-import { getAccessToken, setAccessToken } from "../src/api/client";
-
-/**
- * The auth store drives login / register / logout / initSession / updateProfile.
- * It depends on the Eden treaty client (`getApi()`) and the token helpers in
- * `api/client`. We mock only `getApi` (via the shared `createMockApi` treaty
- * proxy) and let the real token helpers run against jsdom `sessionStorage`, so
- * the token round-trip is exercised too.
- */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockApi, type MockApi } from './helpers/mockApi';
+import { getThrownApiErrorCode } from '../src/api/errors';
 
 const { mockApi, setMockApi } = vi.hoisted(() => {
-  let current: unknown = null;
+  let current: unknown;
   return {
     mockApi: () => current,
-    setMockApi: (a: unknown) => {
-      current = a;
+    setMockApi: (api: unknown) => {
+      current = api;
     },
   };
 });
 
-vi.mock("../src/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/api/client")>();
+vi.mock('../src/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/api/client')>();
   return { ...actual, getApi: () => mockApi() };
 });
 
-// Import the store AFTER vi.mock so it picks up the overridden getApi.
-const { useAuthStore } = await import("../src/stores/authStore");
+const { useAuthStore } = await import('../src/stores/authStore');
 
 let api: MockApi;
+const user = { id: 'u1', displayName: 'Ada', email: 'ada@example.com' };
 
 beforeEach(() => {
   api = createMockApi();
   setMockApi(api._api);
-  sessionStorage.clear();
-  useAuthStore.setState({ status: "loading", user: null, refreshToken: null });
+  document.cookie = 'zipship_csrf=test-csrf; Path=/';
+  useAuthStore.setState({ status: 'loading', user: null });
 });
 
-describe("authStore > login", () => {
-  it("authenticates and persists the refresh token on success", async () => {
-    api.verb("post").mockResolvedValueOnce({
-      data: {
-        user: { id: "u1", name: "Ada", email: "ada@example.com" },
-        session: { refreshToken: "rt-123" },
-      },
-    });
-
-    await useAuthStore.getState().login("ada@example.com", "pw12345678", "web");
-
-    const state = useAuthStore.getState();
-    expect(state.status).toBe("authenticated");
-    expect(state.user).toEqual({ id: "u1", name: "Ada", email: "ada@example.com" });
-    expect(state.refreshToken).toBe("rt-123");
-    expect(getAccessToken()).toBe("rt-123");
-    // login payload forwarded with clientType
-    expect(api.verb("post").mock.calls[0][0]).toEqual({
-      email: "ada@example.com",
-      password: "pw12345678",
-      clientType: "web",
-    });
-  });
-
-  it("throws INVALID_CREDENTIALS message on a 401 with that code", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "INVALID_CREDENTIALS" } } });
-
-    await expect(
-      useAuthStore.getState().login("ada@example.com", "wrong", "web"),
-    ).rejects.toThrow("Invalid email or password");
-    expect(useAuthStore.getState().status).not.toBe("authenticated");
-  });
-
-  it("throws the fallback on an unexpected error code", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "SOMETHING_ELSE" } } });
-    await expect(
-      useAuthStore.getState().login("ada@example.com", "pw", "web"),
-    ).rejects.toThrow("Login failed");
-  });
-
-  it("throws when the response has no data and no error", async () => {
-    api.verb("post").mockResolvedValueOnce({});
-    await expect(
-      useAuthStore.getState().login("ada@example.com", "pw12345678", "web"),
-    ).rejects.toThrow("Login failed — empty response");
-  });
-});
-
-describe("authStore > register", () => {
-  it("registers and authenticates in one step", async () => {
-    api.verb("post").mockResolvedValueOnce({
-      data: {
-        user: { id: "u2", name: "Grace", email: "grace@example.com" },
-        session: { refreshToken: "rt-reg" },
-      },
-    });
-
-    await useAuthStore.getState().register("Grace", "grace@example.com", "pw12345678");
-
-    const state = useAuthStore.getState();
-    expect(state.status).toBe("authenticated");
-    expect(state.user?.email).toBe("grace@example.com");
-    expect(state.refreshToken).toBe("rt-reg");
-    expect(getAccessToken()).toBe("rt-reg");
-    // register always uses web clientType
-    expect(api.verb("post").mock.calls[0][0]).toEqual({
-      name: "Grace",
-      email: "grace@example.com",
-      password: "pw12345678",
-      clientType: "web",
-    });
-  });
-
-  it("throws DUPLICATE_EMAIL message when the email is taken", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "DUPLICATE_EMAIL" } } });
-    await expect(
-      useAuthStore.getState().register("Ada", "ada@example.com", "pw12345678"),
-    ).rejects.toThrow("An account with this email already exists");
-  });
-
-  it("throws the fallback for an unknown error", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: {} });
-    await expect(
-      useAuthStore.getState().register("Ada", "ada@example.com", "pw12345678"),
-    ).rejects.toThrow("Registration failed");
-  });
-});
-
-describe("authStore > logout", () => {
-  it("clears the session and returns to login", async () => {
-    api.verb("post").mockResolvedValueOnce({
-      data: {
-        user: { id: "u1", name: "Ada", email: "ada@example.com" },
-        session: { refreshToken: "rt-1" },
-      },
-    });
-    await useAuthStore.getState().login("ada@example.com", "pw12345678", "web");
-    expect(getAccessToken()).toBe("rt-1");
-
-    useAuthStore.getState().logout();
-
-    const state = useAuthStore.getState();
-    expect(state.status).toBe("login");
-    expect(state.user).toBeNull();
-    expect(state.refreshToken).toBeNull();
-    expect(getAccessToken()).toBeNull();
-  });
-});
-
-describe("authStore > initSession", () => {
-  it("moves to login when no token is stored", async () => {
-    await useAuthStore.getState().initSession();
-    expect(useAuthStore.getState().status).toBe("login");
-    // no API call is made without a token
-    expect(api.verb("get").mock.calls).toHaveLength(0);
-  });
-
-  it("restores the session from a stored token", async () => {
-    setAccessToken("rt-saved");
-    api.verb("get").mockResolvedValueOnce({
-      data: { user: { id: "u1", name: "Ada", email: "ada@example.com" } },
-    });
+describe('authStore', () => {
+  it('restores a server-side cookie session', async () => {
+    api.verb('get').mockResolvedValueOnce({ data: { user } });
 
     await useAuthStore.getState().initSession();
 
-    const state = useAuthStore.getState();
-    expect(state.status).toBe("authenticated");
-    expect(state.user?.email).toBe("ada@example.com");
-    expect(state.refreshToken).toBe("rt-saved");
-    // Authorization header forwarded from the stored token
-    expect(api.verb("get").mock.calls[0][0]).toEqual({
-      headers: { authorization: "Bearer rt-saved" },
+    expect(api.verb('get')).toHaveBeenCalledWith('/_api/auth/me');
+    expect(useAuthStore.getState()).toMatchObject({
+      status: 'authenticated',
+      user: { id: 'u1', name: 'Ada', email: 'ada@example.com' },
     });
   });
 
-  it("clears the token and moves to login when the token is rejected", async () => {
-    setAccessToken("rt-stale");
-    api.verb("get").mockResolvedValueOnce({}); // no data → treat as logged out
-
+  it('moves to the signed-out boundary when no session is present', async () => {
+    api.verb('get').mockResolvedValueOnce({ error: { code: 'UNAUTHENTICATED' } });
     await useAuthStore.getState().initSession();
-
-    expect(useAuthStore.getState().status).toBe("login");
-    expect(getAccessToken()).toBeNull();
+    expect(useAuthStore.getState()).toMatchObject({ status: 'login', user: null });
   });
 
-  it("survives a network error (clears and moves to login)", async () => {
-    setAccessToken("rt-1");
-    api.verb("get").mockRejectedValueOnce(new Error("network down"));
+  it('logs in without exposing or persisting a bearer token', async () => {
+    api.verb('post').mockResolvedValueOnce({ data: { user } });
 
-    await useAuthStore.getState().initSession();
+    await useAuthStore.getState().login('ada@example.com', 'correct horse battery');
 
-    expect(useAuthStore.getState().status).toBe("login");
-    expect(getAccessToken()).toBeNull();
-  });
-});
-
-describe("authStore > updateProfile", () => {
-  it("throws when not authenticated", async () => {
-    await expect(useAuthStore.getState().updateProfile("New Name")).rejects.toThrow(
-      "Not authenticated",
-    );
-  });
-
-  it("updates the user's name on success", async () => {
-    setAccessToken("rt-1");
-    useAuthStore.setState({
-      status: "authenticated",
-      user: { id: "u1", name: "Old", email: "ada@example.com" },
-      refreshToken: "rt-1",
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/auth/login', {
+      body: { email: 'ada@example.com', password: 'correct horse battery' },
     });
-    api.verb("patch").mockResolvedValueOnce({
-      data: { user: { id: "u1", name: "New", email: "ada@example.com" } },
-    });
-
-    await useAuthStore.getState().updateProfile("New");
-
-    expect(useAuthStore.getState().user?.name).toBe("New");
-    expect(api.verb("patch").mock.calls[0][0]).toEqual({ name: "New" });
+    expect(useAuthStore.getState().status).toBe('authenticated');
+    expect(sessionStorage.length).toBe(0);
   });
 
-  it("throws on a patch error", async () => {
-    setAccessToken("rt-1");
-    api.verb("patch").mockResolvedValueOnce({ error: { value: { code: "X" } } });
-    await expect(useAuthStore.getState().updateProfile("New")).rejects.toThrow(
-      "Failed to update profile",
-    );
+  it('retains stable login error codes for localized UI messages', async () => {
+    api.verb('post').mockResolvedValueOnce({ error: { code: 'INVALID_CREDENTIALS' } });
+    const promise = useAuthStore.getState().login('ada@example.com', 'wrong password');
+    await expect(promise).rejects.toThrow('Invalid email or password');
+    await promise.catch((error) => expect(getThrownApiErrorCode(error)).toBe('INVALID_CREDENTIALS'));
+  });
+
+  it('registers with the Rust displayName contract', async () => {
+    api.verb('post').mockResolvedValueOnce({ data: { user } });
+    await useAuthStore.getState().register('Ada', 'ada@example.com', 'correct horse battery');
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/auth/register', {
+      body: { displayName: 'Ada', email: 'ada@example.com', password: 'correct horse battery' },
+    });
+    expect(useAuthStore.getState().status).toBe('authenticated');
+  });
+
+  it('logs out with CSRF protection before clearing local user state', async () => {
+    useAuthStore.setState({ status: 'authenticated', user: { id: 'u1', name: 'Ada', email: 'ada@example.com' } });
+    api.verb('post').mockResolvedValueOnce({});
+
+    await useAuthStore.getState().logout();
+
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/auth/logout', {
+      params: { header: { 'x-csrf-token': 'test-csrf' } },
+    });
+    expect(useAuthStore.getState()).toMatchObject({ status: 'login', user: null });
+  });
+
+  it('updates the profile through the CSRF-protected Rust route', async () => {
+    useAuthStore.setState({ status: 'authenticated', user: { id: 'u1', name: 'Ada', email: 'ada@example.com' } });
+    api.verb('patch').mockResolvedValueOnce({ data: { user: { ...user, displayName: 'Ada Lovelace' } } });
+    await useAuthStore.getState().updateProfile('Ada Lovelace');
+    expect(api.verb('patch')).toHaveBeenCalledWith('/_api/auth/me', {
+      params: { header: { 'x-csrf-token': 'test-csrf' } },
+      body: { displayName: 'Ada Lovelace' },
+    });
+    expect(useAuthStore.getState().user?.name).toBe('Ada Lovelace');
+  });
+
+  it('requests recovery with the non-enumerating public route', async () => {
+    api.verb('post').mockResolvedValueOnce({});
+    await useAuthStore.getState().requestPasswordReset('ada@example.com');
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/auth/password-resets', {
+      body: { email: 'ada@example.com' },
+    });
+  });
+
+  it('confirms recovery and returns to a signed-out state', async () => {
+    useAuthStore.setState({ status: 'authenticated', user: { id: 'u1', name: 'Ada', email: 'ada@example.com' } });
+    api.verb('post').mockResolvedValueOnce({});
+    await useAuthStore.getState().confirmPasswordReset('secret-token', 'correct horse battery');
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/auth/password-resets/confirm', {
+      body: { token: 'secret-token', password: 'correct horse battery' },
+    });
+    expect(useAuthStore.getState()).toMatchObject({ status: 'login', user: null });
   });
 });

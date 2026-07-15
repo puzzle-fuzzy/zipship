@@ -1,5 +1,8 @@
-import { create } from 'zustand';
-import { authHeaders, getApi } from '../api/client';
+import type { components } from "@zipship/api-client";
+import { create } from "zustand";
+import { getApi } from "../api/client";
+
+type AuditEntryDto = components["schemas"]["AuditEntryResponse"];
 
 export interface AuditLogEntry {
   id: string;
@@ -15,32 +18,45 @@ export interface AuditLogEntry {
 interface AuditState {
   logs: AuditLogEntry[];
   loading: boolean;
-  /** Set when the last fetch failed; cleared on a successful reload. */
   error: string | null;
   fetchAudit: (organizationId: string) => Promise<void>;
 }
 
-/** Organization-scoped audit trail. Backed by GET /_api/organizations/:id/audit. */
+function auditView(entry: AuditEntryDto): AuditLogEntry {
+  return {
+    id: entry.id,
+    action: entry.action,
+    actorId: entry.actor?.id ?? null,
+    targetType: entry.targetType,
+    targetId: entry.targetId ?? null,
+    projectId: entry.projectId ?? null,
+    metadata: entry.metadata,
+    createdAt: entry.createdAt,
+  };
+}
+
 export const useAuditStore = create<AuditState>((set) => ({
   logs: [],
   loading: false,
   error: null,
 
-  fetchAudit: async (organizationId: string) => {
+  fetchAudit: async (organizationId) => {
     set({ loading: true, error: null });
     try {
-      const res = await getApi()._api.organizations({ organizationId }).audit.get({
-        headers: authHeaders(),
-      });
-      if (res.data) {
-        set({ logs: res.data.auditLogs as AuditLogEntry[], loading: false, error: null });
-      } else {
-        // No data and no thrown error → treat as a failed load so the UI can
-        // surface it instead of spinning on "Loading..." forever.
-        set({ loading: false, error: 'Failed to load activity' });
+      const result = await getApi().GET(
+        "/_api/organizations/{organization_id}/audit-logs",
+        { params: { path: { organization_id: organizationId } } },
+      );
+      if (result.error || !result.data) {
+        throw new Error("Failed to load activity");
       }
+      set({
+        logs: result.data.items.map(auditView),
+        loading: false,
+        error: null,
+      });
     } catch {
-      set({ loading: false, error: 'Failed to load activity' });
+      set({ loading: false, error: "Failed to load activity" });
     }
   },
 }));

@@ -332,7 +332,7 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 - Access Plane 使用独立监听地址与控制面隔离；固定预览 URL 绑定 Project Slug + Release UUID，正式 URL `/{project_slug}/` 每次从数据库活动指针解析不可变 Artifact，两类地址共享 Manifest 白名单、MIME、ETag、条件请求、Range、缓存策略和 HTML 导航 SPA fallback。
 - PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、原子项目设置更新、无变化更新降噪、上传重试、幂等入队、并发 Job、租约恢复、Artifact 状态收敛、固定/活动版本解析、并发发布、幂等重放、回滚资格、成员角色/移除并发更新、完整邀请状态机、密码恢复并发与审计游标分页；Rust 全工作区现有 116 项常规测试，以及 14 项真实 PostgreSQL、2 项完整 HTTP E2E 和 1 项真实 SMTP 测试。
 - 真实 E2E 已贯通注册 → 项目设置更新 → 两次 HTTP 上传 → PostgreSQL Job → Worker → 两个不可变 Artifact/ready Release → Release 历史 → 固定 Preview → 发布 A → 正式地址 A → 发布 B → 正式地址 B → 回滚 A → 项目审计查询，并验证固定 B Preview 不受活动指针切换影响。
-- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员生命周期、邀请生命周期，以及密码恢复后端与可靠 SMTP Outbox 已经完成。下一步迁移 Console 认证/恢复界面和 Store；不交付 Eden/Rust 双 Client 兼容运行模式。
+- R2 的 Rust OpenAPI 快照、TypeScript Client 生成与一致性门禁、Cookie/CORS 浏览器传输策略、Release 历史、组织审计读取、当前用户资料更新、成员生命周期、邀请生命周期、密码恢复后端与可靠 SMTP Outbox，以及 Console 全 Store/认证恢复界面切换已经完成；未交付 Eden/Rust 双 Client 兼容运行模式。
 - 非破坏性的项目设置更新已经开放：owner/admin 可在行锁事务内更新名称、Slug、描述、SPA fallback 与缓存策略，实际变化和审计日志原子提交。项目删除仍不开放，必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付；自定义域名走独立验证状态机，不混入项目 PATCH。
 
 ### 已完成切片：成员移除
@@ -376,10 +376,19 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 后端实现已完成上述数据库、领域服务、API、匿名地址限流、加密 Outbox、SMTP Worker、生产配置与契约验收。申请接口按客户端地址每十分钟最多处理五次，超限仍返回统一 `202`；确认接口每十分钟最多尝试十次，超限返回稳定的 `ANONYMOUS_RATE_LIMITED`。默认只采用 TCP 对端地址，只有显式列入 `ZIPSHIP_TRUSTED_PROXY_NETWORKS` 的代理才允许参与 `X-Forwarded-For` 解析。
 
-### 下一实施切片：Console 认证与密码恢复界面
+### 已完成切片：Console 认证与密码恢复界面
 
 1. Console 认证 Store 全面切换到 Rust OpenAPI Client 和 HttpOnly Cookie Session，删除旧 Bearer/`sessionStorage` 路径，不保留双客户端兼容分支。
 2. 登录页增加“忘记密码”入口与统一成功提示；申请页不得根据邮箱、账号状态或限流结果展示差异信息。
 3. `/reset-password` 首次加载从 URL Fragment 读取令牌后立即使用 `history.replaceState` 清除地址栏 Fragment；令牌只保存在页面内存，不进入持久化 Store、日志、分析事件或 URL 查询参数。
 4. 确认表单在本地复用密码策略提示，通过匿名确认 API 提交；成功后跳转登录并提示所有旧会话已失效，不自动登录。
 5. 覆盖无令牌、无效/过期令牌、弱密码、重复提交、网络失败、刷新丢失内存令牌、移动端布局、键盘操作和无障碍状态播报；完成 Console 单元测试、类型检查与浏览器 E2E。
+
+实现已完成：Console 删除 `@zipship/api`/Eden、Bearer 和 `sessionStorage` 认证路径，所有 Store 使用 Rust 生成 Client、Cookie 与 CSRF；登录、注册、注销、资料、项目、成员、审计、上传、发布和回滚统一使用最终 Rust 路由。密码恢复页面实现 Fragment 凭证即时清理、同标签页新链接接管、统一防枚举文案和全会话撤销提示。Console 139 项测试、TypeScript、OpenAPI 漂移、Lint、Web 生产构建及桌面/390px 浏览器验收通过。
+
+### 下一实施切片：Console 邀请接受与管理闭环
+
+1. 增加 `/invitations/accept#token=...` 页面，复用一次性 Fragment 内存凭证边界；凭证不得进入查询参数、持久化 Store、日志或分析事件。
+2. 未登录收件人可以先完成登录/注册再回到邀请确认，不在 URL 中回传令牌；已登录但邮箱不匹配时展示稳定错误且不得泄露邀请目标邮箱。
+3. Members 页面接入活动邀请列表与撤销操作，严格按 Rust owner/admin 权限和稳定错误码渲染，不重新引入旧“仅邀请已注册用户”逻辑。
+4. 覆盖缺失/过期/撤销/错误邮箱/安全重放、登录往返、CSRF、移动端、键盘和浏览器控制台；保持生成 Client 漂移、类型、Lint、单测和生产构建全绿。

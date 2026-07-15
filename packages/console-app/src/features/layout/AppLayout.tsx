@@ -21,7 +21,7 @@ import { AppSidebar } from './AppSidebar';
 
 export function AppLayout() {
   const { t } = useTranslation();
-  const { user, refreshToken, logout } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const { fetchProjects, createProject } = useProjectsStore();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
@@ -29,15 +29,17 @@ export function AppLayout() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
-    if (refreshToken) {
-      fetchProjects();
-    }
-  }, [refreshToken, fetchProjects]);
+    void fetchProjects();
+  }, [fetchProjects]);
 
-  const handleLogout = () => {
-    setShowLogoutConfirm(false);
-    logout();
-    toast.info(t('app.signOut'));
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setShowLogoutConfirm(false);
+      toast.info(t('app.signOut'));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('auth.signOutFailed'));
+    }
   };
 
   return (
@@ -87,7 +89,7 @@ export function AppLayout() {
             <Button variant="outline" onClick={() => setShowLogoutConfirm(false)}>
               {t('common.cancel')}
             </Button>
-            <Button onClick={handleLogout}>{t('app.signOut')}</Button>
+            <Button onClick={() => void handleLogout()}>{t('app.signOut')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

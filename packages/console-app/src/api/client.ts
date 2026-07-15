@@ -1,54 +1,27 @@
-import { treaty } from "@elysia/eden";
-import type { App } from "@zipship/api";
+import {
+  createApiClient,
+  csrfHeaders,
+  type ApiClient,
+} from "@zipship/api-client";
 
-/**
- * API client foundation for the console app.
- *
- * Previously every Zustand store method called `createApiClient(apiBaseUrl)`
- * (13 copies) and read the refresh token from props. This module is the single
- * place that knows how to reach the API and where the session token lives.
- * Stores and services import {@link api}, {@link getAccessToken}, and
- * {@link authHeaders} instead of re-deriving them.
- */
-
-const TOKEN_KEY = "zipship_refresh_token";
-
-/** Base URL injected by the shell (web/desktop) into `window` at boot. */
+/** Base URL injected by the web or desktop shell before the first API call. */
 export function getApiBaseUrl(): string {
   if (typeof window === "undefined") return "";
-  return (
-    (window as unknown as { __ZIPSHIP_API_BASE_URL?: string })
-      .__ZIPSHIP_API_BASE_URL ?? ""
-  );
+  return window.__ZIPSHIP_API_BASE_URL ?? "";
 }
 
-// Session token (kept in sessionStorage so it survives reloads).
-export function getAccessToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return sessionStorage.getItem(TOKEN_KEY);
-}
-
-export function setAccessToken(token: string): void {
-  sessionStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearAccessToken(): void {
-  sessionStorage.removeItem(TOKEN_KEY);
-}
-
-/** Authorization header for authenticated requests, or `{}` when logged out. */
-export function authHeaders(): { authorization: string } | Record<string, never> {
-  const token = getAccessToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
-}
+let client: ApiClient | null = null;
 
 /**
- * Eden Treaty client bound to the shell-injected base URL. Created lazily on
- * first access so the `window` global (set during App render) is available.
+ * The Console uses the Rust OpenAPI contract exclusively. Authentication is
+ * carried by hardened browser cookies, never JavaScript-readable bearer tokens.
  */
-let _client: ReturnType<typeof treaty<App>> | null = null;
+export function getApi(): ApiClient {
+  client ??= createApiClient(getApiBaseUrl());
+  return client;
+}
 
-export function getApi(): ReturnType<typeof treaty<App>> {
-  if (!_client) _client = treaty<App>(getApiBaseUrl());
-  return _client;
+/** Read the non-HttpOnly CSRF cookie for authenticated state-changing calls. */
+export function getCsrfHeaders(): { "x-csrf-token": string } {
+  return csrfHeaders();
 }

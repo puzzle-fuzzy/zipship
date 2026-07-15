@@ -26,7 +26,7 @@ export const displayNameSchema = z.string().trim().min(1, { message: "Name is re
 export const emailSchema = z.string().trim().toLowerCase().email({ message: "Enter a valid email" });
 
 /** Password: 8–128 chars (matches the API). */
-export const passwordSchema = z.string().min(8, { message: "Password must be at least 8 characters" }).max(128);
+export const passwordSchema = z.string().min(12).max(128);
 
 /** A whole create-project form. */
 export const createProjectSchema = z.object({

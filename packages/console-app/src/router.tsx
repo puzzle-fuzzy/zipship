@@ -4,11 +4,39 @@ import { ProjectListPage } from './pages/ProjectListPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
 import { LogsPage } from './pages/LogsPage';
 import { StoragePage } from './pages/StoragePage';
+import { LoginPage } from './pages/LoginPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { AuthenticatedOnly, HomeRedirect, PublicOnly } from './features/auth/AuthRouteGuards';
 
 export const router = createBrowserRouter([
   {
+    path: '/login',
+    element: (
+      <PublicOnly>
+        <LoginPage />
+      </PublicOnly>
+    ),
+  },
+  {
+    path: '/forgot-password',
+    element: (
+      <PublicOnly>
+        <ForgotPasswordPage />
+      </PublicOnly>
+    ),
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPasswordPage />,
+  },
+  {
     path: '/app',
-    element: <AppLayout />,
+    element: (
+      <AuthenticatedOnly>
+        <AppLayout />
+      </AuthenticatedOnly>
+    ),
     children: [
       // Default app view is the project list.
       { index: true, element: <Navigate to="/app/projects" replace /> },
@@ -20,6 +48,6 @@ export const router = createBrowserRouter([
   },
   {
     path: '*',
-    element: <Navigate to="/app" replace />,
+    element: <HomeRedirect />,
   },
 ]);

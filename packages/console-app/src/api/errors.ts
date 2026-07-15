@@ -1,58 +1,61 @@
-/**
- * Centralized API error mapping.
- *
- * The backend returns stable `code` strings (e.g. `DUPLICATE_EMAIL`,
- * `FORBIDDEN`). Each store used to keep its own `code → message` table and
- * repeat the same extract-code-or-fallback dance. {@link mapApiError} does that
- * once; call sites pass their domain-specific code map.
- */
-
-export interface TreatyError {
-  status: number;
-  error?: { value: unknown };
+export interface OpenApiFailure {
+  error?: unknown;
+  response?: Response;
 }
 
-/** Pull the stable `code` field out of a treaty error body, if present. */
-export function getApiErrorCode(res: TreatyError | null | undefined): string | undefined {
-  const value = res?.error?.value as { code?: string } | undefined;
-  return value?.code;
+export class ApiClientError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = "ApiClientError";
+  }
 }
 
-/**
- * Convert a treaty error response into a user-facing `Error`. Picks the mapped
- * message for a known code, otherwise `fallback`.
- */
+export function getApiErrorCode(
+  result: OpenApiFailure | null | undefined,
+): string | undefined {
+  const body = result?.error as { code?: unknown } | undefined;
+  return typeof body?.code === "string" ? body.code : undefined;
+}
+
 export function mapApiError(
-  res: TreatyError,
+  result: OpenApiFailure,
   options: { codes: Record<string, string>; fallback: string },
 ): Error {
-  const code = getApiErrorCode(res);
-  return new Error((code && options.codes[code]) || options.fallback);
+  const code = getApiErrorCode(result);
+  return new ApiClientError(
+    (code && options.codes[code]) || options.fallback,
+    code,
+  );
 }
 
-/**
- * The single shared table of API error codes → default messages. Components can
- * use these directly, or override per-call via {@link mapApiError}'s `codes`.
- */
+export function getThrownApiErrorCode(error: unknown): string | undefined {
+  return error instanceof ApiClientError ? error.code : undefined;
+}
+
 export const API_ERROR_MESSAGES: Record<string, string> = {
-  UNAUTHORIZED: "Session expired — please sign in again",
+  UNAUTHENTICATED: "Session expired, please sign in again",
+  INVALID_CSRF_TOKEN: "This page is stale, refresh and try again",
   FORBIDDEN: "You don't have permission to do that",
-  VALIDATION_ERROR: "Validation failed — check your input",
+  INVALID_JSON: "Please check your input and try again",
   NOT_FOUND: "Not found",
 
-  // auth
   INVALID_CREDENTIALS: "Invalid email or password",
+  ACCOUNT_DISABLED: "This account is disabled",
   DUPLICATE_EMAIL: "An account with this email already exists",
-  INVALID_INPUT: "Please check your input and try again",
+  INVALID_EMAIL: "Enter a valid email",
+  INVALID_DISPLAY_NAME: "Enter a valid display name",
+  INVALID_PASSWORD: "Password must be between 12 and 128 characters",
+  INVALID_PASSWORD_RESET_TOKEN: "This reset link is invalid or has expired",
+  ANONYMOUS_RATE_LIMITED: "Too many attempts, wait before trying again",
 
-  // projects / releases
   DUPLICATE_PROJECT_SLUG: "A project with this slug already exists",
   PROJECT_NOT_FOUND: "Project not found",
   RELEASE_NOT_FOUND: "Release not found",
 
-  // members / invitations
-  USER_NOT_FOUND: "No user found with this email",
   ALREADY_MEMBER: "This user is already a member",
-  INVITATION_PENDING: "An invitation is already pending for this email",
+  INVITATION_ALREADY_PENDING: "An invitation is already pending for this email",
   LAST_OWNER: "Can't remove or demote the last owner",
 } as const;

@@ -19,7 +19,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     currentReleaseId: null,
     spaFallback: true,
     cachePolicy: "standard",
-    customDomains: [],
     status: "active",
     visibility: "private",
     createdBy: "user-1",

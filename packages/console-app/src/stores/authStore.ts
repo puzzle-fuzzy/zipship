@@ -1,12 +1,6 @@
-import { create } from 'zustand';
-import {
-  authHeaders,
-  clearAccessToken,
-  getAccessToken,
-  getApi,
-  setAccessToken,
-} from '../api/client';
-import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
+import { create } from "zustand";
+import { getApi, getCsrfHeaders } from "../api/client";
+import { API_ERROR_MESSAGES, mapApiError } from "../api/errors";
 
 interface AuthUser {
   id: string;
@@ -14,116 +8,142 @@ interface AuthUser {
   email: string;
 }
 
-type AuthStatus = 'loading' | 'login' | 'authenticated';
+type AuthStatus = "loading" | "login" | "authenticated";
 
 interface AuthState {
   status: AuthStatus;
   user: AuthUser | null;
-  refreshToken: string | null;
 
   initSession: () => Promise<void>;
-  login: (email: string, password: string, clientType: 'web' | 'desktop') => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateProfile: (name: string) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  confirmPasswordReset: (token: string, password: string) => Promise<void>;
+}
+
+function userView(user: {
+  id: string;
+  email: string;
+  displayName: string;
+}): AuthUser {
+  return { id: user.id, email: user.email, name: user.displayName };
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
-  status: 'loading',
+  status: "loading",
   user: null,
-  refreshToken: null,
 
   initSession: async () => {
-    const saved = getAccessToken();
-    if (!saved) {
-      set({ status: 'login' });
-      return;
-    }
-
     try {
-      const api = getApi();
-      const res = await api._api.auth.me.get({
-        headers: { authorization: `Bearer ${saved}` },
-      });
-
-      if (res.data) {
-        set({ status: 'authenticated', user: res.data.user, refreshToken: saved });
-      } else {
-        clearAccessToken();
-        set({ status: 'login' });
+      const result = await getApi().GET("/_api/auth/me");
+      if (result.data) {
+        set({ status: "authenticated", user: userView(result.data.user) });
+        return;
       }
     } catch {
-      clearAccessToken();
-      set({ status: 'login' });
+      // Network failures and absent sessions share the signed-out boundary.
     }
+    set({ status: "login", user: null });
   },
 
-  login: async (email, password, clientType) => {
-    const api = getApi();
-    const res = await api._api.auth.login.post({ email, password, clientType });
-
-    if (res.error) {
-      throw mapApiError(res, {
+  login: async (email, password) => {
+    const result = await getApi().POST("/_api/auth/login", {
+      body: { email, password },
+    });
+    if (result.error || !result.data) {
+      throw mapApiError(result, {
         codes: {
           INVALID_CREDENTIALS: API_ERROR_MESSAGES.INVALID_CREDENTIALS,
-          UNAUTHORIZED: API_ERROR_MESSAGES.INVALID_CREDENTIALS,
-          VALIDATION_ERROR: API_ERROR_MESSAGES.VALIDATION_ERROR,
+          ACCOUNT_DISABLED: API_ERROR_MESSAGES.ACCOUNT_DISABLED,
+          INVALID_EMAIL: API_ERROR_MESSAGES.INVALID_EMAIL,
+          INVALID_PASSWORD: API_ERROR_MESSAGES.INVALID_PASSWORD,
         },
-        fallback: 'Login failed',
+        fallback: "Login failed",
       });
     }
-
-    if (!res.data) {
-      throw new Error('Login failed — empty response');
-    }
-
-    const data = res.data;
-    setAccessToken(data.session.refreshToken);
-    set({ status: 'authenticated', user: data.user, refreshToken: data.session.refreshToken });
+    set({ status: "authenticated", user: userView(result.data.user) });
   },
 
   register: async (name, email, password) => {
-    const api = getApi();
-    const res = await api._api.auth.register.post({ name, email, password, clientType: 'web' });
-
-    if (res.error) {
-      throw mapApiError(res, {
+    const result = await getApi().POST("/_api/auth/register", {
+      body: { displayName: name, email, password },
+    });
+    if (result.error || !result.data) {
+      throw mapApiError(result, {
         codes: {
           DUPLICATE_EMAIL: API_ERROR_MESSAGES.DUPLICATE_EMAIL,
-          INVALID_INPUT: API_ERROR_MESSAGES.INVALID_INPUT,
+          INVALID_EMAIL: API_ERROR_MESSAGES.INVALID_EMAIL,
+          INVALID_DISPLAY_NAME: API_ERROR_MESSAGES.INVALID_DISPLAY_NAME,
+          INVALID_PASSWORD: API_ERROR_MESSAGES.INVALID_PASSWORD,
         },
-        fallback: 'Registration failed',
+        fallback: "Registration failed",
       });
     }
-
-    // Registration already returns a session — no separate login call needed.
-    setAccessToken(res.data.session.refreshToken);
-    set({
-      status: 'authenticated',
-      user: res.data.user,
-      refreshToken: res.data.session.refreshToken,
-    });
+    set({ status: "authenticated", user: userView(result.data.user) });
   },
 
-  logout: () => {
-    clearAccessToken();
-    set({ status: 'login', user: null, refreshToken: null });
+  logout: async () => {
+    const result = await getApi().POST("/_api/auth/logout", {
+      params: { header: getCsrfHeaders() },
+    });
+    if (result.error) {
+      throw mapApiError(result, {
+        codes: {
+          INVALID_CSRF_TOKEN: API_ERROR_MESSAGES.INVALID_CSRF_TOKEN,
+          UNAUTHENTICATED: API_ERROR_MESSAGES.UNAUTHENTICATED,
+        },
+        fallback: "Sign out failed",
+      });
+    }
+    set({ status: "login", user: null });
   },
 
   updateProfile: async (name) => {
-    const token = getAccessToken();
-    if (!token) throw new Error('Not authenticated');
-    const api = getApi();
-    const res = await api._api.auth.me.patch(
-      { name },
-      { headers: { authorization: `Bearer ${token}` } },
-    );
-    if (res.error) throw new Error('Failed to update profile');
-    if (res.data) {
-      set({ user: res.data.user });
+    const result = await getApi().PATCH("/_api/auth/me", {
+      params: { header: getCsrfHeaders() },
+      body: { displayName: name },
+    });
+    if (result.error || !result.data) {
+      throw mapApiError(result, {
+        codes: {
+          INVALID_DISPLAY_NAME: API_ERROR_MESSAGES.INVALID_DISPLAY_NAME,
+          INVALID_CSRF_TOKEN: API_ERROR_MESSAGES.INVALID_CSRF_TOKEN,
+        },
+        fallback: "Failed to update profile",
+      });
+    }
+    set({ user: userView(result.data.user) });
+  },
+
+  requestPasswordReset: async (email) => {
+    const result = await getApi().POST("/_api/auth/password-resets", {
+      body: { email },
+    });
+    if (result.error) {
+      throw mapApiError(result, {
+        codes: {},
+        fallback: "Password reset request failed",
+      });
     }
   },
-}));
 
-// Re-exported for components that still want a typed header builder.
-export { authHeaders };
+  confirmPasswordReset: async (token, password) => {
+    const result = await getApi().POST("/_api/auth/password-resets/confirm", {
+      body: { token, password },
+    });
+    if (result.error) {
+      throw mapApiError(result, {
+        codes: {
+          INVALID_PASSWORD_RESET_TOKEN:
+            API_ERROR_MESSAGES.INVALID_PASSWORD_RESET_TOKEN,
+          INVALID_PASSWORD: API_ERROR_MESSAGES.INVALID_PASSWORD,
+          ANONYMOUS_RATE_LIMITED: API_ERROR_MESSAGES.ANONYMOUS_RATE_LIMITED,
+        },
+        fallback: "Password reset failed",
+      });
+    }
+    set({ status: "login", user: null });
+  },
+}));

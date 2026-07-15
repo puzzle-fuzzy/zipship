@@ -1,5 +1,5 @@
 import { Code2, History, Rocket, Settings, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
 import { getApiBaseUrl } from "../api/client";
@@ -32,7 +32,7 @@ type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "a
 export function ProjectDetailPage() {
   const { t } = useTranslation();
   const { projectId } = useParams();
-  const { user, refreshToken } = useAuthStore();
+  const { user } = useAuthStore();
   const {
     projects,
     releases,
@@ -43,7 +43,6 @@ export function ProjectDetailPage() {
     fetchDeployments,
     publishRelease,
     rollbackRelease,
-    deleteProject,
     updateProject,
   } = useProjectsStore();
   const { members, fetchMembers, loading: membersLoading, updateMemberRole, removeMember } =
@@ -58,30 +57,33 @@ export function ProjectDetailPage() {
   const [highlightedReleaseId, setHighlightedReleaseId] = useState<string | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
-  const projectReleases = projectId ? releases[projectId] ?? [] : [];
+  const projectReleases = useMemo(
+    () => (projectId ? releases[projectId] ?? [] : []),
+    [projectId, releases],
+  );
   const releaseError = projectId ? releaseErrors[projectId] ?? null : null;
   const projectDeployments = projectId ? deployments[projectId] ?? [] : [];
   const deploymentError = projectId ? deploymentErrors[projectId] ?? null : null;
   const { releasePollingEnabled, startReleasePolling } = useProjectReleasePolling({
     projectId,
-    refreshToken,
     releases: projectReleases,
     fetchReleases,
   });
 
   useEffect(() => {
-    if (projectId && refreshToken) {
+    if (projectId) {
       fetchReleases(projectId).finally(() => setLoading(false));
       fetchDeployments(projectId);
     }
-  }, [projectId, refreshToken]);
+  }, [projectId, fetchReleases, fetchDeployments]);
 
   useEffect(() => {
-    if (project && refreshToken) {
-      fetchMembers(project.organizationId);
-      fetchAudit(project.organizationId);
+    const organizationId = project?.organizationId;
+    if (organizationId) {
+      fetchMembers(organizationId);
+      fetchAudit(organizationId);
     }
-  }, [projectId, refreshToken]);
+  }, [project?.organizationId, fetchMembers, fetchAudit]);
 
   useEffect(() => {
     if (pendingUploadAnchorId === undefined) return;
@@ -232,7 +234,6 @@ export function ProjectDetailPage() {
             activeRelease={activeRelease}
             canManage={permissions.canManageProject}
             onSave={(input) => updateProject(project.id, input).then(() => fetchReleases(project.id))}
-            onDelete={() => deleteProject(project.id)}
           />
         </TabsContent>
 

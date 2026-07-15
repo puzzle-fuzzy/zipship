@@ -3,13 +3,11 @@ import {
   Globe2,
   LockKeyhole,
   Route,
-  Server,
   ShieldAlert,
   ShieldCheck,
   TimerReset,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useTranslation } from "../../i18n";
 import { Button } from "../../components/ui/button";
@@ -17,7 +15,6 @@ import {
   Field,
   FieldContent,
   FieldDescription,
-  FieldError,
   FieldGroup,
   FieldLabel,
 } from "../../components/ui/field";
@@ -41,7 +38,6 @@ type ProjectSettingsSaveInput = {
   description?: string | null;
   spaFallback?: boolean;
   cachePolicy?: "standard" | "aggressive";
-  customDomains?: string[];
 };
 
 interface ProjectSettingsTabProps {
@@ -50,8 +46,6 @@ interface ProjectSettingsTabProps {
   canManage: boolean;
   /** Persist the edit; resolves on success, rejects on failure. The tab toasts. */
   onSave: (input: ProjectSettingsSaveInput) => Promise<void>;
-  /** Delete the project; resolves on success, rejects on failure. The tab toasts + navigates. */
-  onDelete: () => Promise<void>;
 }
 
 export function ProjectSettingsTab({
@@ -59,29 +53,21 @@ export function ProjectSettingsTab({
   activeRelease,
   canManage,
   onSave,
-  onDelete,
 }: ProjectSettingsTabProps) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [editingName, setEditingName] = useState(project.name);
   const [editingSlug, setEditingSlug] = useState(project.slug);
   const [editingDesc, setEditingDesc] = useState(project.description ?? "");
   const [editingSpaFallback, setEditingSpaFallback] = useState(project.spaFallback);
   const [editingCachePolicy, setEditingCachePolicy] = useState(project.cachePolicy);
-  const [editingCustomDomains, setEditingCustomDomains] = useState(
-    project.customDomains.join("\n"),
-  );
-  const [customDomainsError, setCustomDomainsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [savingProduction, setSavingProduction] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const productionPaths = buildProjectProductionPaths(project.slug, activeRelease);
-  const draftDomains = parseCustomDomains(editingCustomDomains).domains;
   const accessPreview = buildAccessPlanePreview({
     slug: project.slug,
     spaFallback: editingSpaFallback,
     cachePolicy: editingCachePolicy,
-    customDomains: draftDomains,
+    customDomains: [],
   });
 
   // Re-seed the form if a different project mounts into the same instance.
@@ -91,49 +77,29 @@ export function ProjectSettingsTab({
     setEditingDesc(project.description ?? "");
     setEditingSpaFallback(project.spaFallback);
     setEditingCachePolicy(project.cachePolicy);
-    setEditingCustomDomains(project.customDomains.join("\n"));
-    setCustomDomainsError(null);
-  }, [project.id, project.spaFallback, project.cachePolicy, project.customDomains]);
+  }, [
+    project.id,
+    project.name,
+    project.slug,
+    project.description,
+    project.spaFallback,
+    project.cachePolicy,
+  ]);
 
   const handleSaveProductionAccess = async () => {
     if (!canManage) return;
 
-    const parsedDomains = parseCustomDomains(editingCustomDomains);
-    if (parsedDomains.invalid.length > 0) {
-      setCustomDomainsError(
-        t("settings.customDomainsInvalid", { domain: parsedDomains.invalid[0] }),
-      );
-      return;
-    }
-
-    setCustomDomainsError(null);
     setSavingProduction(true);
     try {
       await onSave({
         spaFallback: editingSpaFallback,
         cachePolicy: editingCachePolicy,
-        customDomains: parsedDomains.domains,
       });
-      setEditingCustomDomains(parsedDomains.domains.join("\n"));
       toast.success(t("toast.settingsSaved"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("toast.saveFailed"));
     } finally {
       setSavingProduction(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm(t("toast.deleteProjectConfirm", { name: project.name }))) return;
-    setDeleting(true);
-    try {
-      await onDelete();
-      toast.success(t("toast.projectDeleted"));
-      navigate("/app");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : t("toast.deleteFailed"));
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -273,24 +239,6 @@ export function ProjectSettingsTab({
               </Field>
             </div>
 
-            <Field data-invalid={Boolean(customDomainsError)}>
-              <FieldLabel htmlFor="custom-domains">{t("settings.customDomainsTitle")}</FieldLabel>
-              <Textarea
-                id="custom-domains"
-                value={editingCustomDomains}
-                onChange={(e) => {
-                  setEditingCustomDomains(e.target.value);
-                  setCustomDomainsError(null);
-                }}
-                placeholder={t("settings.customDomainsPlaceholder")}
-                className="field-sizing-fixed font-mono text-sm"
-                rows={4}
-                disabled={!canManage}
-                aria-invalid={Boolean(customDomainsError)}
-              />
-              <FieldDescription>{t("settings.customDomainsDesc")}</FieldDescription>
-              <FieldError>{customDomainsError}</FieldError>
-            </Field>
           </FieldGroup>
 
           <div className="flex flex-col gap-3 rounded-lg border bg-muted/20 p-3 md:flex-row">
@@ -360,61 +308,17 @@ export function ProjectSettingsTab({
           </div>
         </form>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="mt-4 grid gap-3">
           <PolicyItem
             icon={LockKeyhole}
             title={t("settings.reservedPathsTitle")}
             description={t("settings.reservedPathsDesc")}
             value="/_api, /_sites"
           />
-          <PolicyItem
-            icon={Server}
-            title={t("settings.customDomainsTitle")}
-            description={domainSummary(accessPreview.customDomains, t("settings.noCustomDomains"))}
-            value={`${accessPreview.customDomains.length}`}
-          />
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-destructive/20 bg-card/92 p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="font-semibold text-destructive">{t("settings.dangerZone")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t("settings.dangerZoneDesc")}</p>
-          </div>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={!canManage || deleting}
-            onClick={handleDelete}
-          >
-            {deleting ? t("toast.deleting") : t("settings.deleteProject")}
-          </Button>
         </div>
       </section>
     </div>
   );
-}
-
-function parseCustomDomains(input: string): { domains: string[]; invalid: string[] } {
-  const rawDomains = input
-    .split(/\r?\n|,/)
-    .map((domain) => domain.trim().toLowerCase())
-    .filter(Boolean);
-  const domains = Array.from(new Set(rawDomains));
-  const invalid = domains.filter((domain) => !isValidDomain(domain));
-  return { domains, invalid };
-}
-
-function isValidDomain(domain: string): boolean {
-  if (domain.length > 253) return false;
-  if (domain.includes("://") || domain.includes("/") || domain.includes(" ")) return false;
-  return /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain);
-}
-
-function domainSummary(domains: string[], emptyLabel: string): string {
-  if (domains.length === 0) return emptyLabel;
-  return domains.slice(0, 3).join(", ");
 }
 
 function PathLine({ label, value }: { label: string; value: string }) {

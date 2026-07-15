@@ -7,14 +7,12 @@ import {
 
 interface UseProjectReleasePollingInput {
   projectId: string | undefined;
-  refreshToken: string | null;
   releases: Release[];
   fetchReleases: (projectId: string) => Promise<void>;
 }
 
 export function useProjectReleasePolling({
   projectId,
-  refreshToken,
   releases,
   fetchReleases,
 }: UseProjectReleasePollingInput) {
@@ -27,7 +25,7 @@ export function useProjectReleasePolling({
   }, []);
 
   useEffect(() => {
-    if (!projectId || !refreshToken || !enabled) return;
+    if (!projectId || !enabled) return;
 
     if (
       !shouldPollReleases({
@@ -46,7 +44,7 @@ export function useProjectReleasePolling({
     }, RELEASE_POLLING_INTERVAL_MS);
 
     return () => window.clearTimeout(timer);
-  }, [projectId, refreshToken, enabled, releases, fetchReleases]);
+  }, [projectId, enabled, releases, fetchReleases]);
 
   return {
     releasePollingEnabled: enabled,

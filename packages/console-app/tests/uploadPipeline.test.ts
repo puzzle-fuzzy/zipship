@@ -1,116 +1,101 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockApi, type MockApi } from "./helpers/mockApi";
-import { setAccessToken } from "../src/api/client";
-
-/**
- * The upload pipeline (create task → raw upload → complete) was extracted from
- * UploadVersionDialog to make it testable. We verify step progression on
- * success and that each failure surface maps to a stable UploadFailureReason.
- */
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMockApi, type MockApi } from './helpers/mockApi';
 
 const { mockApi, setMockApi } = vi.hoisted(() => {
-  let current: unknown = null;
-  return {
-    mockApi: () => current,
-    setMockApi: (a: unknown) => {
-      current = a;
-    },
-  };
+  let current: unknown;
+  return { mockApi: () => current, setMockApi: (api: unknown) => { current = api; } };
 });
 
-vi.mock("../src/api/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/api/client")>();
+vi.mock('../src/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/api/client')>();
   return { ...actual, getApi: () => mockApi() };
 });
 
-const { runUploadPipeline, UploadPipelineError } = await import(
-  "../src/features/versions/uploadPipeline"
-);
-
+const { runUploadPipeline, UploadPipelineError } = await import('../src/features/versions/uploadPipeline');
 let api: MockApi;
-const file = new File(["data"], "site.zip", { type: "application/zip" });
+const file = new File(['data'], 'site.zip', { type: 'application/zip' });
 
 beforeEach(() => {
   api = createMockApi();
   setMockApi(api._api);
-  setAccessToken("rt-1");
+  document.cookie = 'zipship_csrf=test-csrf; Path=/';
 });
 
-describe("runUploadPipeline > success", () => {
-  it("walks creating → uploading → processing → done", async () => {
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { id: "t1" } } });
-    api.verb("put").mockResolvedValueOnce({ data: {} });
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { status: "ready" } } });
+describe('Rust upload pipeline', () => {
+  it('walks create, raw content, finalize, and done', async () => {
+    api.verb('post')
+      .mockResolvedValueOnce({ data: { upload: { id: 'upload-1' } } })
+      .mockResolvedValueOnce({ data: { upload: { id: 'upload-1' }, releaseId: 'r1', jobId: 'j1' } });
+    api.verb('put').mockResolvedValueOnce({});
+    const steps: string[] = [];
 
-    const states: string[] = [];
-    await runUploadPipeline("p1", file, (s) => states.push(s.step));
+    await runUploadPipeline('p1', file, ({ step }) => steps.push(step));
 
-    expect(states).toEqual(["creating_task", "uploading_raw", "processing", "done"]);
+    expect(steps).toEqual(['creating_task', 'uploading_raw', 'processing', 'done']);
+    expect(api.verb('post').mock.calls[0]).toEqual([
+      '/_api/projects/{project_id}/uploads',
+      {
+        params: {
+          path: { project_id: 'p1' },
+          header: { 'x-csrf-token': 'test-csrf' },
+        },
+        body: { filename: 'site.zip', sizeBytes: file.size },
+      },
+    ]);
+    expect(api.verb('put').mock.calls[0][0]).toBe('/_api/uploads/{upload_id}/content');
+    expect(api.verb('put').mock.calls[0][1]).toMatchObject({
+      params: {
+        path: { upload_id: 'upload-1' },
+        header: { 'x-csrf-token': 'test-csrf', 'content-length': file.size },
+      },
+      headers: { 'content-type': 'application/zip' },
+      body: file,
+    });
+    expect(api.verb('post').mock.calls[1]).toEqual([
+      '/_api/uploads/{upload_id}/complete',
+      {
+        params: {
+          path: { upload_id: 'upload-1' },
+          header: { 'x-csrf-token': 'test-csrf' },
+        },
+      },
+    ]);
   });
 
-  it("forwards filename + size when creating the task", async () => {
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { id: "t1" } } });
-    api.verb("put").mockResolvedValueOnce({ data: {} });
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { status: "ready" } } });
-
-    await runUploadPipeline("p1", file, () => {});
-    expect(api.verb("post").mock.calls[0][0]).toEqual({
-      originalFilename: "site.zip",
-      size: file.size,
+  it('stops with create_failed and retains the API code', async () => {
+    api.verb('post').mockResolvedValueOnce({ error: { code: 'INVALID_UPLOAD_FILENAME' } });
+    await expect(runUploadPipeline('p1', file, () => {})).rejects.toMatchObject({
+      reason: 'create_failed',
+      detail: 'INVALID_UPLOAD_FILENAME',
     });
-  });
-});
-
-describe("runUploadPipeline > failures", () => {
-  it("throws create_failed when the task can't be created", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "VALIDATION_ERROR" } } });
-    await expect(runUploadPipeline("p1", file, () => {})).rejects.toMatchObject({
-      reason: "create_failed",
-    });
+    expect(api.verb('put')).not.toHaveBeenCalled();
   });
 
-  it("throws create_failed when the response has no data", async () => {
-    api.verb("post").mockResolvedValueOnce({});
-    await expect(runUploadPipeline("p1", file, () => {})).rejects.toMatchObject({
-      reason: "create_failed",
+  it('stops with upload_failed before finalization', async () => {
+    api.verb('post').mockResolvedValueOnce({ data: { upload: { id: 'upload-1' } } });
+    api.verb('put').mockResolvedValueOnce({ error: { code: 'UPLOAD_SIZE_MISMATCH' } });
+    await expect(runUploadPipeline('p1', file, () => {})).rejects.toMatchObject({
+      reason: 'upload_failed',
+      detail: 'UPLOAD_SIZE_MISMATCH',
     });
+    expect(api.verb('post')).toHaveBeenCalledTimes(1);
   });
 
-  it("throws upload_failed when the raw upload errors", async () => {
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { id: "t1" } } });
-    api.verb("put").mockResolvedValueOnce({ error: { value: { code: "X" } } });
-    await expect(runUploadPipeline("p1", file, () => {})).rejects.toMatchObject({
-      reason: "upload_failed",
+  it('maps finalization failures without reporting done', async () => {
+    api.verb('post')
+      .mockResolvedValueOnce({ data: { upload: { id: 'upload-1' } } })
+      .mockResolvedValueOnce({ error: { code: 'UPLOAD_NOT_READY' } });
+    api.verb('put').mockResolvedValueOnce({});
+    const steps: string[] = [];
+    await expect(runUploadPipeline('p1', file, ({ step }) => steps.push(step))).rejects.toMatchObject({
+      reason: 'processing_failed',
+      detail: 'UPLOAD_NOT_READY',
     });
+    expect(steps).toEqual(['creating_task', 'uploading_raw', 'processing']);
   });
 
-  it("throws processing_failed when complete errors", async () => {
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { id: "t1" } } });
-    api.verb("put").mockResolvedValueOnce({ data: {} });
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "X" } } });
-    await expect(runUploadPipeline("p1", file, () => {})).rejects.toMatchObject({
-      reason: "processing_failed",
-    });
-  });
-
-  it("throws release_rejected with the server detail when detection fails", async () => {
-    api.verb("post").mockResolvedValueOnce({ data: { uploadTask: { id: "t1" } } });
-    api.verb("put").mockResolvedValueOnce({ data: {} });
-    api.verb("post").mockResolvedValueOnce({
-      data: { uploadTask: { status: "failed", errorMessage: "no index.html" } },
-    });
-    await expect(runUploadPipeline("p1", file, () => {})).rejects.toMatchObject({
-      reason: "release_rejected",
-      detail: "no index.html",
-    });
-  });
-
-  it("reports creating_task (but not later steps) before an early failure", async () => {
-    api.verb("post").mockResolvedValueOnce({ error: { value: { code: "X" } } });
-    const states: string[] = [];
-    await expect(runUploadPipeline("p1", file, (s) => states.push(s.step))).rejects.toBeInstanceOf(
-      UploadPipelineError,
-    );
-    expect(states).toEqual(["creating_task"]);
+  it('uses a typed pipeline error for stable UI handling', async () => {
+    api.verb('post').mockResolvedValueOnce({});
+    await expect(runUploadPipeline('p1', file, () => {})).rejects.toBeInstanceOf(UploadPipelineError);
   });
 });

@@ -1,6 +1,11 @@
-import { create } from 'zustand';
-import { authHeaders, getAccessToken, getApi } from '../api/client';
-import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
+import type { ApiClient, components } from "@zipship/api-client";
+import { create } from "zustand";
+import { getApi, getCsrfHeaders } from "../api/client";
+import { ApiClientError, API_ERROR_MESSAGES, mapApiError } from "../api/errors";
+
+type ProjectDto = components["schemas"]["ProjectResponse"];
+type ReleaseDto = components["schemas"]["ReleaseResponse"];
+type DeploymentDto = components["schemas"]["DeploymentResponse"];
 
 export interface Project {
   id: string;
@@ -10,10 +15,7 @@ export interface Project {
   description: string | null;
   currentReleaseId: string | null;
   spaFallback: boolean;
-  cachePolicy: 'standard' | 'aggressive';
-  customDomains: string[];
-  status: string;
-  visibility: string;
+  cachePolicy: "standard" | "aggressive";
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -27,15 +29,12 @@ export interface Release {
   previewUrl: string | null;
   fullHash: string;
   status: string;
-  storagePath: string;
-  rawUploadPath: string;
   fileCount: number;
   totalSize: number;
   manifest: Record<string, unknown>;
   detectResult: Record<string, unknown>;
   createdBy: string;
   createdAt: string;
-  activatedAt: string | null;
   archivedAt: string | null;
 }
 
@@ -44,8 +43,8 @@ export interface Deployment {
   projectId: string;
   releaseId: string;
   previousReleaseId: string | null;
-  action: 'publish' | 'rollback';
-  status: 'success';
+  action: "publish" | "rollback";
+  status: "success" | "failed";
   operatorId: string;
   message: string | null;
   createdAt: string;
@@ -54,19 +53,30 @@ export interface Deployment {
 
 interface ProjectsState {
   projects: Project[];
-  releases: Record<string, Release[]>; // projectId -> releases
+  releases: Record<string, Release[]>;
   releaseErrors: Record<string, string | null>;
-  deployments: Record<string, Deployment[]>; // projectId -> deployments
+  deployments: Record<string, Deployment[]>;
   deploymentErrors: Record<string, string | null>;
   loading: boolean;
 
   fetchProjects: () => Promise<void>;
-  createProject: (input: { name: string; slug: string; description: string }) => Promise<void>;
+  createProject: (input: {
+    name: string;
+    slug: string;
+    description: string;
+  }) => Promise<void>;
   fetchReleases: (projectId: string) => Promise<void>;
   fetchDeployments: (projectId: string) => Promise<void>;
-  publishRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
-  rollbackRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
-  deleteProject: (projectId: string) => Promise<void>;
+  publishRelease: (
+    projectId: string,
+    releaseId: string,
+    message?: string | null,
+  ) => Promise<void>;
+  rollbackRelease: (
+    projectId: string,
+    releaseId: string,
+    message?: string | null,
+  ) => Promise<void>;
   updateProject: (
     projectId: string,
     input: {
@@ -74,10 +84,61 @@ interface ProjectsState {
       slug?: string;
       description?: string | null;
       spaFallback?: boolean;
-      cachePolicy?: 'standard' | 'aggressive';
-      customDomains?: string[];
+      cachePolicy?: "standard" | "aggressive";
     },
   ) => Promise<void>;
+}
+
+function projectView(project: ProjectDto): Project {
+  return {
+    id: project.id,
+    organizationId: project.organizationId,
+    name: project.name,
+    slug: project.slug,
+    description: project.description ?? null,
+    currentReleaseId: project.activeReleaseId ?? null,
+    spaFallback: project.spaFallback,
+    cachePolicy: project.cachePolicy as Project["cachePolicy"],
+    createdBy: project.createdBy,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+  };
+}
+
+function releaseView(release: ReleaseDto): Release {
+  const artifact = release.artifact ?? null;
+  const fullHash = artifact?.sha256 ?? "";
+  return {
+    id: release.id,
+    projectId: release.projectId,
+    versionNumber: release.versionNumber,
+    releaseHash: fullHash ? fullHash.slice(0, 12) : release.id.slice(0, 8),
+    previewUrl: release.previewPath ?? null,
+    fullHash,
+    status: release.isActive ? "active" : release.state,
+    fileCount: artifact?.fileCount ?? 0,
+    totalSize: artifact?.totalSize ?? 0,
+    manifest: (artifact?.manifest ?? {}) as Record<string, unknown>,
+    detectResult: (artifact?.detectReport ?? {}) as Record<string, unknown>,
+    createdBy: release.createdBy,
+    createdAt: release.createdAt,
+    archivedAt: release.archivedAt ?? null,
+  };
+}
+
+function deploymentView(deployment: DeploymentDto): Deployment {
+  return {
+    id: deployment.id,
+    projectId: deployment.projectId,
+    releaseId: deployment.releaseId,
+    previousReleaseId: deployment.previousReleaseId ?? null,
+    action: deployment.action as Deployment["action"],
+    status: deployment.status === "succeeded" ? "success" : "failed",
+    operatorId: deployment.actorId,
+    message: deployment.message ?? null,
+    createdAt: deployment.createdAt,
+    finishedAt: deployment.finishedAt ?? null,
+  };
 }
 
 export const useProjectsStore = create<ProjectsState>((set) => {
@@ -98,218 +159,237 @@ export const useProjectsStore = create<ProjectsState>((set) => {
     }));
   };
 
-  const storeReleases = (projectId: string, releases: Release[]) => {
+  const storeReleases = (projectId: string, releases: ReleaseDto[]) => {
     set((state) => ({
-      releases: { ...state.releases, [projectId]: releases },
+      releases: {
+        ...state.releases,
+        [projectId]: releases.map(releaseView),
+      },
       releaseErrors: { ...state.releaseErrors, [projectId]: null },
     }));
   };
 
-  const storeDeployments = (projectId: string, deployments: Deployment[]) => {
+  const storeDeployments = (
+    projectId: string,
+    deployments: DeploymentDto[],
+  ) => {
     set((state) => ({
-      deployments: { ...state.deployments, [projectId]: deployments },
+      deployments: {
+        ...state.deployments,
+        [projectId]: deployments.map(deploymentView),
+      },
       deploymentErrors: { ...state.deploymentErrors, [projectId]: null },
     }));
   };
 
   const refreshReleaseAndDeploymentState = async (
-    api: ReturnType<typeof getApi>,
+    api: ApiClient,
     projectId: string,
-    headers: ReturnType<typeof authHeaders>,
   ) => {
-    const refreshRes = await api._api.projects({ projectId }).releases.get({ headers });
-    if (refreshRes.data) {
-      storeReleases(projectId, refreshRes.data.releases as Release[]);
-    }
+    const releases = await api.GET("/_api/projects/{project_id}/releases", {
+      params: { path: { project_id: projectId } },
+    });
+    if (releases.data) storeReleases(projectId, releases.data.releases);
 
-    const deploymentsRes = await api._api.projects({ projectId }).deployments.get({ headers });
-    if (deploymentsRes.data) {
-      storeDeployments(projectId, deploymentsRes.data.deployments as Deployment[]);
+    const deployments = await api.GET(
+      "/_api/projects/{project_id}/deployments",
+      { params: { path: { project_id: projectId } } },
+    );
+    if (deployments.data) {
+      storeDeployments(projectId, deployments.data.deployments);
     }
   };
 
-  return ({
-  projects: [],
-  releases: {},
-  releaseErrors: {},
-  deployments: {},
-  deploymentErrors: {},
-  loading: true,
+  return {
+    projects: [],
+    releases: {},
+    releaseErrors: {},
+    deployments: {},
+    deploymentErrors: {},
+    loading: true,
 
-  fetchProjects: async () => {
-    const api = getApi();
-    try {
-      const orgRes = await api._api.organizations.get({ headers: authHeaders() });
-
-      if (orgRes.error) {
-        console.error('Failed to fetch projects: org error', orgRes.error);
-        set({ loading: false });
-        return;
-      }
-
-      const org = orgRes.data?.organizations?.[0];
-      if (!org?.id) {
-        console.error('Failed to fetch projects: no org data', orgRes.data);
-        set({ loading: false });
-        return;
-      }
-
-      const projRes = await api._api.organizations({ organizationId: org.id }).projects.get({
-        headers: authHeaders(),
-      });
-
-      if (projRes.error) {
-        console.error('Failed to fetch projects: projects error', projRes.error);
-        set({ loading: false });
-        return;
-      }
-
-      if (projRes.data) {
-        set({ projects: projRes.data.projects as Project[], loading: false });
-      }
-    } catch (err) {
-      console.error('Failed to fetch projects:', err);
-      set({ loading: false });
-    }
-  },
-
-  createProject: async (input) => {
-    const api = getApi();
-
-    // 1. Look up the user's default organization
-    const orgRes = await api._api.organizations.get({ headers: authHeaders() });
-
-    if (orgRes.error) {
-      throw mapApiError(orgRes, {
-        codes: { UNAUTHORIZED: 'Session expired, please refresh' },
-        fallback: 'Failed to get organization',
-      });
-    }
-
-    const orgId = orgRes.data?.organizations?.[0]?.id;
-    if (!orgId) throw new Error('No organization found');
-
-    // 2. Create the project
-    const res = await api._api.organizations({ organizationId: orgId }).projects.post(
-      { name: input.name, slug: input.slug, description: input.description || null },
-      { headers: authHeaders() },
-    );
-
-    if (res.error) {
-      throw mapApiError(res, {
-        codes: { DUPLICATE_PROJECT_SLUG: API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG },
-        fallback: 'Failed to create project',
-      });
-    }
-  },
-
-  fetchReleases: async (projectId) => {
-    const api = getApi();
-    setReleaseError(projectId, null);
-    try {
-      const res = await api._api.projects({ projectId }).releases.get({
-        headers: authHeaders(),
-      });
-      if (res.error) {
-        const error = mapApiError(res, {
-          codes: projectAccessErrorCodes,
-          fallback: 'Failed to load releases',
+    fetchProjects: async () => {
+      set({ loading: true });
+      try {
+        const organizations = await getApi().GET("/_api/organizations");
+        const organization = organizations.data?.organizations[0];
+        if (!organization) {
+          set({ projects: [], loading: false });
+          return;
+        }
+        const projects = await getApi().GET(
+          "/_api/organizations/{organization_id}/projects",
+          { params: { path: { organization_id: organization.id } } },
+        );
+        if (projects.error || !projects.data) {
+          throw mapApiError(projects, {
+            codes: projectAccessErrorCodes,
+            fallback: "Failed to load projects",
+          });
+        }
+        set({
+          projects: projects.data.projects.map(projectView),
+          loading: false,
         });
-        setReleaseError(projectId, error.message);
-        return;
+      } catch (error) {
+        console.error("Failed to fetch projects", error);
+        set({ loading: false });
       }
-      if (res.data) {
-        storeReleases(projectId, res.data.releases as Release[]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch releases:', err);
-      setReleaseError(projectId, 'Failed to load releases');
-    }
-  },
+    },
 
-  fetchDeployments: async (projectId) => {
-    const api = getApi();
-    setDeploymentError(projectId, null);
-    try {
-      const res = await api._api.projects({ projectId }).deployments.get({
-        headers: authHeaders(),
-      });
-      if (res.error) {
-        const error = mapApiError(res, {
-          codes: projectAccessErrorCodes,
-          fallback: 'Failed to load deployment history',
-        });
-        setDeploymentError(projectId, error.message);
-        return;
-      }
-      if (res.data) {
-        storeDeployments(projectId, res.data.deployments as Deployment[]);
-      }
-    } catch (err) {
-      console.error('Failed to fetch deployments:', err);
-      setDeploymentError(projectId, 'Failed to load deployment history');
-    }
-  },
-
-  publishRelease: async (projectId, releaseId, message = null) => {
-    const api = getApi();
-    const headers = authHeaders();
-    const res = await api._api.projects({ projectId }).releases({ releaseId }).publish.post(
-      { message },
-      { headers },
-    );
-    if (res.error) {
-      throw mapApiError(res, { codes: {}, fallback: 'Failed to publish release' });
-    }
-    await refreshReleaseAndDeploymentState(api, projectId, headers);
-  },
-
-  rollbackRelease: async (projectId, releaseId, message = null) => {
-    const api = getApi();
-    const headers = authHeaders();
-    const res = await api._api.projects({ projectId }).releases({ releaseId }).rollback.post(
-      { message },
-      { headers },
-    );
-    if (res.error) {
-      throw mapApiError(res, { codes: {}, fallback: 'Failed to roll back release' });
-    }
-    await refreshReleaseAndDeploymentState(api, projectId, headers);
-  },
-
-  deleteProject: async (projectId) => {
-    const api = getApi();
-    const res = await api._api.projects({ projectId }).delete({ headers: authHeaders() });
-    if (res.error) {
-      throw mapApiError(res, {
-        codes: { FORBIDDEN: 'No permission to delete this project' },
-        fallback: 'Failed to delete project',
-      });
-    }
-    // Remove from local state
-    set((state) => ({
-      projects: state.projects.filter((p) => p.id !== projectId),
-    }));
-  },
-
-  updateProject: async (projectId, input) => {
-    const api = getApi();
-    const res = await api._api.projects({ projectId }).patch(input, {
-      headers: authHeaders(),
-    });
-    if (res.error) {
-      throw mapApiError(res, {
-        codes: {
-          DUPLICATE_PROJECT_SLUG: API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG,
-          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+    createProject: async (input) => {
+      const organizations = await getApi().GET("/_api/organizations");
+      const organizationId = organizations.data?.organizations[0]?.id;
+      if (!organizationId) throw new Error("No organization found");
+      const result = await getApi().POST(
+        "/_api/organizations/{organization_id}/projects",
+        {
+          params: {
+            path: { organization_id: organizationId },
+            header: getCsrfHeaders(),
+          },
+          body: {
+            name: input.name,
+            slug: input.slug,
+            description: input.description || null,
+          },
         },
-        fallback: 'Failed to update project',
-      });
-    }
-  },
-  });
-});
+      );
+      if (result.error) {
+        throw mapApiError(result, {
+          codes: {
+            DUPLICATE_PROJECT_SLUG:
+              API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG,
+          },
+          fallback: "Failed to create project",
+        });
+      }
+    },
 
-// `getAccessToken` re-exported for components (e.g. preview-link builders) that
-// need the token without going through the store.
-export { getAccessToken };
+    fetchReleases: async (projectId) => {
+      setReleaseError(projectId, null);
+      try {
+        const result = await getApi().GET(
+          "/_api/projects/{project_id}/releases",
+          { params: { path: { project_id: projectId } } },
+        );
+        if (result.error || !result.data) {
+          throw mapApiError(result, {
+            codes: projectAccessErrorCodes,
+            fallback: "Failed to load releases",
+          });
+        }
+        storeReleases(projectId, result.data.releases);
+      } catch (error) {
+        console.error("Failed to fetch releases", error);
+        setReleaseError(
+          projectId,
+          error instanceof ApiClientError
+            ? error.message
+            : "Failed to load releases",
+        );
+      }
+    },
+
+    fetchDeployments: async (projectId) => {
+      setDeploymentError(projectId, null);
+      try {
+        const result = await getApi().GET(
+          "/_api/projects/{project_id}/deployments",
+          { params: { path: { project_id: projectId } } },
+        );
+        if (result.error || !result.data) {
+          throw mapApiError(result, {
+            codes: projectAccessErrorCodes,
+            fallback: "Failed to load deployment history",
+          });
+        }
+        storeDeployments(projectId, result.data.deployments);
+      } catch (error) {
+        console.error("Failed to fetch deployments", error);
+        setDeploymentError(
+          projectId,
+          error instanceof ApiClientError
+            ? error.message
+            : "Failed to load deployment history",
+        );
+      }
+    },
+
+    publishRelease: async (projectId, releaseId, message = null) => {
+      const api = getApi();
+      const result = await api.POST(
+        "/_api/projects/{project_id}/releases/{release_id}/publish",
+        {
+          params: {
+            path: { project_id: projectId, release_id: releaseId },
+            header: {
+              ...getCsrfHeaders(),
+              "idempotency-key": crypto.randomUUID(),
+            },
+          },
+          body: { message },
+        },
+      );
+      if (result.error) {
+        throw mapApiError(result, {
+          codes: {},
+          fallback: "Failed to publish release",
+        });
+      }
+      await refreshReleaseAndDeploymentState(api, projectId);
+    },
+
+    rollbackRelease: async (projectId, releaseId, message = null) => {
+      const api = getApi();
+      const result = await api.POST(
+        "/_api/projects/{project_id}/releases/{release_id}/rollback",
+        {
+          params: {
+            path: { project_id: projectId, release_id: releaseId },
+            header: {
+              ...getCsrfHeaders(),
+              "idempotency-key": crypto.randomUUID(),
+            },
+          },
+          body: { message },
+        },
+      );
+      if (result.error) {
+        throw mapApiError(result, {
+          codes: {},
+          fallback: "Failed to roll back release",
+        });
+      }
+      await refreshReleaseAndDeploymentState(api, projectId);
+    },
+
+    updateProject: async (projectId, input) => {
+      const result = await getApi().PATCH("/_api/projects/{project_id}", {
+        params: {
+          path: { project_id: projectId },
+          header: getCsrfHeaders(),
+        },
+        body: input,
+      });
+      if (result.error) {
+        throw mapApiError(result, {
+          codes: {
+            DUPLICATE_PROJECT_SLUG:
+              API_ERROR_MESSAGES.DUPLICATE_PROJECT_SLUG,
+            FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          },
+          fallback: "Failed to update project",
+        });
+      }
+      if (result.data) {
+        const updated = projectView(result.data.project);
+        set((state) => ({
+          projects: state.projects.map((project) =>
+            project.id === updated.id ? updated : project,
+          ),
+        }));
+      }
+    },
+  };
+});

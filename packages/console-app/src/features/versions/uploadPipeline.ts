@@ -1,87 +1,93 @@
-import { authHeaders, getApi } from '../../api/client';
-
-/**
- * Upload pipeline, extracted from UploadVersionDialog so it is independently
- * testable and free of UI/i18n concerns.
- *
- * The dialog reports progress through {@link UploadState} callbacks; failures
- * throw an {@link UploadPipelineError} carrying a stable {@link UploadFailureReason}
- * the UI maps to a translated message (plus any server-provided detail).
- */
+import { getApi, getCsrfHeaders } from "../../api/client";
+import { getApiErrorCode } from "../../api/errors";
 
 export type UploadStep =
-  | 'select'
-  | 'zipping'
-  | 'creating_task'
-  | 'uploading_raw'
-  | 'processing'
-  | 'done'
-  | 'error';
+  | "select"
+  | "zipping"
+  | "creating_task"
+  | "uploading_raw"
+  | "processing"
+  | "done"
+  | "error";
 
 export interface UploadState {
   step: UploadStep;
 }
 
 export type UploadFailureReason =
-  | 'create_failed'
-  | 'upload_failed'
-  | 'processing_failed'
-  | 'release_rejected'
-  | 'unknown';
+  | "create_failed"
+  | "upload_failed"
+  | "processing_failed"
+  | "unknown";
 
 export class UploadPipelineError extends Error {
   readonly reason: UploadFailureReason;
-  /** Server-provided detail (e.g. why release detection failed), if any. */
   readonly detail: string | undefined;
 
   constructor(reason: UploadFailureReason, detail?: string) {
     super(detail ?? reason);
-    this.name = 'UploadPipelineError';
+    this.name = "UploadPipelineError";
     this.reason = reason;
     this.detail = detail;
   }
 }
 
-/**
- * Execute the full upload pipeline: create task → raw upload → complete.
- * Reports progress via `onState` and resolves once the release is `ready`.
- * Throws {@link UploadPipelineError} on any failure.
- */
 export async function runUploadPipeline(
   projectId: string,
   file: File,
-  onState: (s: UploadState) => void,
+  onState: (state: UploadState) => void,
 ): Promise<void> {
   const api = getApi();
 
-  // 1. Create upload task
-  onState({ step: 'creating_task' });
-  const createRes = await api._api.projects({ projectId }).uploads.post(
-    { originalFilename: file.name, size: file.size },
-    { headers: authHeaders() },
-  );
-  if (createRes.error || !createRes.data) throw new UploadPipelineError('create_failed');
-  const uploadTask = createRes.data.uploadTask;
-
-  // 2. Upload raw bytes
-  onState({ step: 'uploading_raw' });
-  const rawRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).raw.put(
-    { file },
-    { headers: authHeaders() },
-  );
-  if (rawRes.error) throw new UploadPipelineError('upload_failed');
-
-  // 3. Complete & process
-  onState({ step: 'processing' });
-  const completeRes = await api._api.uploads({ uploadTaskId: uploadTask.id }).complete.post(null, {
-    headers: authHeaders(),
+  onState({ step: "creating_task" });
+  const created = await api.POST("/_api/projects/{project_id}/uploads", {
+    params: {
+      path: { project_id: projectId },
+      header: getCsrfHeaders(),
+    },
+    body: { filename: file.name, sizeBytes: file.size },
   });
-  if (completeRes.error || !completeRes.data) throw new UploadPipelineError('processing_failed');
-
-  const finalTask = completeRes.data.uploadTask;
-  if (finalTask.status === 'failed') {
-    throw new UploadPipelineError('release_rejected', finalTask.errorMessage ?? undefined);
+  if (created.error || !created.data) {
+    throw new UploadPipelineError(
+      "create_failed",
+      getApiErrorCode(created),
+    );
   }
 
-  onState({ step: 'done' });
+  const uploadId = created.data.upload.id;
+  onState({ step: "uploading_raw" });
+  const uploaded = await api.PUT("/_api/uploads/{upload_id}/content", {
+    params: {
+      path: { upload_id: uploadId },
+      header: {
+        ...getCsrfHeaders(),
+        "content-length": file.size,
+      },
+    },
+    headers: { "content-type": "application/zip" },
+    body: file as unknown as number[],
+    bodySerializer: (body) => body as unknown as BodyInit,
+  });
+  if (uploaded.error) {
+    throw new UploadPipelineError(
+      "upload_failed",
+      getApiErrorCode(uploaded),
+    );
+  }
+
+  onState({ step: "processing" });
+  const completed = await api.POST("/_api/uploads/{upload_id}/complete", {
+    params: {
+      path: { upload_id: uploadId },
+      header: getCsrfHeaders(),
+    },
+  });
+  if (completed.error || !completed.data) {
+    throw new UploadPipelineError(
+      "processing_failed",
+      getApiErrorCode(completed),
+    );
+  }
+
+  onState({ step: "done" });
 }

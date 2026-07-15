@@ -25,9 +25,6 @@ function makeProject(overrides: Partial<Project> = {}): Project {
     currentReleaseId: "release-1",
     spaFallback: true,
     cachePolicy: "standard",
-    customDomains: [],
-    status: "active",
-    visibility: "private",
     createdBy: "user-1",
     createdAt: "2026-07-09T00:00:00.000Z",
     updatedAt: "2026-07-09T00:00:00.000Z",
@@ -66,7 +63,6 @@ function renderSettings(overrides: Partial<React.ComponentProps<typeof ProjectSe
         activeRelease={makeRelease()}
         canManage={true}
         onSave={async () => {}}
-        onDelete={async () => {}}
         {...overrides}
       />
     </MemoryRouter>,
@@ -84,7 +80,6 @@ describe("ProjectSettingsTab", () => {
     expect(screen.getAllByText("SPA fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Cache policy").length).toBeGreaterThan(0);
     expect(screen.getByText("Reserved paths")).toBeInTheDocument();
-    expect(screen.getAllByText("Custom domains").length).toBeGreaterThan(0);
     expect(screen.getByText("HTML cache")).toBeInTheDocument();
     expect(screen.getByText("Asset cache")).toBeInTheDocument();
     expect(screen.getByText("public, max-age=3600")).toBeInTheDocument();
@@ -114,15 +109,12 @@ describe("ProjectSettingsTab", () => {
     renderSettings({ onSave });
 
     await user.click(screen.getByRole("switch", { name: "SPA fallback" }));
-    await user.type(screen.getByLabelText("Custom domains"), "WWW.Example.COM\nwww.example.com\ndocs.example.com");
     await user.click(screen.getByRole("button", { name: "Save production access" }));
 
     expect(onSave).toHaveBeenCalledWith({
       spaFallback: false,
       cachePolicy: "standard",
-      customDomains: ["www.example.com", "docs.example.com"],
     });
-    expect(screen.getByText("Domain routing pending")).toBeInTheDocument();
   });
 
   it("previews aggressive cache warnings before saving", async () => {
@@ -131,12 +123,10 @@ describe("ProjectSettingsTab", () => {
     renderSettings({
       project: makeProject({
         cachePolicy: "aggressive",
-        customDomains: ["cdn.example.com"],
       }),
     });
 
     expect(screen.getByText("public, max-age=31536000, immutable")).toBeInTheDocument();
-    expect(screen.getByText("Domain routing pending")).toBeInTheDocument();
     expect(screen.getByText("Aggressive cache uses immutable releases")).toBeInTheDocument();
 
     await user.click(screen.getByRole("switch", { name: "SPA fallback" }));
@@ -146,16 +136,9 @@ describe("ProjectSettingsTab", () => {
     ).toBeInTheDocument();
   });
 
-  it("blocks invalid custom domains before saving production access", async () => {
-    const user = userEvent.setup();
-    const onSave = vi.fn(async () => {});
-
-    renderSettings({ onSave });
-
-    await user.type(screen.getByLabelText("Custom domains"), "https://example.com/path");
-    await user.click(screen.getByRole("button", { name: "Save production access" }));
-
-    expect(screen.getByText("https://example.com/path is not a valid domain.")).toBeInTheDocument();
-    expect(onSave).not.toHaveBeenCalled();
+  it("keeps unsupported production fields out of the Rust API form", () => {
+    renderSettings();
+    expect(screen.queryByLabelText("Custom domains")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /delete project/i })).not.toBeInTheDocument();
   });
 });
