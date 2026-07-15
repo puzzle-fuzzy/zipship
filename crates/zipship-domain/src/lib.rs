@@ -35,6 +35,10 @@ pub enum DomainError {
     InvalidUploadSize,
     #[error("invalid upload status")]
     InvalidUploadStatus,
+    #[error("invalid job kind")]
+    InvalidJobKind,
+    #[error("invalid job status")]
+    InvalidJobStatus,
     #[error("invalid SHA-256 artifact digest")]
     InvalidArtifactDigest,
     #[error("invalid state transition from {from} to {to}")]
@@ -286,6 +290,20 @@ impl JobKind {
     }
 }
 
+impl FromStr for JobKind {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "artifact.process" => Ok(Self::ArtifactProcess),
+            "runtime.check" => Ok(Self::RuntimeCheck),
+            "webhook.deliver" => Ok(Self::WebhookDeliver),
+            "artifact.gc" => Ok(Self::ArtifactGc),
+            _ => Err(DomainError::InvalidJobKind),
+        }
+    }
+}
+
 impl JobStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -314,6 +332,21 @@ impl JobStatus {
                 from: self.as_str(),
                 to: next.as_str(),
             })
+    }
+}
+
+impl FromStr for JobStatus {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "queued" => Ok(Self::Queued),
+            "running" => Ok(Self::Running),
+            "succeeded" => Ok(Self::Succeeded),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(DomainError::InvalidJobStatus),
+        }
     }
 }
 
@@ -592,6 +625,19 @@ mod tests {
 
     #[test]
     fn enforces_job_state_transitions() {
+        assert_eq!(
+            JobKind::from_str("artifact.process"),
+            Ok(JobKind::ArtifactProcess),
+        );
+        assert_eq!(JobStatus::from_str("running"), Ok(JobStatus::Running));
+        assert_eq!(
+            JobKind::from_str("unknown"),
+            Err(DomainError::InvalidJobKind),
+        );
+        assert_eq!(
+            JobStatus::from_str("unknown"),
+            Err(DomainError::InvalidJobStatus),
+        );
         assert_eq!(
             JobStatus::Queued.transition_to(JobStatus::Running),
             Ok(JobStatus::Running)

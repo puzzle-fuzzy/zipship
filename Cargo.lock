@@ -2460,8 +2460,9 @@ dependencies = [
 name = "zipship-jobs"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde_json",
- "sqlx",
+ "thiserror",
  "time",
  "uuid",
  "zipship-domain",
@@ -2482,6 +2483,7 @@ dependencies = [
  "zipship-auth",
  "zipship-config",
  "zipship-domain",
+ "zipship-jobs",
  "zipship-projects",
  "zipship-uploads",
 ]

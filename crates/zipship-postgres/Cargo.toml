@@ -17,6 +17,7 @@ uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
 zipship-config = { path = "../zipship-config" }
 zipship-domain = { path = "../zipship-domain" }
+zipship-jobs = { path = "../zipship-jobs" }
 zipship-projects = { path = "../zipship-projects" }
 zipship-uploads = { path = "../zipship-uploads" }
 
