@@ -5,11 +5,13 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use zipship_config::Settings;
 
+mod artifact_jobs;
 mod auth;
 mod jobs;
 mod projects;
 mod uploads;
 
+pub use artifact_jobs::PgArtifactJobsRepository;
 pub use auth::PgAuthRepository;
 pub use jobs::PgJobsRepository;
 pub use projects::PgProjectsRepository;

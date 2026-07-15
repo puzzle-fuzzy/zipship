@@ -17,11 +17,12 @@ async fn claims_jobs_once_and_recovers_expired_leases() {
         .unwrap();
 
     let repository = PgJobsRepository::new(pool.clone());
+    let domain_id = uuid::Uuid::new_v4();
     let input = json!({ "uploadId": "00000000-0000-0000-0000-000000000001" });
     let job_id = repository
         .enqueue(NewJob {
             kind: JobKind::ArtifactProcess,
-            domain_id: None,
+            domain_id: Some(domain_id),
             dedupe_key: Some("upload:1"),
             priority: 10,
             max_attempts: 3,
@@ -32,7 +33,7 @@ async fn claims_jobs_once_and_recovers_expired_leases() {
     let duplicate_id = repository
         .enqueue(NewJob {
             kind: JobKind::ArtifactProcess,
-            domain_id: None,
+            domain_id: Some(domain_id),
             dedupe_key: Some("upload:1"),
             priority: 99,
             max_attempts: 9,
@@ -156,10 +157,11 @@ async fn stops_retrying_at_the_attempt_limit() {
         .unwrap();
 
     let repository = PgJobsRepository::new(pool.clone());
+    let domain_id = uuid::Uuid::new_v4();
     let job_id = repository
         .enqueue(NewJob {
             kind: JobKind::ArtifactProcess,
-            domain_id: None,
+            domain_id: Some(domain_id),
             dedupe_key: None,
             priority: 0,
             max_attempts: 1,
