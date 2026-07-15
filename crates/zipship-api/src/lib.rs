@@ -187,8 +187,8 @@ mod tests {
     use time::OffsetDateTime;
     use tower::ServiceExt;
     use zipship_auth::{
-        AuthRepository, AuthRepositoryError, NewSession, NewUser, NormalizedEmail, ResolvedSession,
-        StoredUser, TokenDigest,
+        AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
+        NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
     };
 
     struct Probe {
@@ -218,6 +218,7 @@ mod tests {
         async fn create_user_with_session(
             &self,
             user: NewUser,
+            _organization: NewPersonalOrganization,
             session: NewSession,
         ) -> Result<(), AuthRepositoryError> {
             let mut state = self.state.lock().unwrap();

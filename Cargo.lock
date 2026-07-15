@@ -2404,6 +2404,7 @@ dependencies = [
  "time",
  "tokio",
  "uuid",
+ "zipship-domain",
 ]
 
 [[package]]

@@ -4,8 +4,8 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_auth::{
-    AuthRepository, AuthRepositoryError, DisplayName, EncodedPasswordHash, NewSession, NewUser,
-    NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
+    AuthRepository, AuthRepositoryError, DisplayName, EncodedPasswordHash, NewPersonalOrganization,
+    NewSession, NewUser, NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
 };
 
 #[derive(Debug, Clone)]
@@ -24,6 +24,7 @@ impl AuthRepository for PgAuthRepository {
     async fn create_user_with_session(
         &self,
         user: NewUser,
+        organization: NewPersonalOrganization,
         session: NewSession,
     ) -> Result<(), AuthRepositoryError> {
         let mut transaction = self
@@ -50,7 +51,56 @@ impl AuthRepository for PgAuthRepository {
             return Err(map_user_insert_error(error));
         }
 
+        sqlx::query(
+            r#"
+            INSERT INTO organizations (id, name, slug, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $4)
+            "#,
+        )
+        .bind(organization.id)
+        .bind(organization.name.as_str())
+        .bind(organization.slug.as_str())
+        .bind(organization.created_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO memberships (organization_id, user_id, role, created_at, updated_at)
+            VALUES ($1, $2, 'owner', $3, $3)
+            "#,
+        )
+        .bind(organization.id)
+        .bind(user.id)
+        .bind(organization.created_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?;
+
         insert_session(&mut transaction, &session).await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (
+                organization_id,
+                actor_id,
+                action,
+                target_type,
+                target_id,
+                metadata,
+                created_at
+            )
+            VALUES ($1, $2, 'organization.created', 'organization', $1, '{}'::jsonb, $3)
+            "#,
+        )
+        .bind(organization.id)
+        .bind(user.id)
+        .bind(organization.created_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(AuthRepositoryError::unavailable)?;
+
         transaction
             .commit()
             .await

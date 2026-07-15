@@ -15,7 +15,7 @@ async fn persists_registration_and_revokes_session() {
         .await
         .unwrap();
     zipship_postgres::migrate(&pool).await.unwrap();
-    sqlx::query("TRUNCATE TABLE users CASCADE")
+    sqlx::query("TRUNCATE TABLE organizations, users CASCADE")
         .execute(&pool)
         .await
         .unwrap();
@@ -46,6 +46,30 @@ async fn persists_registration_and_revokes_session() {
         .await
         .unwrap();
     assert_eq!(user_count, 1);
+    let owner_membership_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM memberships
+        WHERE user_id = $1 AND role = 'owner'
+        "#,
+    )
+    .bind(outcome.user.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(owner_membership_count, 1);
+    let organization_audit_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT count(*)
+        FROM audit_logs
+        WHERE actor_id = $1 AND action = 'organization.created'
+        "#,
+    )
+    .bind(outcome.user.id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(organization_audit_count, 1);
 
     let token = outcome.credentials.session_token().expose_secret();
     let session = service.authenticate(token).await.unwrap();

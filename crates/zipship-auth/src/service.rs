@@ -8,6 +8,7 @@ use std::{error::Error as StdError, sync::Arc};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
+use zipship_domain::{OrganizationName, OrganizationSlug};
 
 const DEFAULT_SESSION_TTL: Duration = Duration::days(7);
 const DUMMY_PASSWORD: &str = "zipship dummy credential value";
@@ -60,6 +61,14 @@ pub struct NewSession {
 }
 
 #[derive(Debug, Clone)]
+pub struct NewPersonalOrganization {
+    pub id: Uuid,
+    pub name: OrganizationName,
+    pub slug: OrganizationSlug,
+    pub created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct StoredUser {
     pub id: Uuid,
     pub email: NormalizedEmail,
@@ -99,6 +108,7 @@ pub trait AuthRepository: Send + Sync + 'static {
     async fn create_user_with_session(
         &self,
         user: NewUser,
+        organization: NewPersonalOrganization,
         session: NewSession,
     ) -> Result<(), AuthRepositoryError>;
 
@@ -224,10 +234,11 @@ impl AuthService {
             password_hash,
             created_at: now,
         };
+        let organization = new_personal_organization(&user, now)?;
         let (session, credentials) = self.new_session(user_id, now)?;
 
         self.repository
-            .create_user_with_session(user.clone(), session.clone())
+            .create_user_with_session(user.clone(), organization, session.clone())
             .await
             .map_err(map_repository_error)?;
 
@@ -355,6 +366,23 @@ impl AuthService {
     }
 }
 
+fn new_personal_organization(
+    user: &NewUser,
+    now: OffsetDateTime,
+) -> Result<NewPersonalOrganization, AuthError> {
+    let id = Uuid::new_v4();
+    let name = OrganizationName::parse(user.display_name.as_str())
+        .map_err(|_| AuthError::Infrastructure)?;
+    let slug = OrganizationSlug::parse(format!("org-{}", id.simple()))
+        .map_err(|_| AuthError::Infrastructure)?;
+    Ok(NewPersonalOrganization {
+        id,
+        name,
+        slug,
+        created_at: now,
+    })
+}
+
 impl ResolvedSession {
     pub fn profile(&self) -> UserProfile {
         profile_from_stored_user(&self.user)
@@ -404,6 +432,7 @@ mod tests {
     #[derive(Default)]
     struct RepositoryState {
         users: Vec<StoredUser>,
+        organizations: Vec<NewPersonalOrganization>,
         sessions: Vec<NewSession>,
     }
 
@@ -417,6 +446,7 @@ mod tests {
         async fn create_user_with_session(
             &self,
             user: NewUser,
+            organization: NewPersonalOrganization,
             session: NewSession,
         ) -> Result<(), AuthRepositoryError> {
             let mut state = self.state.lock().unwrap();
@@ -434,6 +464,7 @@ mod tests {
                 password_hash: user.password_hash,
                 disabled_at: None,
             });
+            state.organizations.push(organization);
             state.sessions.push(session);
             Ok(())
         }
@@ -531,6 +562,9 @@ mod tests {
         assert_eq!(result.expires_at, NOW + DEFAULT_SESSION_TTL);
         let state = repository.state.lock().unwrap();
         assert_eq!(state.users.len(), 1);
+        assert_eq!(state.organizations.len(), 1);
+        assert_eq!(state.organizations[0].name.as_str(), "Owner");
+        assert!(state.organizations[0].slug.as_str().starts_with("org-"));
         assert_eq!(state.sessions.len(), 1);
         assert_ne!(
             state.sessions[0].token_digest.as_bytes(),
