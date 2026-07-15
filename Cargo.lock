@@ -2725,6 +2725,7 @@ dependencies = [
  "zipship-jobs",
  "zipship-members",
  "zipship-projects",
+ "zipship-recovery",
  "zipship-releases",
  "zipship-uploads",
 ]

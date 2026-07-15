@@ -489,8 +489,8 @@ impl PasswordRecoveryPolicy {
             "request window limit must be positive"
         );
         assert!(
-            self.outbox_max_attempts > 0,
-            "outbox maximum attempts must be positive"
+            self.outbox_max_attempts > 0 && self.outbox_max_attempts <= i16::MAX as u16,
+            "outbox maximum attempts must fit PostgreSQL smallint"
         );
     }
 }

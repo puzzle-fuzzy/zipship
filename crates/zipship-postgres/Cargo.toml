@@ -25,6 +25,7 @@ zipship-jobs = { path = "../zipship-jobs" }
 zipship-invitations = { path = "../zipship-invitations" }
 zipship-members = { path = "../zipship-members" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-recovery = { path = "../zipship-recovery" }
 zipship-releases = { path = "../zipship-releases" }
 zipship-uploads = { path = "../zipship-uploads" }
 

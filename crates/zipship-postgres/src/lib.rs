@@ -14,6 +14,7 @@ mod invitations;
 mod jobs;
 mod members;
 mod projects;
+mod recovery;
 mod releases;
 mod uploads;
 
@@ -26,6 +27,7 @@ pub use invitations::PgInvitationsRepository;
 pub use jobs::PgJobsRepository;
 pub use members::PgMembersRepository;
 pub use projects::PgProjectsRepository;
+pub use recovery::PgPasswordRecoveryRepository;
 pub use releases::PgReleasesRepository;
 pub use uploads::PgUploadsRepository;
 
