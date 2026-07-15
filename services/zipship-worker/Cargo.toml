@@ -24,8 +24,16 @@ zipship-storage = { path = "../../crates/zipship-storage" }
 
 [dev-dependencies]
 async-trait.workspace = true
+axum.workspace = true
+serde_json.workspace = true
+sqlx.workspace = true
 tempfile.workspace = true
+tower.workspace = true
 zip.workspace = true
+zipship-api = { path = "../../crates/zipship-api" }
+zipship-auth = { path = "../../crates/zipship-auth" }
+zipship-projects = { path = "../../crates/zipship-projects" }
+zipship-uploads = { path = "../../crates/zipship-uploads" }
 
 [lints]
 workspace = true

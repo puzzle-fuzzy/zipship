@@ -2607,22 +2607,29 @@ name = "zipship-worker"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "axum",
  "dotenvy",
  "serde_json",
+ "sqlx",
  "tempfile",
  "thiserror",
  "time",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "uuid",
  "zip",
+ "zipship-api",
  "zipship-artifact",
+ "zipship-auth",
  "zipship-config",
  "zipship-domain",
  "zipship-jobs",
  "zipship-postgres",
+ "zipship-projects",
  "zipship-storage",
+ "zipship-uploads",
 ]
 
 [[package]]
