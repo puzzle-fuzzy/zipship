@@ -67,6 +67,7 @@ services/zipship-worker    Artifact and mail worker binary
 - Domain crates own invariants, commands, repository traits and stable errors. They do not depend on Axum or SQLx.
 - `zipship-postgres` implements repository traits. Transactions and row-lock ordering live here; schema migrations are embedded from `crates/zipship-postgres/migrations`.
 - `zipship-api` maps HTTP DTOs/authentication to domain services. Responses return stable `code` values, never localized user-facing messages.
+- `zipship-api` route-contract tests live under `src/tests/`, grouped by feature; shared in-memory boundary fixtures stay in `src/tests/mod.rs` instead of the production assembly module.
 - `zipshipd migrate` is the only migration entry. `zipshipd serve` starts Control and Access listeners and does not silently mutate schema.
 - Cookie Sessions are HttpOnly and stateful; browser writes require CSRF. API Tokens are separate credentials with explicit scopes, and effective permission is scope intersected with current organization RBAC.
 - Upload content is streamed to staging with an exact byte reservation. Completion creates a persistent job; it does not synchronously unzip in the request.
