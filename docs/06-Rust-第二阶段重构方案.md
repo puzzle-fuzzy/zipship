@@ -358,3 +358,18 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 6. owner 可以邀请或撤销任意角色；admin 只能处理非 owner 邀请；其他角色不能查看或管理邀请。已有成员、活动邀请、错误收件人、过期和已撤销令牌分别返回稳定错误码。
 7. API 提供组织范围的创建、活动列表、撤销和令牌接受。创建响应返回一次性 `acceptToken` 供当前阶段人工分享；邮件发送必须在后续以可靠 Outbox/Delivery 适配器实现，不能把明文令牌持久化到普通 Job 表冒充可靠邮件。
 8. 验收覆盖并发重复创建、创建与接受竞争、撤销与接受竞争、过期后重新邀请、错误邮箱、同用户接受重放、数据库约束、CSRF、OpenAPI 快照和 TypeScript Client。
+
+### 下一实施切片：密码重置与可靠邮件交付
+
+密码重置不沿用旧 TypeScript 的“写入令牌后同步尝试发信，再分两次更新密码与令牌”的实现。Rust 版按最终账号恢复模型交付，API、令牌状态、邮件投递与会话失效必须闭环：
+
+1. `password_reset_requests` 保存 `pending / consumed / superseded / expired` 状态、用户、32 字节令牌摘要、申请时间、过期时间和解决时间；数据库约束保证状态与时间一致，并以部分唯一索引保证每个用户最多只有一个 pending 请求。令牌使用操作系统随机生成的 32 字节 URL-safe Base64，数据库、审计和日志永远只保存摘要。
+2. `POST /_api/auth/password-resets` 是公开的匿名申请接口。除无效 JSON 外，合法请求结构无论邮箱格式、账号是否存在、账号是否禁用或是否命中冷却都统一返回 `202 Accepted`、空响应和 `Cache-Control: no-store`，不得返回令牌、用户信息或可区分错误。数据库按账号实施冷却与窗口限流，Control Plane 还必须按可信客户端地址实施独立的匿名接口限流。
+3. 已存在且可用的账号在同一事务中锁定 user，显式过期旧请求、将仍 pending 的请求标记为 superseded，并创建新的重置请求与邮件 Outbox；未知、无效或禁用账号不创建重置记录。请求重放、并发申请以及申请与确认竞争都通过统一 user 行锁串行化。
+4. 邮件 Outbox 是可靠交付边界，不把明文令牌放入通用 `jobs.input_json`。收件人、模板类型和包含令牌的投递参数使用应用层 AEAD 信封加密，表内只保存 key id、随机 nonce 和 ciphertext；密钥仅来自运行时 Secret 配置。轮换时保留旧解密 key，新的 Outbox 使用 active key，旧 key 只能在对应记录清空后移除。
+5. Outbox 与重置请求原子创建，再由专用邮件 Worker 以 lease、heartbeat、指数退避和最大尝试次数投递 SMTP。Worker 处理前重新确认请求仍为 pending 且未过期；成功或永久失效后清空密文。生产环境缺少有效 Outbox key、公开 Console URL 或 SMTP 配置时必须启动失败，不能静默降级成日志打印令牌；开发环境使用 Mailpit 等本地 SMTP 捕获服务。
+6. 邮件链接使用 `/reset-password#token=...`，令牌位于 URL Fragment，不进入 Web Server 请求行、反向代理访问日志或 Referer。Console 从 Fragment 读取后立即从地址栏移除，只通过 `POST /_api/auth/password-resets/confirm` 的 JSON Body 发送给 API。
+7. 确认接口不要求 Cookie/CSRF，重置令牌本身是一次性授权凭证。服务先校验新密码策略并在事务外执行 Argon2，再按摘要定位用户、锁 user 后锁 reset request；所有不存在、格式错误、过期、superseded、consumed 或禁用账号统一返回 `INVALID_PASSWORD_RESET_TOKEN`，不暴露令牌状态。
+8. 成功确认必须在一个 PostgreSQL 事务中更新密码哈希、将当前请求标记 consumed、supersede 该用户其他 pending 请求、撤销所有活动 `web_sessions` 和 `api_tokens`，并为用户仍加入的每个活动组织写入不含邮箱/令牌的 `user.password_reset_completed` 审计。相同令牌并发确认只能有一个成功，重放稳定失败。
+9. 确认成功返回 `204 No Content` 并清除当前浏览器的 Session/CSRF Cookie；旧密码、所有旧 Cookie Session 和 API Token 随事务提交立即失效。后续登录只接受新密码，不自动创建新会话，避免账号恢复操作隐式登录错误浏览器环境。
+10. 验收覆盖防枚举响应、账号/匿名限流、密文不可读与 AAD 防篡改、密钥轮换、SMTP 重试和永久失败、过期投递取消、申请/确认及双确认并发、事务回滚、旧凭证全部失效、审计脱敏、Fragment 链接、OpenAPI 快照和 TypeScript Client。
