@@ -6,13 +6,14 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "generate": "bun ../../scripts/generate-api-client.ts",
+    "test": "bun test tests",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@elysia/eden": "catalog:"
+    "openapi-fetch": "catalog:"
   },
   "devDependencies": {
-    "@zipship/api": "workspace:*",
     "typescript": "catalog:"
   }
 }

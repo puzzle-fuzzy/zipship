@@ -1,6 +1,17 @@
-import { treaty } from "@elysia/eden";
-import type { App } from "@zipship/api";
+import createClient from "openapi-fetch";
+import type { ClientOptions } from "openapi-fetch";
+import type { paths } from "./generated/schema";
 
-export function createApiClient(baseUrl: string) {
-  return treaty<App>(baseUrl);
+export function createApiClient(
+  baseUrl: string,
+  options: Omit<ClientOptions, "baseUrl"> = {},
+) {
+  return createClient<paths>({
+    ...options,
+    baseUrl: baseUrl.replace(/\/$/, ""),
+    credentials: options.credentials ?? "include",
+  });
 }
+
+export type ApiClient = ReturnType<typeof createApiClient>;
+export type { components, operations, paths } from "./generated/schema";

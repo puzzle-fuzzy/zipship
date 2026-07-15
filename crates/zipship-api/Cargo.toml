@@ -13,6 +13,7 @@ axum-extra.workspace = true
 futures-util.workspace = true
 secrecy.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 time.workspace = true
 tokio-util.workspace = true
 tower-http.workspace = true
@@ -26,7 +27,6 @@ zipship-storage = { path = "../zipship-storage" }
 zipship-uploads = { path = "../zipship-uploads" }
 
 [dev-dependencies]
-serde_json.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tempfile.workspace = true

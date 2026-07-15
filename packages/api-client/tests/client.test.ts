@@ -1,0 +1,53 @@
+import { expect, test } from "bun:test";
+import { createApiClient } from "../src";
+
+test("binds generated deployment paths and includes browser credentials", async () => {
+  let request: Request | undefined;
+  const api = createApiClient("https://control.example.test/", {
+    fetch: async (input) => {
+      request = input;
+      return Response.json({
+        deployment: {
+          id: "00000000-0000-0000-0000-000000000003",
+          projectId: "00000000-0000-0000-0000-000000000001",
+          releaseId: "00000000-0000-0000-0000-000000000002",
+          previousReleaseId: null,
+          action: "publish",
+          status: "succeeded",
+          actorId: "00000000-0000-0000-0000-000000000004",
+          message: null,
+          createdAt: "2026-07-15T00:00:00Z",
+          finishedAt: "2026-07-15T00:00:00Z",
+        },
+        activeReleaseId: "00000000-0000-0000-0000-000000000002",
+        replayed: false,
+      });
+    },
+  });
+
+  const result = await api.POST(
+    "/_api/projects/{project_id}/releases/{release_id}/publish",
+    {
+      params: {
+        path: {
+          project_id: "00000000-0000-0000-0000-000000000001",
+          release_id: "00000000-0000-0000-0000-000000000002",
+        },
+        header: {
+          "idempotency-key": "publish-v1",
+          "x-csrf-token": "csrf-token",
+        },
+      },
+      body: { message: "Production release" },
+    },
+  );
+
+  expect(result.error).toBeUndefined();
+  expect(result.data?.deployment.action).toBe("publish");
+  expect(request?.url).toBe(
+    "https://control.example.test/_api/projects/00000000-0000-0000-0000-000000000001/releases/00000000-0000-0000-0000-000000000002/publish",
+  );
+  expect(request?.credentials).toBe("include");
+  expect(request?.headers.get("idempotency-key")).toBe("publish-v1");
+  expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
+});

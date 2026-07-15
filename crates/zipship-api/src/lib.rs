@@ -145,6 +145,10 @@ impl AppState {
 )]
 pub struct ApiDoc;
 
+pub fn openapi_document() -> utoipa::openapi::OpenApi {
+    ApiDoc::openapi()
+}
+
 pub fn build_router(state: AppState) -> Router {
     let request_id_header = HeaderName::from_static("x-request-id");
 
@@ -232,7 +236,7 @@ async fn readiness(
 }
 
 async fn openapi() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
+    Json(openapi_document())
 }
 
 #[cfg(test)]
@@ -839,6 +843,19 @@ mod tests {
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
         assert!(document["paths"]["/_api/uploads/{upload_id}/content"].is_object());
+    }
+
+    #[test]
+    fn committed_openapi_snapshot_matches_the_rust_contract() {
+        let expected: Value = serde_json::from_str(include_str!(
+            "../../../packages/api-client/openapi/zipship.json"
+        ))
+        .unwrap();
+        let actual = serde_json::to_value(openapi_document()).unwrap();
+        assert_eq!(
+            actual, expected,
+            "Rust API contract changed; run `bun run api:generate`"
+        );
     }
 
     #[tokio::test]

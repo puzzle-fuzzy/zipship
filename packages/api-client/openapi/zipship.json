@@ -1,0 +1,1862 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "zipship-api",
+    "description": "",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/_api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Browser session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credentials are invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Account is disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "logout",
+        "parameters": [
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked and cookies cleared"
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Account and browser session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Registration input is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Authentication storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/organizations": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "list_organizations",
+        "responses": {
+          "200": {
+            "description": "Organizations visible to the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Organization storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/organizations/{organization_id}/members": {
+      "get": {
+        "tags": [
+          "organizations"
+        ],
+        "operationId": "list_members",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "description": "Organization ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Organization members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembersResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current user is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Membership storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/organizations/{organization_id}/projects": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "list_projects",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "description": "Organization ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects in the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current user is not a member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Project storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "create_project",
+        "parameters": [
+          {
+            "name": "organization_id",
+            "in": "path",
+            "description": "Organization ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Project created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "JSON or path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current role cannot create projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Project slug already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Project input is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Project storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "projects"
+        ],
+        "operationId": "get_project",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project visible to the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project is missing or not visible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Project storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/projects/{project_id}/deployments": {
+      "get": {
+        "tags": [
+          "deployments"
+        ],
+        "operationId": "list_deployments",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest deployments first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current member cannot view this project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deployment storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/projects/{project_id}/releases/{release_id}/publish": {
+      "post": {
+        "tags": [
+          "deployments"
+        ],
+        "operationId": "publish",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "path",
+            "description": "Ready release to activate",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "description": "Unique visible-ASCII operation key, up to 128 bytes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Release activated or the same request replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current role cannot publish releases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or release does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Release state or idempotency key conflicts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Idempotency key or message is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deployment storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/projects/{project_id}/releases/{release_id}/rollback": {
+      "post": {
+        "tags": [
+          "deployments"
+        ],
+        "operationId": "rollback",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "release_id",
+            "in": "path",
+            "description": "Previously active release to restore",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "idempotency-key",
+            "in": "header",
+            "description": "Unique visible-ASCII operation key, up to 128 bytes",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeploymentMessageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Release restored or the same request replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current role cannot roll releases back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or release does not exist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Release is not a valid rollback target or idempotency key conflicts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Idempotency key or message is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Deployment storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/projects/{project_id}/uploads": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "create_upload",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "description": "Project ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Upload reservation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Current role cannot upload releases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Filename or size is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Upload storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/uploads/{upload_id}": {
+      "get": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "get_upload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload visible to the current member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Upload is missing or not visible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Upload storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/uploads/{upload_id}/complete": {
+      "post": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "finalize_upload",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Artifact processing is queued idempotently",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalizeUploadResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The upload has not been received",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The upload reservation expired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Upload storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_api/uploads/{upload_id}/content": {
+      "put": {
+        "tags": [
+          "uploads"
+        ],
+        "operationId": "upload_content",
+        "parameters": [
+          {
+            "name": "upload_id",
+            "in": "path",
+            "description": "Upload ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "content-length",
+            "in": "header",
+            "description": "Exact byte count reserved for the upload",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/zip": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Archive streamed into durable staging",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadEnvelope"
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "Content-Length is required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Body exceeds the configured maximum",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Content type is not a raw ZIP archive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Body length differs from the reservation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Upload storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_health/live": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "liveness",
+        "responses": {
+          "200": {
+            "description": "Process is alive",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_health/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "operationId": "readiness",
+        "responses": {
+          "200": {
+            "description": "Dependencies are ready",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "At least one dependency is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthResponse": {
+        "type": "object",
+        "required": [
+          "user"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/UserResponse"
+          }
+        }
+      },
+      "CheckStatus": {
+        "type": "string",
+        "enum": [
+          "ok",
+          "failed"
+        ]
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "slug"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateUploadRequest": {
+        "type": "object",
+        "required": [
+          "filename",
+          "sizeBytes"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "DeploymentEnvelope": {
+        "type": "object",
+        "required": [
+          "deployment",
+          "activeReleaseId",
+          "replayed"
+        ],
+        "properties": {
+          "activeReleaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentResponse"
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DeploymentMessageRequest": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DeploymentResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "releaseId",
+          "action",
+          "status",
+          "actorId",
+          "createdAt",
+          "finishedAt"
+        ],
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "actorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "finishedAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previousReleaseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "DeploymentsResponse": {
+        "type": "object",
+        "required": [
+          "deployments"
+        ],
+        "properties": {
+          "deployments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentResponse"
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string"
+          }
+        }
+      },
+      "FinalizeUploadResponse": {
+        "type": "object",
+        "required": [
+          "upload",
+          "releaseId",
+          "jobId"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "upload": {
+            "$ref": "#/components/schemas/UploadResponse"
+          }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "checks"
+        ],
+        "properties": {
+          "checks": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CheckStatus"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CheckStatus"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "MemberResponse": {
+        "type": "object",
+        "required": [
+          "userId",
+          "email",
+          "displayName",
+          "role",
+          "joinedAt"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "MembersResponse": {
+        "type": "object",
+        "required": [
+          "members"
+        ],
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberResponse"
+            }
+          }
+        }
+      },
+      "OrganizationResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "role",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          }
+        }
+      },
+      "OrganizationsResponse": {
+        "type": "object",
+        "required": [
+          "organizations"
+        ],
+        "properties": {
+          "organizations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationResponse"
+            }
+          }
+        }
+      },
+      "ProjectEnvelope": {
+        "type": "object",
+        "required": [
+          "project"
+        ],
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/ProjectResponse"
+          }
+        }
+      },
+      "ProjectResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "organizationId",
+          "name",
+          "slug",
+          "spaFallback",
+          "cachePolicy",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "activeReleaseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "cachePolicy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "spaFallback": {
+            "type": "boolean"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        }
+      },
+      "ProjectsResponse": {
+        "type": "object",
+        "required": [
+          "projects"
+        ],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectResponse"
+            }
+          }
+        }
+      },
+      "RegisterRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "displayName",
+          "password"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "UploadEnvelope": {
+        "type": "object",
+        "required": [
+          "upload"
+        ],
+        "properties": {
+          "upload": {
+            "$ref": "#/components/schemas/UploadResponse"
+          }
+        }
+      },
+      "UploadResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "projectId",
+          "filename",
+          "status",
+          "expectedSize",
+          "receivedSize",
+          "createdBy",
+          "createdAt",
+          "expiresAt"
+        ],
+        "properties": {
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "errorCode": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expectedSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "receivedSize": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "releaseId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "uploadedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UserResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "displayName"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Process and dependency health"
+    },
+    {
+      "name": "auth",
+      "description": "Browser session authentication"
+    },
+    {
+      "name": "deployments",
+      "description": "Idempotent release activation and rollback"
+    },
+    {
+      "name": "organizations",
+      "description": "Organizations and memberships"
+    },
+    {
+      "name": "projects",
+      "description": "Static deployment projects"
+    },
+    {
+      "name": "uploads",
+      "description": "Bounded archive ingestion and processing"
+    }
+  ]
+}
