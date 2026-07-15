@@ -2562,6 +2562,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-deployments"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "zipship-domain"
 version = "0.1.0"
 dependencies = [
