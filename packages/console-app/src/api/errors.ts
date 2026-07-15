@@ -56,6 +56,10 @@ export const API_ERROR_MESSAGES: Record<string, string> = {
   RELEASE_NOT_FOUND: "Release not found",
 
   ALREADY_MEMBER: "This user is already a member",
-  INVITATION_ALREADY_PENDING: "An invitation is already pending for this email",
+  INVITATION_PENDING: "An invitation is already pending for this email",
+  INVITATION_NOT_FOUND: "This invitation is invalid or no longer available",
+  INVITATION_EXPIRED: "This invitation has expired",
+  INVITATION_WRONG_RECIPIENT: "Sign in with the account that received this invitation",
+  INVITATIONS_INFRASTRUCTURE_FAILURE: "Invitations are temporarily unavailable",
   LAST_OWNER: "Can't remove or demote the last owner",
 } as const;

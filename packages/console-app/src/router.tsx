@@ -7,6 +7,7 @@ import { StoragePage } from './pages/StoragePage';
 import { LoginPage } from './pages/LoginPage';
 import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
 import { AuthenticatedOnly, HomeRedirect, PublicOnly } from './features/auth/AuthRouteGuards';
 
 export const router = createBrowserRouter([
@@ -29,6 +30,10 @@ export const router = createBrowserRouter([
   {
     path: '/reset-password',
     element: <ResetPasswordPage />,
+  },
+  {
+    path: '/invitations/accept',
+    element: <InvitationAcceptPage />,
   },
   {
     path: '/app',

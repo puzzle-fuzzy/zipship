@@ -19,6 +19,7 @@ describe('settingsStore.init', () => {
     expect(s.language).toBe('zh');
     expect(s.initialized).toBe(true);
     expect(document.documentElement.classList.contains('night')).toBe(false);
+    expect(document.documentElement.lang).toBe('zh-CN');
   });
 
   it('restores saved theme and language', () => {
@@ -29,6 +30,7 @@ describe('settingsStore.init', () => {
     expect(s.theme).toBe('night');
     expect(s.language).toBe('en');
     expect(document.documentElement.classList.contains('night')).toBe(true);
+    expect(document.documentElement.lang).toBe('en');
   });
 });
 
@@ -46,9 +48,10 @@ describe('settingsStore.setTheme', () => {
 });
 
 describe('settingsStore.setLanguage', () => {
-  it('persists the language', () => {
+  it('persists the language and updates the document language', () => {
     useSettingsStore.getState().setLanguage('en');
     expect(localStorage.getItem('zipship_language')).toBe('en');
     expect(useSettingsStore.getState().language).toBe('en');
+    expect(document.documentElement.lang).toBe('en');
   });
 });

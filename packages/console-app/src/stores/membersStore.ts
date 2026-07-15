@@ -5,6 +5,9 @@ import { ApiClientError, API_ERROR_MESSAGES, mapApiError } from "../api/errors";
 
 type MemberRole = components["schemas"]["MemberRoleDto"];
 type MemberDto = components["schemas"]["MemberResponse"];
+type InvitationDto = components["schemas"]["InvitationResponse"];
+type AcceptedInvitationDto =
+  components["schemas"]["AcceptedInvitationResponse"];
 
 export interface Member {
   id: string;
@@ -15,12 +18,38 @@ export interface Member {
   joinedAt: string;
 }
 
+export interface Invitation {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: MemberRole;
+  state: components["schemas"]["InvitationStateDto"];
+  invitedBy: string | null;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface AcceptedInvitation {
+  invitationId: string;
+  organizationId: string;
+  userId: string;
+  role: MemberRole;
+  replayed: boolean;
+}
+
 interface MembersState {
   members: Member[];
+  membersOrganizationId: string | null;
   loading: boolean;
   error: string | null;
+  invitations: Invitation[];
+  invitationsOrganizationId: string | null;
+  invitationsLoading: boolean;
+  invitationsError: string | null;
 
   fetchMembers: (organizationId: string) => Promise<void>;
+  fetchInvitations: (organizationId: string) => Promise<void>;
+  clearInvitations: () => void;
   inviteMember: (
     organizationId: string,
     email: string,
@@ -32,7 +61,15 @@ interface MembersState {
     role: string,
   ) => Promise<void>;
   removeMember: (organizationId: string, userId: string) => Promise<void>;
+  revokeInvitation: (
+    organizationId: string,
+    invitationId: string,
+  ) => Promise<void>;
+  acceptInvitation: (token: string) => Promise<AcceptedInvitation>;
 }
+
+let membersRequestSequence = 0;
+let invitationsRequestSequence = 0;
 
 function memberView(member: MemberDto): Member {
   return {
@@ -45,6 +82,19 @@ function memberView(member: MemberDto): Member {
   };
 }
 
+function invitationView(invitation: InvitationDto): Invitation {
+  return {
+    id: invitation.id,
+    organizationId: invitation.organizationId,
+    email: invitation.email,
+    role: invitation.role,
+    state: invitation.state,
+    invitedBy: invitation.invitedBy ?? null,
+    createdAt: invitation.createdAt,
+    expiresAt: invitation.expiresAt,
+  };
+}
+
 function invitationUrl(token: string): string {
   const url = new URL("/invitations/accept", window.location.origin);
   url.hash = `token=${encodeURIComponent(token)}`;
@@ -53,11 +103,22 @@ function invitationUrl(token: string): string {
 
 export const useMembersStore = create<MembersState>((set) => ({
   members: [],
+  membersOrganizationId: null,
   loading: false,
   error: null,
+  invitations: [],
+  invitationsOrganizationId: null,
+  invitationsLoading: false,
+  invitationsError: null,
 
   fetchMembers: async (organizationId) => {
-    set({ loading: true, error: null });
+    const requestSequence = ++membersRequestSequence;
+    set({
+      members: [],
+      membersOrganizationId: null,
+      loading: true,
+      error: null,
+    });
     try {
       const result = await getApi().GET(
         "/_api/organizations/{organization_id}/members",
@@ -69,11 +130,14 @@ export const useMembersStore = create<MembersState>((set) => ({
           fallback: "Failed to fetch members",
         });
       }
+      if (requestSequence !== membersRequestSequence) return;
       set({
         members: result.data.members.map(memberView),
+        membersOrganizationId: organizationId,
         loading: false,
       });
     } catch (error) {
+      if (requestSequence !== membersRequestSequence) return;
       console.error("Failed to fetch members", error);
       set({
         loading: false,
@@ -83,6 +147,53 @@ export const useMembersStore = create<MembersState>((set) => ({
             : "Failed to fetch members",
       });
     }
+  },
+
+  fetchInvitations: async (organizationId) => {
+    const requestSequence = ++invitationsRequestSequence;
+    set({
+      invitations: [],
+      invitationsOrganizationId: null,
+      invitationsLoading: true,
+      invitationsError: null,
+    });
+    try {
+      const result = await getApi().GET(
+        "/_api/organizations/{organization_id}/invitations",
+        { params: { path: { organization_id: organizationId } } },
+      );
+      if (result.error || !result.data) {
+        throw mapApiError(result, {
+          codes: { FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN },
+          fallback: "Failed to fetch invitations",
+        });
+      }
+      if (requestSequence !== invitationsRequestSequence) return;
+      set({
+        invitations: result.data.invitations.map(invitationView),
+        invitationsOrganizationId: organizationId,
+        invitationsLoading: false,
+      });
+    } catch (error) {
+      if (requestSequence !== invitationsRequestSequence) return;
+      set({
+        invitationsLoading: false,
+        invitationsError:
+          error instanceof ApiClientError
+            ? error.message
+            : "Failed to fetch invitations",
+      });
+    }
+  },
+
+  clearInvitations: () => {
+    invitationsRequestSequence += 1;
+    set({
+      invitations: [],
+      invitationsOrganizationId: null,
+      invitationsLoading: false,
+      invitationsError: null,
+    });
   },
 
   inviteMember: async (organizationId, email, role) => {
@@ -100,13 +211,24 @@ export const useMembersStore = create<MembersState>((set) => ({
       throw mapApiError(result, {
         codes: {
           ALREADY_MEMBER: API_ERROR_MESSAGES.ALREADY_MEMBER,
-          INVITATION_ALREADY_PENDING:
-            API_ERROR_MESSAGES.INVITATION_ALREADY_PENDING,
+          INVITATION_PENDING: API_ERROR_MESSAGES.INVITATION_PENDING,
           FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          INVALID_CSRF_TOKEN: API_ERROR_MESSAGES.INVALID_CSRF_TOKEN,
         },
         fallback: "Failed to create invitation",
       });
     }
+    const invitation = invitationView(result.data.invitation);
+    set((state) =>
+      state.invitationsOrganizationId === organizationId
+        ? {
+            invitations: [
+              invitation,
+              ...state.invitations.filter((item) => item.id !== invitation.id),
+            ],
+          }
+        : {},
+    );
     return { inviteUrl: invitationUrl(result.data.acceptToken) };
   },
 
@@ -164,5 +286,60 @@ export const useMembersStore = create<MembersState>((set) => ({
     set((state) => ({
       members: state.members.filter((member) => member.userId !== userId),
     }));
+  },
+
+  revokeInvitation: async (organizationId, invitationId) => {
+    const result = await getApi().DELETE(
+      "/_api/organizations/{organization_id}/invitations/{invitation_id}",
+      {
+        params: {
+          path: {
+            organization_id: organizationId,
+            invitation_id: invitationId,
+          },
+          header: getCsrfHeaders(),
+        },
+      },
+    );
+    if (result.error) {
+      throw mapApiError(result, {
+        codes: {
+          FORBIDDEN: API_ERROR_MESSAGES.FORBIDDEN,
+          INVITATION_NOT_FOUND: API_ERROR_MESSAGES.INVITATION_NOT_FOUND,
+          INVITATION_EXPIRED: API_ERROR_MESSAGES.INVITATION_EXPIRED,
+          INVALID_CSRF_TOKEN: API_ERROR_MESSAGES.INVALID_CSRF_TOKEN,
+        },
+        fallback: "Failed to revoke invitation",
+      });
+    }
+    set((state) => ({
+      invitations: state.invitations.filter(
+        (invitation) => invitation.id !== invitationId,
+      ),
+    }));
+  },
+
+  acceptInvitation: async (token) => {
+    const result = await getApi().POST("/_api/invitations/accept", {
+      params: { header: getCsrfHeaders() },
+      body: { token },
+    });
+    if (result.error || !result.data) {
+      throw mapApiError(result, {
+        codes: {
+          UNAUTHENTICATED: API_ERROR_MESSAGES.UNAUTHENTICATED,
+          INVALID_CSRF_TOKEN: API_ERROR_MESSAGES.INVALID_CSRF_TOKEN,
+          INVITATION_NOT_FOUND: API_ERROR_MESSAGES.INVITATION_NOT_FOUND,
+          INVITATION_EXPIRED: API_ERROR_MESSAGES.INVITATION_EXPIRED,
+          INVITATION_WRONG_RECIPIENT:
+            API_ERROR_MESSAGES.INVITATION_WRONG_RECIPIENT,
+          ALREADY_MEMBER: API_ERROR_MESSAGES.ALREADY_MEMBER,
+          INVITATIONS_INFRASTRUCTURE_FAILURE:
+            API_ERROR_MESSAGES.INVITATIONS_INFRASTRUCTURE_FAILURE,
+        },
+        fallback: "Failed to accept invitation",
+      });
+    }
+    return result.data as AcceptedInvitationDto;
   },
 }));

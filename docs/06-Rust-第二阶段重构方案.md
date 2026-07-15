@@ -386,9 +386,18 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 实现已完成：Console 删除 `@zipship/api`/Eden、Bearer 和 `sessionStorage` 认证路径，所有 Store 使用 Rust 生成 Client、Cookie 与 CSRF；登录、注册、注销、资料、项目、成员、审计、上传、发布和回滚统一使用最终 Rust 路由。密码恢复页面实现 Fragment 凭证即时清理、同标签页新链接接管、统一防枚举文案和全会话撤销提示。Console 139 项测试、TypeScript、OpenAPI 漂移、Lint、Web 生产构建及桌面/390px 浏览器验收通过。
 
-### 下一实施切片：Console 邀请接受与管理闭环
+### 已完成切片：Console 邀请接受与管理闭环
 
 1. 增加 `/invitations/accept#token=...` 页面，复用一次性 Fragment 内存凭证边界；凭证不得进入查询参数、持久化 Store、日志或分析事件。
 2. 未登录收件人可以先完成登录/注册再回到邀请确认，不在 URL 中回传令牌；已登录但邮箱不匹配时展示稳定错误且不得泄露邀请目标邮箱。
 3. Members 页面接入活动邀请列表与撤销操作，严格按 Rust owner/admin 权限和稳定错误码渲染，不重新引入旧“仅邀请已注册用户”逻辑。
 4. 覆盖缺失/过期/撤销/错误邮箱/安全重放、登录往返、CSRF、移动端、键盘和浏览器控制台；保持生成 Client 漂移、类型、Lint、单测和生产构建全绿。
+
+实现已完成：`/invitations/accept` 只消费 URL Fragment 中的一次性凭证，进入页面后立即清除地址栏和历史记录，并只在当前文档内存中保存；误放到查询参数的 token 不会被接受且会被立即移除。未登录用户通过固定、无凭证的内存 continuation 完成登录或注册往返；错误账号只展示稳定隐私提示，不显示目标邮箱；成功与安全重放共用完成态。Members 页面已接入活动邀请列表、一次性人工分享链接、撤销、角色边界、加载/空/错误状态和无原生 `confirm` 的可访问确认对话框。组织切换使用请求序列隔离，旧组织响应不会覆盖当前成员或邀请。Web/Desktop Shell 使用固定 `ZipShip` 标题，避免初始含 Fragment 的 URL 被浏览器临时作为标签标题；中英文设置同步更新 `<html lang>`。Console 155 项测试、TypeScript、OpenAPI 漂移、Lint、Web 生产构建及桌面/390px 浏览器验收通过，浏览器控制台 0 warning/error；主包约 955 KB 的拆包警告继续作为独立性能问题处理。
+
+### 下一实施切片：个人 API Token 领域与管理闭环
+
+1. Rust 新建独立 API Token 领域服务与 PostgreSQL 仓储，不复用 Cookie Session：令牌仅创建时返回一次，数据库只保存摘要，名称、scope、过期、最后使用、撤销和账号停用边界均显式建模。
+2. Control Plane 增加本人 Token 的创建、活动列表和撤销接口；创建/撤销要求 Cookie Session + CSRF，Bearer Token 只用于受 scope 约束的 API 认证，不得访问 Console 会话接口或扩大当前用户权限。
+3. Console 增加安全设置入口；创建后的明文 Token 只保存在当前对话框内存并支持一次复制，关闭后不可恢复；列表只显示名称、前缀、scope、创建/过期/最后使用时间和状态，撤销使用可访问确认对话框。
+4. 覆盖明文不落库/日志、摘要校验、并发撤销与认证、scope 最小权限、过期/停用、CSRF、OpenAPI、移动端、键盘和浏览器控制台，并保持无旧 TypeScript 兼容分支。

@@ -14,10 +14,11 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { Input } from '../../components/ui/input';
-import { Label } from '../../components/ui/label';
+import { Field, FieldError, FieldGroup, FieldLabel } from '../../components/ui/field';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -35,15 +36,17 @@ export function InviteMemberDialog({
   organizationId,
 }: InviteMemberDialogProps) {
   const { t } = useTranslation();
-  const { inviteMember } = useMembersStore();
+  const { inviteMember, fetchInvitations } = useMembersStore();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('developer');
   const [sending, setSending] = useState(false);
   const [sentUrl, setSentUrl] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState('');
 
   const handleClose = () => {
     setSentUrl(null);
     setEmail('');
+    setEmailError('');
     onClose();
   };
 
@@ -51,17 +54,19 @@ export function InviteMemberDialog({
     e.preventDefault();
     const emailResult = emailSchema.safeParse(email);
     if (!emailResult.success) {
-      toast.error(emailResult.error.issues[0].message);
+      setEmailError(t('members.invalidInviteEmail'));
       return;
     }
 
+    setEmailError('');
     setSending(true);
     try {
       const result = await inviteMember(organizationId, emailResult.data, role);
       setSentUrl(result.inviteUrl);
+      void fetchInvitations(organizationId);
       toast.success(t('members.inviteCreatedToast'));
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to send invitation');
+      toast.error(err instanceof Error ? err.message : t('members.inviteFailed'));
     } finally {
       setSending(false);
     }
@@ -69,8 +74,12 @@ export function InviteMemberDialog({
 
   const copyToClipboard = async () => {
     if (sentUrl) {
-      await navigator.clipboard.writeText(sentUrl);
-      toast.success(t('members.linkCopiedToast'));
+      try {
+        await navigator.clipboard.writeText(sentUrl);
+        toast.success(t('members.linkCopiedToast'));
+      } catch {
+        toast.error(t('members.copyFailed'));
+      }
     }
   };
 
@@ -83,33 +92,41 @@ export function InviteMemberDialog({
               <DialogTitle>{t('members.inviteTitle')}</DialogTitle>
               <DialogDescription>{t('members.inviteDesc')}</DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col gap-4 py-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="invite-email">{t('members.email')}</Label>
+            <FieldGroup className="py-4">
+              <Field data-invalid={Boolean(emailError)}>
+                <FieldLabel htmlFor="invite-email">{t('members.email')}</FieldLabel>
                 <Input
                   id="invite-email"
                   type="email"
                   placeholder={t('members.emailPlaceholder')}
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    if (emailError) setEmailError('');
+                  }}
+                  aria-invalid={Boolean(emailError)}
+                  aria-describedby={emailError ? 'invite-email-error' : undefined}
+                  disabled={sending}
                 />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="invite-role">{t('members.role')}</Label>
-                <Select value={role} onValueChange={setRole}>
+                <FieldError id="invite-email-error">{emailError}</FieldError>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="invite-role">{t('members.role')}</FieldLabel>
+                <Select value={role} onValueChange={setRole} disabled={sending}>
                   <SelectTrigger id="invite-role" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">{t('members.admin')}</SelectItem>
-                    <SelectItem value="developer">{t('members.developer')}</SelectItem>
-                    <SelectItem value="deployer">{t('members.deployer')}</SelectItem>
-                    <SelectItem value="viewer">{t('members.viewer')}</SelectItem>
+                    <SelectGroup>
+                      <SelectItem value="admin">{t('members.admin')}</SelectItem>
+                      <SelectItem value="developer">{t('members.developer')}</SelectItem>
+                      <SelectItem value="deployer">{t('members.deployer')}</SelectItem>
+                      <SelectItem value="viewer">{t('members.viewer')}</SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
-              </div>
-            </div>
+              </Field>
+            </FieldGroup>
             <DialogFooter>
               <Button variant="outline" type="button" onClick={handleClose}>
                 {t('common.cancel')}
@@ -130,7 +147,7 @@ export function InviteMemberDialog({
             <div className="flex flex-col gap-3 py-4">
               <div className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2">
                 <ExternalLink className="size-4 shrink-0 text-muted-foreground" />
-                <code className="flex-1 truncate text-xs">{sentUrl}</code>
+                <code className="min-w-0 flex-1 truncate text-xs">{sentUrl}</code>
               </div>
               <p className="text-xs text-muted-foreground">
                 {t('members.inviteLinkNote')}
@@ -138,7 +155,7 @@ export function InviteMemberDialog({
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={copyToClipboard}>
-                <Copy className="size-4" />
+                <Copy data-icon="inline-start" />
                 {t('members.copyLink')}
               </Button>
               <Button onClick={handleClose}>{t('members.done')}</Button>

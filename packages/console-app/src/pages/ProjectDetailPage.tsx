@@ -45,8 +45,20 @@ export function ProjectDetailPage() {
     rollbackRelease,
     updateProject,
   } = useProjectsStore();
-  const { members, fetchMembers, loading: membersLoading, updateMemberRole, removeMember } =
-    useMembersStore();
+  const {
+    members,
+    membersOrganizationId,
+    invitations,
+    fetchMembers,
+    fetchInvitations,
+    clearInvitations,
+    loading: membersLoading,
+    invitationsLoading,
+    invitationsError,
+    updateMemberRole,
+    removeMember,
+    revokeInvitation,
+  } = useMembersStore();
   const { logs: auditLogs, loading: auditLoading, error: auditError, fetchAudit } =
     useAuditStore();
   const [showUpload, setShowUpload] = useState(false);
@@ -57,6 +69,11 @@ export function ProjectDetailPage() {
   const [highlightedReleaseId, setHighlightedReleaseId] = useState<string | null>(null);
 
   const project = projects.find((p) => p.id === projectId) ?? null;
+  const currentMember =
+    membersOrganizationId === project?.organizationId
+      ? members.find((member) => member.userId === user?.id)
+      : undefined;
+  const permissions = getProjectRolePermissions(currentMember);
   const projectReleases = useMemo(
     () => (projectId ? releases[projectId] ?? [] : []),
     [projectId, releases],
@@ -86,6 +103,25 @@ export function ProjectDetailPage() {
   }, [project?.organizationId, fetchMembers, fetchAudit]);
 
   useEffect(() => {
+    const organizationId = project?.organizationId;
+    if (
+      organizationId &&
+      membersOrganizationId === organizationId &&
+      permissions.canManageMembers
+    ) {
+      void fetchInvitations(organizationId);
+    } else {
+      clearInvitations();
+    }
+  }, [
+    project?.organizationId,
+    membersOrganizationId,
+    permissions.canManageMembers,
+    fetchInvitations,
+    clearInvitations,
+  ]);
+
+  useEffect(() => {
     if (pendingUploadAnchorId === undefined) return;
 
     const nextHighlightId = findUploadedReleaseHighlight(projectReleases, pendingUploadAnchorId);
@@ -104,8 +140,6 @@ export function ProjectDetailPage() {
     );
   }
 
-  const currentMember = members.find((m) => m.userId === user?.id);
-  const permissions = getProjectRolePermissions(currentMember);
   const activeRelease = projectReleases.find((r) => r.status === "active");
   const previewRelease =
     activeRelease ??
@@ -207,14 +241,22 @@ export function ProjectDetailPage() {
         <TabsContent value="members" className="pt-3">
           <ProjectMembersTab
             members={members}
+            invitations={invitations}
             loading={membersLoading}
+            invitationsLoading={invitationsLoading}
+            invitationsError={invitationsError}
             canManage={permissions.canManageMembers}
             currentUserId={user?.id ?? null}
+            currentUserRole={currentMember?.role ?? null}
             onInviteClick={() => setShowInvite(true)}
+            onRetryInvitations={() => fetchInvitations(project.organizationId)}
             onChangeRole={(member, role) =>
               updateMemberRole(project.organizationId, member.userId, role)
             }
             onRemove={(member) => removeMember(project.organizationId, member.userId)}
+            onRevokeInvitation={(invitation) =>
+              revokeInvitation(project.organizationId, invitation.id)
+            }
           />
         </TabsContent>
 

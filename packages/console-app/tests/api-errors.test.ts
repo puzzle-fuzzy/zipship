@@ -48,7 +48,11 @@ describe('OpenAPI error mapping', () => {
       'PROJECT_NOT_FOUND',
       'RELEASE_NOT_FOUND',
       'ALREADY_MEMBER',
-      'INVITATION_ALREADY_PENDING',
+      'INVITATION_PENDING',
+      'INVITATION_NOT_FOUND',
+      'INVITATION_EXPIRED',
+      'INVITATION_WRONG_RECIPIENT',
+      'INVITATIONS_INFRASTRUCTURE_FAILURE',
       'LAST_OWNER',
     ]) {
       expect(API_ERROR_MESSAGES[code]).toBeTruthy();

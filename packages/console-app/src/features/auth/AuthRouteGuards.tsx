@@ -1,10 +1,15 @@
 import type { ReactNode } from 'react';
 import { Navigate } from 'react-router';
 import { useAuthStore } from '../../stores/authStore';
+import { getAuthContinuation } from './authContinuation';
 
 export function PublicOnly({ children }: { children: ReactNode }) {
   const status = useAuthStore((state) => state.status);
-  return status === 'authenticated' ? <Navigate to="/app" replace /> : children;
+  return status === 'authenticated' ? (
+    <Navigate to={getAuthContinuation() ?? '/app'} replace />
+  ) : (
+    children
+  );
 }
 
 export function AuthenticatedOnly({ children }: { children: ReactNode }) {

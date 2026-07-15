@@ -20,12 +20,31 @@ const member = {
   role: 'owner',
   joinedAt: '2026-07-15T00:00:00Z',
 };
+const invitation = {
+  id: 'invite-1',
+  organizationId: 'org-1',
+  email: 'new@example.com',
+  role: 'developer',
+  state: 'pending',
+  invitedBy: 'u1',
+  createdAt: '2026-07-15T00:00:00Z',
+  expiresAt: '2026-07-22T00:00:00Z',
+};
 
 beforeEach(() => {
   api = createMockApi();
   setMockApi(api._api);
   document.cookie = 'zipship_csrf=test-csrf; Path=/';
-  useMembersStore.setState({ members: [], loading: false, error: null });
+  useMembersStore.setState({
+    members: [],
+    membersOrganizationId: null,
+    loading: false,
+    error: null,
+    invitations: [],
+    invitationsOrganizationId: null,
+    invitationsLoading: false,
+    invitationsError: null,
+  });
 });
 
 describe('membersStore', () => {
@@ -38,6 +57,7 @@ describe('membersStore', () => {
     expect(useMembersStore.getState()).toMatchObject({
       loading: false,
       error: null,
+      membersOrganizationId: 'org-1',
       members: [{ id: 'u1', userId: 'u1', name: 'Ada', role: 'owner' }],
     });
   });
@@ -49,7 +69,10 @@ describe('membersStore', () => {
   });
 
   it('creates an invitation and keeps its bearer credential in the fragment', async () => {
-    api.verb('post').mockResolvedValueOnce({ data: { acceptToken: 'secret-token' } });
+    useMembersStore.setState({ invitationsOrganizationId: 'org-1' });
+    api.verb('post').mockResolvedValueOnce({
+      data: { acceptToken: 'secret-token', invitation },
+    });
     const result = await useMembersStore.getState().inviteMember('org-1', 'new@example.com', 'developer');
     expect(api.verb('post')).toHaveBeenCalledWith(
       '/_api/organizations/{organization_id}/invitations',
@@ -65,10 +88,13 @@ describe('membersStore', () => {
     expect(url.pathname).toBe('/invitations/accept');
     expect(url.search).toBe('');
     expect(url.hash).toBe('#token=secret-token');
+    expect(useMembersStore.getState().invitations).toEqual([
+      expect.objectContaining({ id: 'invite-1', state: 'pending' }),
+    ]);
   });
 
   it('maps duplicate pending invitations from the Rust error code', async () => {
-    api.verb('post').mockResolvedValueOnce({ error: { code: 'INVITATION_ALREADY_PENDING' } });
+    api.verb('post').mockResolvedValueOnce({ error: { code: 'INVITATION_PENDING' } });
     await expect(
       useMembersStore.getState().inviteMember('org-1', 'new@example.com', 'viewer'),
     ).rejects.toThrow('An invitation is already pending for this email');
@@ -105,5 +131,54 @@ describe('membersStore', () => {
     api.verb('delete').mockResolvedValueOnce({});
     await useMembersStore.getState().removeMember('org-1', 'u1');
     expect(useMembersStore.getState().members).toEqual([]);
+  });
+
+  it('loads active invitations for an organization manager', async () => {
+    api.verb('get').mockResolvedValueOnce({ data: { invitations: [invitation] } });
+    await useMembersStore.getState().fetchInvitations('org-1');
+    expect(api.verb('get')).toHaveBeenCalledWith(
+      '/_api/organizations/{organization_id}/invitations',
+      { params: { path: { organization_id: 'org-1' } } },
+    );
+    expect(useMembersStore.getState()).toMatchObject({
+      invitationsLoading: false,
+      invitationsError: null,
+      invitationsOrganizationId: 'org-1',
+      invitations: [{ id: 'invite-1', email: 'new@example.com' }],
+    });
+  });
+
+  it('revokes an invitation with CSRF before removing it locally', async () => {
+    useMembersStore.setState({ invitations: [invitation] });
+    api.verb('delete').mockResolvedValueOnce({});
+    await useMembersStore.getState().revokeInvitation('org-1', 'invite-1');
+    expect(api.verb('delete')).toHaveBeenCalledWith(
+      '/_api/organizations/{organization_id}/invitations/{invitation_id}',
+      {
+        params: {
+          path: { organization_id: 'org-1', invitation_id: 'invite-1' },
+          header: { 'x-csrf-token': 'test-csrf' },
+        },
+      },
+    );
+    expect(useMembersStore.getState().invitations).toEqual([]);
+  });
+
+  it('accepts and safely replays an invitation with CSRF', async () => {
+    api.verb('post').mockResolvedValueOnce({
+      data: {
+        invitationId: 'invite-1',
+        organizationId: 'org-1',
+        userId: 'u2',
+        role: 'developer',
+        replayed: true,
+      },
+    });
+    const accepted = await useMembersStore.getState().acceptInvitation('secret-token');
+    expect(api.verb('post')).toHaveBeenCalledWith('/_api/invitations/accept', {
+      params: { header: { 'x-csrf-token': 'test-csrf' } },
+      body: { token: 'secret-token' },
+    });
+    expect(accepted).toMatchObject({ organizationId: 'org-1', replayed: true });
   });
 });

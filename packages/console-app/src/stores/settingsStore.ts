@@ -22,6 +22,10 @@ function applyTheme(theme: Theme) {
   }
 }
 
+function applyLanguage(language: Language) {
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+}
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   theme: 'day',
   language: 'zh',
@@ -34,6 +38,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   setLanguage: (language) => {
+    applyLanguage(language);
     localStorage.setItem('zipship_language', language);
     set({ language });
   },
@@ -43,6 +48,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const savedTheme = (localStorage.getItem('zipship_theme') as Theme | null) ?? 'day';
     const savedLanguage = (localStorage.getItem('zipship_language') as Language | null) ?? 'zh';
     applyTheme(savedTheme);
+    applyLanguage(savedLanguage);
     set({ theme: savedTheme, language: savedLanguage, initialized: true });
   },
 }));
