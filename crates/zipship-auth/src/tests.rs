@@ -1,4 +1,5 @@
 use super::*;
+use secrecy::{ExposeSecret, SecretString};
 
 #[test]
 fn normalizes_and_validates_email_addresses() {
@@ -29,7 +30,7 @@ fn enforces_password_length_before_hashing() {
     );
     assert!(validate_password("correct horse battery staple").is_ok());
     assert_eq!(
-        validate_password(&"x".repeat(PASSWORD_MAX_BYTES + 1)),
+        validate_password(&"x".repeat(crate::identity::PASSWORD_MAX_BYTES + 1)),
         Err(IdentityValidationError::InvalidPassword),
     );
 }
