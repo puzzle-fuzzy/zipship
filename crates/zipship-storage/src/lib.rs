@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use tokio::fs;
+use tokio::{
+    fs,
+    io::{AsyncRead, AsyncReadExt, AsyncWriteExt},
+};
 use uuid::Uuid;
 use zipship_domain::ArtifactDigest;
 
@@ -25,6 +28,18 @@ pub enum StorageError {
     InvalidStagingPath,
     #[error("staging path is not a directory")]
     InvalidStagingDirectory,
+    #[error("upload contained more bytes than declared: expected {expected}")]
+    UploadTooLarge { expected: u64 },
+    #[error(
+        "upload byte count did not match declaration: expected {expected}, received {received}"
+    )]
+    UploadSizeMismatch { expected: u64, received: u64 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadWriteResult {
+    pub path: PathBuf,
+    pub bytes_written: u64,
 }
 
 impl LocalArtifactStore {
@@ -52,6 +67,14 @@ impl LocalArtifactStore {
         self.staging_root()
             .join("uploads")
             .join(upload_id.to_string())
+    }
+
+    pub fn upload_archive_path(&self, upload_id: Uuid) -> PathBuf {
+        self.upload_staging_path(upload_id).join("archive.zip")
+    }
+
+    pub fn upload_staging_key(upload_id: Uuid) -> String {
+        format!("uploads/{upload_id}/archive.zip")
     }
 
     pub fn artifact_path(&self, digest: &ArtifactDigest) -> PathBuf {
@@ -103,6 +126,89 @@ impl LocalArtifactStore {
         }
         fs::rename(staging_directory, destination).await?;
         Ok(CommitOutcome::Created)
+    }
+
+    pub async fn write_upload_stream<R>(
+        &self,
+        upload_id: Uuid,
+        transfer_id: Uuid,
+        mut reader: R,
+        expected_size: u64,
+    ) -> Result<UploadWriteResult, StorageError>
+    where
+        R: AsyncRead + Unpin,
+    {
+        let upload_directory = self.upload_staging_path(upload_id);
+        fs::create_dir_all(&upload_directory).await?;
+        let temporary_path = upload_directory.join(format!("{transfer_id}.part"));
+        let final_path = self.upload_archive_path(upload_id);
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temporary_path)
+            .await?;
+
+        let write_result = async {
+            let mut total = 0_u64;
+            let mut buffer = vec![0_u8; 64 * 1_024];
+            loop {
+                let read = reader.read(&mut buffer).await?;
+                if read == 0 {
+                    break;
+                }
+                total = total
+                    .checked_add(read as u64)
+                    .ok_or(StorageError::UploadTooLarge {
+                        expected: expected_size,
+                    })?;
+                if total > expected_size {
+                    return Err(StorageError::UploadTooLarge {
+                        expected: expected_size,
+                    });
+                }
+                file.write_all(&buffer[..read]).await?;
+            }
+            if total != expected_size {
+                return Err(StorageError::UploadSizeMismatch {
+                    expected: expected_size,
+                    received: total,
+                });
+            }
+            file.flush().await?;
+            file.sync_all().await?;
+            Ok(total)
+        }
+        .await;
+
+        drop(file);
+        let total = match write_result {
+            Ok(total) => total,
+            Err(error) => {
+                let _ = fs::remove_file(&temporary_path).await;
+                return Err(error);
+            }
+        };
+
+        if fs::try_exists(&final_path).await? {
+            fs::remove_file(&final_path).await?;
+        }
+        if let Err(error) = fs::rename(&temporary_path, &final_path).await {
+            let _ = fs::remove_file(&temporary_path).await;
+            return Err(error.into());
+        }
+
+        Ok(UploadWriteResult {
+            path: final_path,
+            bytes_written: total,
+        })
+    }
+
+    pub async fn remove_upload_staging(&self, upload_id: Uuid) -> Result<(), StorageError> {
+        let path = self.upload_staging_path(upload_id);
+        if fs::try_exists(&path).await? {
+            fs::remove_dir_all(path).await?;
+        }
+        Ok(())
     }
 }
 
@@ -183,5 +289,90 @@ mod tests {
             storage.commit_artifact_directory(&outside, &digest()).await,
             Err(StorageError::InvalidStagingPath),
         ));
+    }
+
+    #[tokio::test]
+    async fn streams_exact_uploads_to_a_stable_archive_path() {
+        let temp = tempdir().unwrap();
+        let storage = LocalArtifactStore::new(temp.path());
+        storage.ensure_layout().await.unwrap();
+        let upload_id = Uuid::new_v4();
+        let contents = b"PK\x03\x04zip payload".to_vec();
+
+        let result = storage
+            .write_upload_stream(
+                upload_id,
+                Uuid::new_v4(),
+                std::io::Cursor::new(contents.clone()),
+                contents.len() as u64,
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.path, storage.upload_archive_path(upload_id));
+        assert_eq!(result.bytes_written, contents.len() as u64);
+        assert_eq!(fs::read(result.path).await.unwrap(), contents);
+        assert_eq!(
+            LocalArtifactStore::upload_staging_key(upload_id),
+            format!("uploads/{upload_id}/archive.zip"),
+        );
+    }
+
+    #[tokio::test]
+    async fn removes_partial_files_when_the_body_is_short_or_oversized() {
+        let temp = tempdir().unwrap();
+        let storage = LocalArtifactStore::new(temp.path());
+        storage.ensure_layout().await.unwrap();
+
+        for (contents, expected) in [(b"short".as_slice(), 10_u64), (b"too long".as_slice(), 3)] {
+            let upload_id = Uuid::new_v4();
+            let result = storage
+                .write_upload_stream(
+                    upload_id,
+                    Uuid::new_v4(),
+                    std::io::Cursor::new(contents),
+                    expected,
+                )
+                .await;
+            assert!(matches!(
+                result,
+                Err(StorageError::UploadSizeMismatch { .. })
+                    | Err(StorageError::UploadTooLarge { .. })
+            ));
+            assert!(
+                !fs::try_exists(storage.upload_archive_path(upload_id))
+                    .await
+                    .unwrap()
+            );
+            let mut entries = fs::read_dir(storage.upload_staging_path(upload_id))
+                .await
+                .unwrap();
+            assert!(entries.next_entry().await.unwrap().is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn a_retry_replaces_an_unfinalized_archive() {
+        let temp = tempdir().unwrap();
+        let storage = LocalArtifactStore::new(temp.path());
+        storage.ensure_layout().await.unwrap();
+        let upload_id = Uuid::new_v4();
+
+        for contents in [b"first".as_slice(), b"retry".as_slice()] {
+            storage
+                .write_upload_stream(
+                    upload_id,
+                    Uuid::new_v4(),
+                    std::io::Cursor::new(contents),
+                    contents.len() as u64,
+                )
+                .await
+                .unwrap();
+        }
+        assert_eq!(
+            fs::read(storage.upload_archive_path(upload_id))
+                .await
+                .unwrap(),
+            b"retry",
+        );
     }
 }
