@@ -2,7 +2,7 @@
 
 ZipShip 是一个面向静态产物的私有化部署工具。第一阶段聚焦上传产物、检测、生成测试地址、发布正式版本和回滚。
 
-`rust-dev` 正在进行第二阶段完整 Rust 重构。目标后端为 Axum + Tokio + SQLx/PostgreSQL；不兼容旧 Elysia API、旧数据库结构或软链接发布模型。现有 React Console 保留，并将在 Rust API 完备后切换到 OpenAPI 生成的 Client。
+`rust-dev` 正在进行第二阶段完整 Rust 重构。目标后端为 Axum + Tokio + SQLx/PostgreSQL；不兼容旧 Elysia API、旧数据库结构或软链接发布模型。现有 React Console 保留；Rust OpenAPI 与生成的 TypeScript Client 已建立契约门禁，待成员/账号等接口补齐后一次性切换 Store，不保留双 Client 运行模式。
 
 ## 文档
 
