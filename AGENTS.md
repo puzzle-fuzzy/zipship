@@ -74,6 +74,7 @@ services/zipship-worker    Artifact and mail worker binary
 - Worker claims jobs with lease/heartbeat/retry, safely extracts ZIPs, builds a stable manifest and commits content-addressed immutable Artifacts.
 - Release is immutable. Publish/rollback atomically updates the database activity pointer with deployment and audit records; filesystem symlinks are not a source of truth.
 - Access Plane serves only ready Artifact files present in the manifest. Fixed preview and live paths share MIME, ETag, Range, cache and HTML-navigation SPA fallback rules.
+- `zipship-access` keeps manifest/path invariants, repository ports, HTTP policy and Axum file serving in separate modules; `lib.rs` is the stable public facade.
 - Password recovery and invitations use one-time secrets. Database, audit and logs store only digests or encrypted Outbox envelopes.
 
 ## API contract
