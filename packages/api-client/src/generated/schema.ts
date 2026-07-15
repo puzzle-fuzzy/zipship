@@ -84,6 +84,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/_api/organizations/{organization_id}/audit-logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_audit_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/_api/organizations/{organization_id}/members": {
         parameters: {
             query?: never;
@@ -300,6 +316,34 @@ export interface components {
             files: components["schemas"]["ManifestEntryResponse"][];
             /** Format: int32 */
             version: number;
+        };
+        AuditActorResponse: {
+            displayName: string;
+            email: string;
+            /** Format: uuid */
+            id: string;
+        };
+        AuditEntryResponse: {
+            action: string;
+            actor?: null | components["schemas"]["AuditActorResponse"];
+            createdAt: string;
+            /** Format: uuid */
+            id: string;
+            metadata: Record<string, never>;
+            /** Format: uuid */
+            organizationId: string;
+            /** Format: uuid */
+            projectId?: string | null;
+            /** Format: uuid */
+            requestId?: string | null;
+            /** Format: uuid */
+            targetId?: string | null;
+            targetType: string;
+        };
+        AuditLogsResponse: {
+            items: components["schemas"]["AuditEntryResponse"][];
+            /** Format: uuid */
+            nextCursor?: string | null;
         };
         AuthResponse: {
             user: components["schemas"]["UserResponse"];
@@ -708,6 +752,72 @@ export interface operations {
                 };
             };
             /** @description Organization storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_audit_logs: {
+        parameters: {
+            query?: {
+                /** @description Page size from 1 through 100 */
+                limit?: number;
+                /** @description Last entry ID from the previous page */
+                cursor?: string;
+                /** @description Restrict entries to one project */
+                projectId?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Organization ID */
+                organization_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest organization audit entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditLogsResponse"];
+                };
+            };
+            /** @description Session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Organization is missing or not visible */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Query or cursor is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Audit storage is unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

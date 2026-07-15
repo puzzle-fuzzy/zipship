@@ -4,6 +4,7 @@ members = [
   "crates/zipship-api",
   "crates/zipship-access",
   "crates/zipship-artifact",
+  "crates/zipship-audit",
   "crates/zipship-auth",
   "crates/zipship-config",
   "crates/zipship-domain",

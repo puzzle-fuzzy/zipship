@@ -19,6 +19,7 @@ use tower_http::{
     trace::TraceLayer,
 };
 use utoipa::{OpenApi, ToSchema};
+use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
 use zipship_projects::ProjectsService;
@@ -26,6 +27,7 @@ use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::UploadsService;
 
+mod audit;
 mod auth;
 mod deployments;
 mod error;
@@ -125,6 +127,7 @@ pub trait ReadinessProbe: Send + Sync + 'static {
 #[derive(Clone)]
 pub struct AppServices {
     auth: AuthService,
+    audit: AuditService,
     deployments: DeploymentsService,
     projects: ProjectsService,
     releases: ReleasesService,
@@ -134,6 +137,7 @@ pub struct AppServices {
 impl AppServices {
     pub fn new(
         auth: AuthService,
+        audit: AuditService,
         deployments: DeploymentsService,
         projects: ProjectsService,
         releases: ReleasesService,
@@ -141,6 +145,7 @@ impl AppServices {
     ) -> Self {
         Self {
             auth,
+            audit,
             deployments,
             projects,
             releases,
@@ -153,6 +158,7 @@ impl AppServices {
 pub struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) auth: AuthService,
+    pub(crate) audit: AuditService,
     pub(crate) deployments: DeploymentsService,
     pub(crate) projects: ProjectsService,
     pub(crate) releases: ReleasesService,
@@ -172,6 +178,7 @@ impl AppState {
         Self {
             readiness,
             auth: services.auth,
+            audit: services.audit,
             deployments: services.deployments,
             projects: services.projects,
             releases: services.releases,
@@ -192,6 +199,7 @@ impl AppState {
         auth::login,
         auth::me,
         auth::logout,
+        audit::list_audit_logs,
         deployments::publish,
         deployments::rollback,
         deployments::list_deployments,
@@ -213,6 +221,9 @@ impl AppState {
         auth::LoginRequest,
         auth::AuthResponse,
         auth::UserResponse,
+        audit::AuditLogsResponse,
+        audit::AuditEntryResponse,
+        audit::AuditActorResponse,
         deployments::DeploymentMessageRequest,
         deployments::DeploymentEnvelope,
         deployments::DeploymentResponse,
@@ -239,6 +250,7 @@ impl AppState {
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "auth", description = "Browser session authentication"),
+        (name = "audit", description = "Organization activity history"),
         (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
         (name = "projects", description = "Static deployment projects"),
@@ -261,6 +273,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
+        .merge(audit::router())
         .merge(deployments::router())
         .merge(projects::router())
         .merge(releases::router())
@@ -358,6 +371,10 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
     use zipship_artifact::{ArtifactManifest, ManifestEntry};
+    use zipship_audit::{
+        AuditActor, AuditEntry, AuditPage, AuditPageRequest, AuditRepository, AuditRepositoryError,
+        AuditService,
+    };
     use zipship_auth::{
         AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
         NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
@@ -471,6 +488,33 @@ mod tests {
     }
 
     struct TestReleasesRepository;
+
+    struct TestAuditRepository;
+
+    #[async_trait]
+    impl AuditRepository for TestAuditRepository {
+        async fn list(&self, request: AuditPageRequest) -> Result<AuditPage, AuditRepositoryError> {
+            Ok(AuditPage {
+                entries: vec![AuditEntry {
+                    id: Uuid::from_u128(71),
+                    organization_id: request.organization_id,
+                    project_id: request.project_id,
+                    actor: Some(AuditActor {
+                        id: request.actor_id,
+                        email: "owner@example.com".to_owned(),
+                        display_name: "Owner".to_owned(),
+                    }),
+                    action: "release.published".to_owned(),
+                    target_type: "release".to_owned(),
+                    target_id: Some(Uuid::from_u128(72)),
+                    request_id: Some(Uuid::from_u128(73)),
+                    metadata: json!({ "versionNumber": 2 }),
+                    created_at: OffsetDateTime::UNIX_EPOCH,
+                }],
+                next_cursor: None,
+            })
+        }
+    }
 
     #[async_trait]
     impl ReleasesRepository for TestReleasesRepository {
@@ -876,6 +920,7 @@ mod tests {
         let auth = AuthService::new(Arc::new(TestAuthRepository::default()))
             .await
             .unwrap();
+        let audit = AuditService::new(Arc::new(TestAuditRepository));
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
         let releases = ReleasesService::new(Arc::new(TestReleasesRepository));
@@ -895,7 +940,7 @@ mod tests {
                 status,
                 _storage_root: storage_root,
             }),
-            AppServices::new(auth, deployments, projects, releases, uploads),
+            AppServices::new(auth, audit, deployments, projects, releases, uploads),
             storage.clone(),
             BrowserPolicy::new(
                 CookiePolicy::new(secure_cookies),
@@ -1297,6 +1342,57 @@ mod tests {
         );
         assert!(release.get("storageKey").is_none());
         assert!(release.get("storagePath").is_none());
+    }
+
+    #[tokio::test]
+    async fn audit_routes_expose_safe_cursor_paginated_activity() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let project_id = Uuid::from_u128(70);
+        let path = format!(
+            "/_api/organizations/{TEST_ORGANIZATION_ID}/audit-logs?limit=1&projectId={project_id}"
+        );
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let response = json_body(response).await;
+        let entry = &response["items"][0];
+        assert_eq!(entry["projectId"], project_id.to_string());
+        assert_eq!(entry["actor"]["displayName"], "Owner");
+        assert_eq!(entry["action"], "release.published");
+        assert_eq!(entry["metadata"]["versionNumber"], 2);
+        assert!(entry.get("ipAddress").is_none());
+        assert!(entry.get("userAgent").is_none());
+        assert!(response["nextCursor"].is_null());
+
+        let invalid = app
+            .oneshot(
+                Request::get(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/audit-logs?limit=0"
+                ))
+                .header(header::COOKIE, cookie_header)
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            json_body(invalid).await,
+            json!({ "code": "INVALID_AUDIT_QUERY" })
+        );
     }
 
     #[tokio::test]

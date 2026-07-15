@@ -12,6 +12,7 @@ use zipship_api::{
     AppServices, AppState, BrowserPolicy, CheckStatus, CookiePolicy, CorsPolicy, ReadinessProbe,
     build_router,
 };
+use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
 use zipship_deployments::DeploymentsService;
@@ -95,6 +96,9 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
         storage: storage.clone(),
     });
     let auth = AuthService::new(Arc::new(zipship_postgres::PgAuthRepository::new(pool))).await?;
+    let audit = AuditService::new(Arc::new(zipship_postgres::PgAuditRepository::new(
+        readiness.pool.clone(),
+    )));
     let projects = ProjectsService::new(Arc::new(zipship_postgres::PgProjectsRepository::new(
         readiness.pool.clone(),
     )));
@@ -123,7 +127,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     ));
     let control_app = build_router(AppState::new(
         readiness,
-        AppServices::new(auth, deployments, projects, releases, uploads),
+        AppServices::new(auth, audit, deployments, projects, releases, uploads),
         storage,
         BrowserPolicy::new(
             cookie_policy,

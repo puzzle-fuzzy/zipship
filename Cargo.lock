@@ -2510,6 +2510,7 @@ dependencies = [
  "utoipa",
  "uuid",
  "zipship-artifact",
+ "zipship-audit",
  "zipship-auth",
  "zipship-deployments",
  "zipship-domain",
@@ -2535,6 +2536,18 @@ dependencies = [
  "zip",
  "zipship-domain",
  "zipship-jobs",
+]
+
+[[package]]
+name = "zipship-audit"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -2611,6 +2624,7 @@ dependencies = [
  "uuid",
  "zipship-access",
  "zipship-artifact",
+ "zipship-audit",
  "zipship-auth",
  "zipship-config",
  "zipship-deployments",
@@ -2691,6 +2705,7 @@ dependencies = [
  "zipship-access",
  "zipship-api",
  "zipship-artifact",
+ "zipship-audit",
  "zipship-auth",
  "zipship-config",
  "zipship-deployments",
@@ -2717,6 +2732,7 @@ dependencies = [
  "tracing-subscriber",
  "zipship-access",
  "zipship-api",
+ "zipship-audit",
  "zipship-auth",
  "zipship-config",
  "zipship-deployments",

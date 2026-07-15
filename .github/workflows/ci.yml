@@ -42,6 +42,7 @@ jobs:
       - run: cargo test -p zipship-postgres --test artifact_jobs_repository -- --ignored
       - run: cargo test -p zipship-postgres --test previews_repository -- --ignored
       - run: cargo test -p zipship-postgres --test releases_repository -- --ignored
+      - run: cargo test -p zipship-postgres --test audit_repository -- --ignored
       - run: cargo test -p zipship-postgres --test deployments_repository -- --ignored
       - run: cargo test -p zipship-worker --test artifact_pipeline -- --ignored
 

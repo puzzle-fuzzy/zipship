@@ -7,6 +7,7 @@ use zipship_config::Settings;
 
 mod access;
 mod artifact_jobs;
+mod audit;
 mod auth;
 mod deployments;
 mod jobs;
@@ -16,6 +17,7 @@ mod uploads;
 
 pub use access::PgPreviewRepository;
 pub use artifact_jobs::PgArtifactJobsRepository;
+pub use audit::PgAuditRepository;
 pub use auth::PgAuthRepository;
 pub use deployments::PgDeploymentsRepository;
 pub use jobs::PgJobsRepository;

@@ -16,13 +16,14 @@ use zipship_api::{
     build_router,
 };
 use zipship_artifact::ArtifactLimits;
+use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
 use zipship_domain::ArtifactDigest;
 use zipship_jobs::{JobLease, WorkerId};
 use zipship_postgres::{
-    PgArtifactJobsRepository, PgAuthRepository, PgDeploymentsRepository, PgJobsRepository,
-    PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
+    PgArtifactJobsRepository, PgAuditRepository, PgAuthRepository, PgDeploymentsRepository,
+    PgJobsRepository, PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
 use zipship_releases::ReleasesService;
@@ -404,6 +405,36 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
     let history = json_body(history).await;
     assert_eq!(history["deployments"].as_array().unwrap().len(), 3);
     assert_eq!(history["deployments"][0]["action"], "rollback");
+    let audit = app
+        .clone()
+        .oneshot(
+            Request::get(format!(
+                "/_api/organizations/{organization_id}/audit-logs?projectId={project_id}&limit=100"
+            ))
+            .header(header::COOKIE, &cookie_header)
+            .body(Body::empty())
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(audit.status(), StatusCode::OK);
+    let audit = json_body(audit).await;
+    assert_eq!(audit["items"][0]["action"], "release.rolled_back");
+    assert_eq!(
+        audit["items"][0]["metadata"]["releaseId"],
+        release_id.to_string()
+    );
+    assert_eq!(
+        audit["items"][0]["metadata"]["previousReleaseId"],
+        second.release_id.to_string()
+    );
+    assert!(
+        audit["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["projectId"] == project_id)
+    );
     let deployment_count: i64 =
         sqlx::query_scalar("SELECT count(*) FROM deployments WHERE project_id = $1")
             .bind(Uuid::parse_str(project_id).unwrap())
@@ -439,6 +470,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     let auth = AuthService::new(Arc::new(PgAuthRepository::new(pool.clone())))
         .await
         .unwrap();
+    let audit = AuditService::new(Arc::new(PgAuditRepository::new(pool.clone())));
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
     let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
     let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
@@ -450,7 +482,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     );
     build_router(AppState::new(
         Arc::new(Probe),
-        AppServices::new(auth, deployments, projects, releases, uploads),
+        AppServices::new(auth, audit, deployments, projects, releases, uploads),
         storage.clone(),
         BrowserPolicy::new(
             CookiePolicy::new(false),

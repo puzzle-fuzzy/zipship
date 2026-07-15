@@ -22,6 +22,7 @@ utoipa.workspace = true
 uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
 zipship-artifact = { path = "../zipship-artifact" }
+zipship-audit = { path = "../zipship-audit" }
 zipship-deployments = { path = "../zipship-deployments" }
 zipship-domain = { path = "../zipship-domain" }
 zipship-projects = { path = "../zipship-projects" }
