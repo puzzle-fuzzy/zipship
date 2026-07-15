@@ -73,6 +73,7 @@ services/zipship-worker    Artifact and mail worker binary
 - Cookie Sessions are HttpOnly and stateful; browser writes require CSRF. API Tokens are separate credentials with explicit scopes, and effective permission is scope intersected with current organization RBAC.
 - Upload content is streamed to staging with an exact byte reservation. Completion creates a persistent job; it does not synchronously unzip in the request.
 - Worker claims jobs with lease/heartbeat/retry, safely extracts ZIPs, builds a stable manifest and commits content-addressed immutable Artifacts.
+- `zipship-artifact` keeps public models, job repository ports, stable errors, ZIP validation/extraction and manifest construction in separate modules; `lib.rs` only re-exports the supported surface.
 - Release is immutable. Publish/rollback atomically updates the database activity pointer with deployment and audit records; filesystem symlinks are not a source of truth.
 - Access Plane serves only ready Artifact files present in the manifest. Fixed preview and live paths share MIME, ETag, Range, cache and HTML-navigation SPA fallback rules.
 - `zipship-access` keeps manifest/path invariants, repository ports, HTTP policy and Axum file serving in separate modules; `lib.rs` is the stable public facade.
