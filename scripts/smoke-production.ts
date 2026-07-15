@@ -182,6 +182,17 @@ async function main(): Promise<void> {
     if (!consolePage.body.toLowerCase().includes('<!doctype html>')) {
       throw new Error('Console edge endpoint did not return the built application shell');
     }
+    const runtimeConfig = await request({
+      host: consoleHost,
+      path: '/runtime-config.js',
+    });
+    if (
+      !runtimeConfig.body.includes(apiOrigin) ||
+      !runtimeConfig.body.includes(accessOrigin) ||
+      runtimeConfig.body.includes('localhost')
+    ) {
+      throw new Error('Console runtime config did not expose the deployment public origins');
+    }
 
     const email = `smoke-${runId}@example.test`;
     await request.json('POST', '/_api/auth/register', {
