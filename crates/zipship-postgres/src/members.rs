@@ -355,11 +355,4 @@ fn corrupt_record(field: &'static str) -> MembersRepositoryError {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_unknown_roles() {
-        assert!(parse_role("superuser").is_err());
-    }
-}
+mod tests;
