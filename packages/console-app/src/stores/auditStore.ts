@@ -1,8 +1,16 @@
 import { create } from 'zustand';
 import { authHeaders, getApi } from '../api/client';
-import type { AuditLogEntry } from '../domain/audit';
 
-export type { AuditLogEntry } from '../domain/audit';
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  actorId: string | null;
+  targetType: string;
+  targetId: string | null;
+  projectId: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+}
 
 interface AuditState {
   logs: AuditLogEntry[];

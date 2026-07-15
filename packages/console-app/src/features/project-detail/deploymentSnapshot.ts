@@ -1,4 +1,4 @@
-import type { Release } from '../../domain/projects';
+import type { Release } from "../../stores/projectsStore";
 import { parseReleaseReport, summarizeReleaseGate } from "./releaseReport";
 
 export function buildDeploymentReleaseSnapshot(release: Release | undefined) {

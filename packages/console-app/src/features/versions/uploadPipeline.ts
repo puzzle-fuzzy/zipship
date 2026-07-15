@@ -1,5 +1,4 @@
-import type { ApiClient } from '@zipship/api-client';
-import type { AuthorizationHeaders } from '../../app/context';
+import { authHeaders, getApi } from '../../api/client';
 
 /**
  * Upload pipeline, extracted from UploadVersionDialog so it is independently
@@ -43,28 +42,17 @@ export class UploadPipelineError extends Error {
   }
 }
 
-export interface UploadPipelineDependencies {
-  api: ApiClient;
-  authHeaders: () => AuthorizationHeaders;
-}
-
-export interface RunUploadPipelineInput {
-  projectId: string;
-  file: File;
-  onState: (state: UploadState) => void;
-}
-
 /**
  * Execute the full upload pipeline: create task → raw upload → complete.
  * Reports progress via `onState` and resolves once the release is `ready`.
  * Throws {@link UploadPipelineError} on any failure.
  */
 export async function runUploadPipeline(
-  dependencies: UploadPipelineDependencies,
-  input: RunUploadPipelineInput,
+  projectId: string,
+  file: File,
+  onState: (s: UploadState) => void,
 ): Promise<void> {
-  const { api, authHeaders } = dependencies;
-  const { projectId, file, onState } = input;
+  const api = getApi();
 
   // 1. Create upload task
   onState({ step: 'creating_task' });

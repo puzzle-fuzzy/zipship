@@ -25,7 +25,6 @@ import { Badge } from '../../components/ui/badge';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import { cn } from '../../lib/utils';
-import { authHeaders, getApi } from '../../api/client';
 import {
   runUploadPipeline,
   UploadPipelineError,
@@ -82,10 +81,7 @@ export function UploadVersionDialog({
   /** Drive the pipeline, translating any failure into a stable reason. */
   async function runAndNotify(file: File) {
     try {
-      await runUploadPipeline(
-        { api: getApi(), authHeaders },
-        { projectId, file, onState: reportUploadState },
-      );
+      await runUploadPipeline(projectId, file, reportUploadState);
       onUploaded();
     } catch (err) {
       const reason = err instanceof UploadPipelineError ? err.reason : 'unknown';

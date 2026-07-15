@@ -1,15 +1,56 @@
 import { create } from 'zustand';
 import { authHeaders, getAccessToken, getApi } from '../api/client';
 import { API_ERROR_MESSAGES, mapApiError } from '../api/errors';
-import type {
-  Deployment,
-  Project,
-  ProjectCreateInput,
-  ProjectUpdateInput,
-  Release,
-} from '../domain/projects';
 
-export type { Deployment, Project, Release } from '../domain/projects';
+export interface Project {
+  id: string;
+  organizationId: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  currentReleaseId: string | null;
+  spaFallback: boolean;
+  cachePolicy: 'standard' | 'aggressive';
+  customDomains: string[];
+  status: string;
+  visibility: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Release {
+  id: string;
+  projectId: string;
+  versionNumber: number;
+  releaseHash: string;
+  previewUrl: string | null;
+  fullHash: string;
+  status: string;
+  storagePath: string;
+  rawUploadPath: string;
+  fileCount: number;
+  totalSize: number;
+  manifest: Record<string, unknown>;
+  detectResult: Record<string, unknown>;
+  createdBy: string;
+  createdAt: string;
+  activatedAt: string | null;
+  archivedAt: string | null;
+}
+
+export interface Deployment {
+  id: string;
+  projectId: string;
+  releaseId: string;
+  previousReleaseId: string | null;
+  action: 'publish' | 'rollback';
+  status: 'success';
+  operatorId: string;
+  message: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
 
 interface ProjectsState {
   projects: Project[];
@@ -20,13 +61,23 @@ interface ProjectsState {
   loading: boolean;
 
   fetchProjects: () => Promise<void>;
-  createProject: (input: ProjectCreateInput) => Promise<void>;
+  createProject: (input: { name: string; slug: string; description: string }) => Promise<void>;
   fetchReleases: (projectId: string) => Promise<void>;
   fetchDeployments: (projectId: string) => Promise<void>;
   publishRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
   rollbackRelease: (projectId: string, releaseId: string, message?: string | null) => Promise<void>;
   deleteProject: (projectId: string) => Promise<void>;
-  updateProject: (projectId: string, input: ProjectUpdateInput) => Promise<void>;
+  updateProject: (
+    projectId: string,
+    input: {
+      name?: string;
+      slug?: string;
+      description?: string | null;
+      spaFallback?: boolean;
+      cachePolicy?: 'standard' | 'aggressive';
+      customDomains?: string[];
+    },
+  ) => Promise<void>;
 }
 
 export const useProjectsStore = create<ProjectsState>((set) => {

@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "vue", "typescript", "oxc", "import"],
+  "plugins": ["react", "typescript", "oxc", "import"],
   "ignorePatterns": [
     "**/components/ui/**",
     "**/dist/**",
