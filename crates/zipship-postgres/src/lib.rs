@@ -7,9 +7,11 @@ use zipship_config::Settings;
 
 mod auth;
 mod projects;
+mod uploads;
 
 pub use auth::PgAuthRepository;
 pub use projects::PgProjectsRepository;
+pub use uploads::PgUploadsRepository;
 
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 

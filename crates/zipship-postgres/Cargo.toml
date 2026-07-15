@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 async-trait.workspace = true
 secrecy.workspace = true
+serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
 time.workspace = true
@@ -17,6 +18,7 @@ zipship-auth = { path = "../zipship-auth" }
 zipship-config = { path = "../zipship-config" }
 zipship-domain = { path = "../zipship-domain" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-uploads = { path = "../zipship-uploads" }
 
 [dev-dependencies]
 tokio.workspace = true
