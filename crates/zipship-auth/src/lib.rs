@@ -11,6 +11,10 @@ use std::fmt;
 use subtle::ConstantTimeEq;
 use thiserror::Error;
 
+mod service;
+
+pub use service::*;
+
 const PASSWORD_MIN_CHARS: usize = 12;
 const PASSWORD_MAX_BYTES: usize = 1_024;
 const DISPLAY_NAME_MAX_CHARS: usize = 120;

@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 argon2.workspace = true
+async-trait.workspace = true
 base64.workspace = true
 email_address.workspace = true
 getrandom.workspace = true
@@ -15,6 +16,9 @@ secrecy.workspace = true
 sha2.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+uuid.workspace = true
 
 [lints]
 workspace = true
