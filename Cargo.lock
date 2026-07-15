@@ -2603,6 +2603,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "dotenvy",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "zip",
+ "zipship-artifact",
+ "zipship-config",
+ "zipship-domain",
+ "zipship-jobs",
+ "zipship-postgres",
+ "zipship-storage",
+]
+
+[[package]]
 name = "zipshipd"
 version = "0.1.0"
 dependencies = [

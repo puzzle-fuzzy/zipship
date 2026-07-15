@@ -1,0 +1,31 @@
+[package]
+name = "zipship-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+dotenvy.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
+zipship-artifact = { path = "../../crates/zipship-artifact" }
+zipship-config = { path = "../../crates/zipship-config" }
+zipship-domain = { path = "../../crates/zipship-domain" }
+zipship-jobs = { path = "../../crates/zipship-jobs" }
+zipship-postgres = { path = "../../crates/zipship-postgres" }
+zipship-storage = { path = "../../crates/zipship-storage" }
+
+[dev-dependencies]
+async-trait.workspace = true
+tempfile.workspace = true
+zip.workspace = true
+
+[lints]
+workspace = true

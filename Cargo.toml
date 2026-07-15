@@ -11,6 +11,7 @@ members = [
   "crates/zipship-projects",
   "crates/zipship-storage",
   "crates/zipship-uploads",
+  "services/zipship-worker",
   "services/zipshipd",
 ]
 exclude = ["apps/desktop-shell/src-tauri"]
@@ -57,6 +58,7 @@ tokio = { version = "1.52.3", features = [
   "net",
   "rt-multi-thread",
   "signal",
+  "sync",
   "time",
 ] }
 tokio-util = { version = "0.7.18", features = ["io"] }

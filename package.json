@@ -52,6 +52,7 @@
     "rust:test": "cargo test --workspace --all-targets",
     "rust:migrate": "cargo run -p zipshipd -- migrate",
     "rust:dev": "cargo run -p zipshipd -- serve",
+    "rust:worker": "cargo run -p zipship-worker",
     "typecheck:workspaces": "bun turbo run typecheck",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",

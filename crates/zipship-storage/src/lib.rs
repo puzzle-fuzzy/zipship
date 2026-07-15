@@ -73,6 +73,11 @@ impl LocalArtifactStore {
         self.upload_staging_path(upload_id).join("archive.zip")
     }
 
+    pub fn artifact_work_path(&self, upload_id: Uuid, job_id: Uuid, attempt: i32) -> PathBuf {
+        self.upload_staging_path(upload_id)
+            .join(format!("expanded-{job_id}-{attempt}"))
+    }
+
     pub fn upload_staging_key(upload_id: Uuid) -> String {
         format!("uploads/{upload_id}/archive.zip")
     }
@@ -83,6 +88,16 @@ impl LocalArtifactStore {
             .join(&digest[0..2])
             .join(&digest[2..4])
             .join(digest)
+    }
+
+    pub fn artifact_storage_key(digest: &ArtifactDigest) -> String {
+        let digest = digest.as_str();
+        format!(
+            "blobs/sha256/{}/{}/{}",
+            &digest[0..2],
+            &digest[2..4],
+            digest
+        )
     }
 
     pub async fn ensure_layout(&self) -> Result<(), StorageError> {
@@ -116,15 +131,26 @@ impl LocalArtifactStore {
         }
 
         let destination = self.artifact_path(digest);
-        if fs::try_exists(&destination).await? {
-            fs::remove_dir_all(staging_directory).await?;
-            return Ok(CommitOutcome::AlreadyExists);
+        match fs::symlink_metadata(&destination).await {
+            Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
+                fs::remove_dir_all(staging_directory).await?;
+                return Ok(CommitOutcome::AlreadyExists);
+            }
+            Ok(_) => return Err(StorageError::InvalidStagingDirectory),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
         }
 
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).await?;
         }
         fs::rename(staging_directory, destination).await?;
+        sync_directory_if_supported(
+            self.artifact_path(digest)
+                .parent()
+                .expect("artifact path always has a parent"),
+        )
+        .await?;
         Ok(CommitOutcome::Created)
     }
 
@@ -212,6 +238,16 @@ impl LocalArtifactStore {
     }
 }
 
+#[cfg(unix)]
+async fn sync_directory_if_supported(path: &Path) -> Result<(), std::io::Error> {
+    fs::File::open(path).await?.sync_all().await
+}
+
+#[cfg(not(unix))]
+async fn sync_directory_if_supported(_path: &Path) -> Result<(), std::io::Error> {
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +273,10 @@ mod tests {
         assert!(path.ends_with(Path::new(
             "blobs/sha256/01/23/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
         )));
+        assert_eq!(
+            LocalArtifactStore::artifact_storage_key(&digest()),
+            "blobs/sha256/01/23/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        );
     }
 
     #[tokio::test]
