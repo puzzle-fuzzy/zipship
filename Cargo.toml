@@ -9,6 +9,7 @@ members = [
   "crates/zipship-postgres",
   "crates/zipship-projects",
   "crates/zipship-storage",
+  "crates/zipship-uploads",
   "services/zipshipd",
 ]
 exclude = ["apps/desktop-shell/src-tauri"]

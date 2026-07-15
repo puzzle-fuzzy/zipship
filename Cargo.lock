@@ -2478,6 +2478,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-uploads"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+ "zipship-domain",
+]
+
+[[package]]
 name = "zipshipd"
 version = "0.1.0"
 dependencies = [
