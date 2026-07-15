@@ -17,6 +17,11 @@ http://127.0.0.1:2019 {
 https://{$ZIPSHIP_CONSOLE_HOST} {
 	import security_headers
 
+	@runtime_config path /runtime-config.js
+	header @runtime_config Cache-Control "no-store"
+	header @runtime_config Content-Type "text/javascript; charset=utf-8"
+	respond @runtime_config "globalThis.__ZIPSHIP_RUNTIME_CONFIG__ = Object.freeze({apiBaseUrl: '{$ZIPSHIP_API_ORIGIN}', accessBaseUrl: '{$ZIPSHIP_ACCESS_ORIGIN}'});" 200
+
 	root * /srv/console
 	encode zstd gzip
 

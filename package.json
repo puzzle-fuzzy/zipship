@@ -65,7 +65,7 @@
     "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
     "ui:add": "shadcn add -c packages/ui",
-    "test": "bun --filter @zipship/console-app test",
+    "test": "bun --filter @zipship/console-app test && bun --filter @zipship/web-shell test",
     "test:all": "bun run test && bun run rust:test",
     "test:integration": "bun run rust:test:integration"
   },

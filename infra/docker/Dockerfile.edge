@@ -10,14 +10,7 @@ COPY . .
 RUN --mount=type=cache,target=/root/.bun/install/cache,sharing=locked \
     bun install --frozen-lockfile
 
-ARG VITE_ZIPSHIP_API_BASE_URL
-ARG VITE_ZIPSHIP_ACCESS_BASE_URL
-ENV VITE_ZIPSHIP_API_BASE_URL=${VITE_ZIPSHIP_API_BASE_URL} \
-    VITE_ZIPSHIP_ACCESS_BASE_URL=${VITE_ZIPSHIP_ACCESS_BASE_URL}
-
-RUN test -n "${VITE_ZIPSHIP_API_BASE_URL}" && \
-    test -n "${VITE_ZIPSHIP_ACCESS_BASE_URL}" && \
-    bun --filter @zipship/web-shell build
+RUN bun --filter @zipship/web-shell build
 
 FROM caddy:${CADDY_VERSION}-alpine AS runtime
 
