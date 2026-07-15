@@ -9,11 +9,15 @@ repository.workspace = true
 [dependencies]
 async-trait.workspace = true
 axum.workspace = true
+axum-extra.workspace = true
+secrecy.workspace = true
 serde.workspace = true
+time.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
+zipship-auth = { path = "../zipship-auth" }
 
 [dev-dependencies]
 serde_json.workspace = true

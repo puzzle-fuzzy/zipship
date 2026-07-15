@@ -16,6 +16,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 zipship-api = { path = "../../crates/zipship-api" }
+zipship-auth = { path = "../../crates/zipship-auth" }
 zipship-config = { path = "../../crates/zipship-config" }
 zipship-postgres = { path = "../../crates/zipship-postgres" }
 zipship-storage = { path = "../../crates/zipship-storage" }

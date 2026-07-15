@@ -6,8 +6,9 @@ use sqlx::PgPool;
 use std::{collections::BTreeMap, error::Error, sync::Arc};
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
-use zipship_api::{AppState, CheckStatus, ReadinessProbe, build_router};
-use zipship_config::Settings;
+use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
+use zipship_auth::AuthService;
+use zipship_config::{Environment, Settings};
 use zipship_storage::LocalArtifactStore;
 
 #[derive(Debug, Parser)]
@@ -80,8 +81,13 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let storage = LocalArtifactStore::new(&settings.storage_root);
     storage.ensure_layout().await?;
 
-    let readiness = Arc::new(SystemReadiness { pool, storage });
-    let app = build_router(AppState::new(readiness));
+    let readiness = Arc::new(SystemReadiness {
+        pool: pool.clone(),
+        storage,
+    });
+    let auth = AuthService::new(Arc::new(zipship_postgres::PgAuthRepository::new(pool))).await?;
+    let cookie_policy = CookiePolicy::new(settings.environment == Environment::Production);
+    let app = build_router(AppState::new(readiness, auth, cookie_policy));
     let listener = tokio::net::TcpListener::bind(settings.http_bind).await?;
 
     info!(bind = %settings.http_bind, "zipshipd listening");
