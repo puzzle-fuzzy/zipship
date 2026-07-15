@@ -213,25 +213,6 @@ CREATE TABLE deployments (
 );
 CREATE INDEX deployments_project_created_idx ON deployments(project_id, created_at DESC);
 
-CREATE TABLE invitations (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    email varchar(255) NOT NULL,
-    role text NOT NULL,
-    token_hash bytea NOT NULL UNIQUE,
-    invited_by uuid NOT NULL REFERENCES users(id),
-    status text NOT NULL DEFAULT 'pending',
-    expires_at timestamptz NOT NULL,
-    accepted_at timestamptz,
-    created_at timestamptz NOT NULL DEFAULT now(),
-    CONSTRAINT invitations_email_normalized CHECK (email = lower(email)),
-    CONSTRAINT invitations_role CHECK (role IN ('admin', 'developer', 'deployer', 'viewer')),
-    CONSTRAINT invitations_status CHECK (status IN ('pending', 'accepted', 'revoked', 'expired'))
-);
-CREATE UNIQUE INDEX invitations_pending_email_unique
-    ON invitations(organization_id, email)
-    WHERE status = 'pending';
-
 CREATE TABLE audit_logs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
