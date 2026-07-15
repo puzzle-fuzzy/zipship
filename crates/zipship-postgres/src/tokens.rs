@@ -1,13 +1,15 @@
 use async_trait::async_trait;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
-use std::str::FromStr;
+use sqlx::{PgPool, Postgres, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_tokens::{
-    API_TOKEN_HISTORY_LIMIT, ApiToken, ApiTokenName, ApiTokenScope, ApiTokenScopes,
-    ApiTokensRepository, ApiTokensRepositoryError, ListApiTokens, NewApiToken, ResolveApiToken,
-    ResolvedApiToken, RevokeApiToken,
+    API_TOKEN_HISTORY_LIMIT, ApiToken, ApiTokensRepository, ApiTokensRepositoryError,
+    ListApiTokens, NewApiToken, ResolveApiToken, ResolvedApiToken, RevokeApiToken,
 };
+
+mod row;
+
+use row::{ApiTokenRow, corrupt_record};
 
 const LAST_USED_WRITE_INTERVAL_MINUTES: i32 = 5;
 
@@ -390,69 +392,6 @@ async fn record_token_audit(
     .map_err(ApiTokensRepositoryError::unavailable)?;
     Ok(())
 }
-
-#[derive(Debug, FromRow)]
-struct ApiTokenRow {
-    id: Uuid,
-    user_id: Uuid,
-    name: String,
-    display_prefix: String,
-    scopes: Vec<String>,
-    expires_at: OffsetDateTime,
-    last_used_at: Option<OffsetDateTime>,
-    revoked_at: Option<OffsetDateTime>,
-    created_at: OffsetDateTime,
-}
-
-impl ApiTokenRow {
-    fn try_into_token(self) -> Result<ApiToken, ApiTokensRepositoryError> {
-        let name = ApiTokenName::parse(&self.name).map_err(|_| corrupt_record())?;
-        if name.as_str() != self.name || !valid_display_prefix(&self.display_prefix) {
-            return Err(corrupt_record());
-        }
-        let parsed_scopes = self
-            .scopes
-            .iter()
-            .map(|scope| ApiTokenScope::from_str(scope))
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| corrupt_record())?;
-        let scopes = ApiTokenScopes::from_stored(parsed_scopes).map_err(|_| corrupt_record())?;
-        Ok(ApiToken {
-            id: self.id,
-            user_id: self.user_id,
-            name: name.as_str().to_owned(),
-            display_prefix: self.display_prefix,
-            scopes: scopes.as_slice().to_vec(),
-            expires_at: self.expires_at,
-            last_used_at: self.last_used_at,
-            revoked_at: self.revoked_at,
-            created_at: self.created_at,
-        })
-    }
-}
-
-fn valid_display_prefix(value: &str) -> bool {
-    value.len() == 12
-        && value.starts_with("zps_")
-        && value[4..]
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-}
-
-fn corrupt_record() -> ApiTokensRepositoryError {
-    ApiTokensRepositoryError::unavailable(CorruptApiTokenRecord)
-}
-
-#[derive(Debug)]
-struct CorruptApiTokenRecord;
-
-impl std::fmt::Display for CorruptApiTokenRecord {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("database returned an invalid api token record")
-    }
-}
-
-impl std::error::Error for CorruptApiTokenRecord {}
 
 #[cfg(test)]
 mod tests;

@@ -1,4 +1,4 @@
-use super::*;
+use super::row::valid_display_prefix;
 
 #[test]
 fn validates_display_prefixes_without_accepting_unicode_or_wrong_lengths() {
