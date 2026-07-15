@@ -84,6 +84,29 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
     assert_eq!(project.status(), StatusCode::CREATED);
     let project = json_body(project).await;
     let project_id = project["project"]["id"].as_str().unwrap();
+    let updated_project = app
+        .clone()
+        .oneshot(
+            Request::patch(format!("/_api/projects/{project_id}"))
+                .header(header::COOKIE, &cookie_header)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::from(
+                    json!({
+                        "name": "Marketing Production",
+                        "description": "Production frontend",
+                        "cachePolicy": "aggressive"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(updated_project.status(), StatusCode::OK);
+    let updated_project = json_body(updated_project).await;
+    assert_eq!(updated_project["project"]["name"], "Marketing Production");
+    assert_eq!(updated_project["project"]["cachePolicy"], "aggressive");
 
     let worker = ArtifactWorker::new(
         Arc::new(PgJobsRepository::new(pool.clone())),

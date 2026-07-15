@@ -5,7 +5,9 @@ use uuid::Uuid;
 use zipship_auth::{AuthService, RegisterCommand};
 use zipship_domain::MemberRole;
 use zipship_postgres::{PgAuthRepository, PgProjectsRepository};
-use zipship_projects::{CreateProjectCommand, ProjectsError, ProjectsService};
+use zipship_projects::{
+    CreateProjectCommand, ProjectsError, ProjectsService, UpdateProjectCommand,
+};
 
 #[tokio::test]
 #[ignore = "requires an isolated PostgreSQL database"]
@@ -102,6 +104,57 @@ async fn enforces_membership_and_project_creation_transactions() {
         (Ok(_), Err(ProjectsError::DuplicateSlug)) | (Err(ProjectsError::DuplicateSlug), Ok(_))
     ));
 
+    assert_eq!(
+        projects
+            .update_project(update_command(
+                outsider.user.id,
+                project.id,
+                "viewer-update",
+            ))
+            .await,
+        Err(ProjectsError::Forbidden)
+    );
+    let updated = projects
+        .update_project(UpdateProjectCommand {
+            actor_id: owner.user.id,
+            project_id: project.id,
+            name: Some(" Product Site ".to_owned()),
+            slug: Some(" Product-Site ".to_owned()),
+            description: Some(None),
+            spa_fallback: Some(false),
+            cache_policy: Some("aggressive".to_owned()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(updated.name, "Product Site");
+    assert_eq!(updated.slug, "product-site");
+    assert_eq!(updated.description, None);
+    assert!(!updated.spa_fallback);
+    assert_eq!(updated.cache_policy.as_str(), "aggressive");
+    let unchanged = projects
+        .update_project(UpdateProjectCommand {
+            actor_id: owner.user.id,
+            project_id: project.id,
+            name: Some("Product Site".to_owned()),
+            slug: None,
+            description: None,
+            spa_fallback: None,
+            cache_policy: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(unchanged.updated_at, updated.updated_at);
+    assert_eq!(
+        projects
+            .update_project(update_command(
+                owner.user.id,
+                project.id,
+                "concurrent-project",
+            ))
+            .await,
+        Err(ProjectsError::DuplicateSlug)
+    );
+
     let audit_count: i64 = sqlx::query_scalar(
         r#"
         SELECT count(*)
@@ -114,6 +167,22 @@ async fn enforces_membership_and_project_creation_transactions() {
     .await
     .unwrap();
     assert_eq!(audit_count, 2);
+    let update_audits: Vec<serde_json::Value> = sqlx::query_scalar(
+        r#"
+        SELECT metadata
+        FROM audit_logs
+        WHERE project_id = $1 AND action = 'project.updated'
+        "#,
+    )
+    .bind(project.id)
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(update_audits.len(), 1);
+    assert_eq!(
+        update_audits[0]["changedFields"],
+        serde_json::json!(["name", "slug", "description", "spaFallback", "cachePolicy"])
+    );
 }
 
 async fn test_pool() -> PgPool {
@@ -141,5 +210,17 @@ fn create_command(actor_id: Uuid, organization_id: Uuid, slug: &str) -> CreatePr
         name: "Marketing Site".to_owned(),
         slug: slug.to_owned(),
         description: Some("Campaign frontend".to_owned()),
+    }
+}
+
+fn update_command(actor_id: Uuid, project_id: Uuid, slug: &str) -> UpdateProjectCommand {
+    UpdateProjectCommand {
+        actor_id,
+        project_id,
+        name: None,
+        slug: Some(slug.to_owned()),
+        description: None,
+        spa_fallback: None,
+        cache_policy: None,
     }
 }

@@ -209,6 +209,7 @@ impl AppState {
         projects::list_projects,
         projects::create_project,
         projects::get_project,
+        projects::update_project,
         uploads::create_upload,
         uploads::upload_content,
         uploads::finalize_upload,
@@ -238,6 +239,8 @@ impl AppState {
         projects::MembersResponse,
         projects::MemberResponse,
         projects::CreateProjectRequest,
+        projects::UpdateProjectRequest,
+        projects::ProjectCachePolicyRequest,
         projects::ProjectResponse,
         projects::ProjectEnvelope,
         projects::ProjectsResponse,
@@ -386,7 +389,7 @@ mod tests {
     use zipship_domain::{ArtifactDigest, CachePolicy, MemberRole, ReleaseStatus, UploadStatus};
     use zipship_projects::{
         MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
-        ProjectsRepositoryError,
+        ProjectsRepositoryError, UpdateProject,
     };
     use zipship_releases::{
         ProjectReleases, Release, ReleaseArtifact, ReleasesRepository, ReleasesRepositoryError,
@@ -792,6 +795,41 @@ mod tests {
             };
             projects.push(project.clone());
             Ok(project)
+        }
+
+        async fn update_project(
+            &self,
+            update: UpdateProject,
+        ) -> Result<Project, ProjectsRepositoryError> {
+            let mut projects = self.projects.lock().unwrap();
+            if let Some(slug) = update.slug.as_ref()
+                && projects
+                    .iter()
+                    .any(|project| project.id != update.project_id && project.slug == slug.as_str())
+            {
+                return Err(ProjectsRepositoryError::DuplicateSlug);
+            }
+            let project = projects
+                .iter_mut()
+                .find(|project| project.id == update.project_id)
+                .ok_or(ProjectsRepositoryError::NotFound)?;
+            if let Some(name) = update.name {
+                project.name = name.as_str().to_owned();
+            }
+            if let Some(slug) = update.slug {
+                project.slug = slug.as_str().to_owned();
+            }
+            if let Some(description) = update.description {
+                project.description = description.into_inner();
+            }
+            if let Some(spa_fallback) = update.spa_fallback {
+                project.spa_fallback = spa_fallback;
+            }
+            if let Some(cache_policy) = update.cache_policy {
+                project.cache_policy = cache_policy;
+            }
+            project.updated_at = update.updated_at;
+            Ok(project.clone())
         }
 
         async fn list_projects(
@@ -1292,6 +1330,64 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(detail.status(), StatusCode::OK);
+
+        let update_body = json!({
+            "name": " Product Site ",
+            "slug": " Product-Site ",
+            "description": null,
+            "spaFallback": false,
+            "cachePolicy": "aggressive"
+        })
+        .to_string();
+        let missing_update_csrf = app
+            .clone()
+            .oneshot(
+                Request::patch(format!("/_api/projects/{project_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(update_body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_update_csrf.status(), StatusCode::FORBIDDEN);
+        let updated = app
+            .clone()
+            .oneshot(
+                Request::patch(format!("/_api/projects/{project_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(update_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(updated.status(), StatusCode::OK);
+        let updated = json_body(updated).await;
+        assert_eq!(updated["project"]["name"], "Product Site");
+        assert_eq!(updated["project"]["slug"], "product-site");
+        assert!(updated["project"]["description"].is_null());
+        assert_eq!(updated["project"]["spaFallback"], false);
+        assert_eq!(updated["project"]["cachePolicy"], "aggressive");
+
+        let null_name = app
+            .clone()
+            .oneshot(
+                Request::patch(format!("/_api/projects/{project_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(json!({ "name": null }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(null_name.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            json_body(null_name).await,
+            json!({ "code": "INVALID_PROJECT_INPUT" })
+        );
 
         let invalid_path = app
             .oneshot(

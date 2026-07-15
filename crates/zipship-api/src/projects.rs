@@ -11,11 +11,12 @@ use axum::{
     routing::get,
 };
 use axum_extra::extract::CookieJar;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zipship_projects::{
     CreateProjectCommand, MemberSummary, OrganizationSummary, Project, ProjectsError,
+    UpdateProjectCommand,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -55,6 +56,41 @@ pub(crate) struct CreateProjectRequest {
     description: Option<String>,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct UpdateProjectRequest {
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    #[schema(nullable = false)]
+    name: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    #[schema(nullable = false)]
+    slug: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    description: Option<Option<String>>,
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    #[schema(nullable = false)]
+    spa_fallback: Option<Option<bool>>,
+    #[serde(default, deserialize_with = "deserialize_present_field")]
+    #[schema(nullable = false)]
+    cache_policy: Option<Option<ProjectCachePolicyRequest>>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ProjectCachePolicyRequest {
+    Standard,
+    Aggressive,
+}
+
+impl ProjectCachePolicyRequest {
+    const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Standard => "standard",
+            Self::Aggressive => "aggressive",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ProjectResponse {
@@ -92,7 +128,10 @@ pub(crate) fn router() -> Router<AppState> {
             "/_api/organizations/{organization_id}/projects",
             get(list_projects).post(create_project),
         )
-        .route("/_api/projects/{project_id}", get(get_project))
+        .route(
+            "/_api/projects/{project_id}",
+            get(get_project).patch(update_project),
+        )
 }
 
 #[utoipa::path(
@@ -257,6 +296,59 @@ pub(crate) async fn get_project(
     })))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/_api/projects/{project_id}",
+    tag = "projects",
+    params(
+        ("project_id" = Uuid, Path, description = "Project ID"),
+        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+    ),
+    request_body = UpdateProjectRequest,
+    responses(
+        (status = 200, description = "Updated project settings", body = ProjectEnvelope),
+        (status = 400, description = "JSON or path parameter is invalid", body = ErrorResponse),
+        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Current role cannot manage this project", body = ErrorResponse),
+        (status = 404, description = "Project is missing or not visible", body = ErrorResponse),
+        (status = 409, description = "Project slug already exists", body = ErrorResponse),
+        (status = 422, description = "Project settings are invalid or empty", body = ErrorResponse),
+        (status = 503, description = "Project storage is unavailable", body = ErrorResponse)
+    )
+)]
+pub(crate) async fn update_project(
+    State(state): State<AppState>,
+    jar: CookieJar,
+    headers: HeaderMap,
+    Path(project_id): Path<String>,
+    payload: Result<Json<UpdateProjectRequest>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
+    let session = authenticate(&state, &jar).await?;
+    require_csrf(&state, &session, &headers)?;
+    let project_id = parse_uuid(&project_id)?;
+    let Json(payload) = payload.map_err(|_| ApiError::invalid_json())?;
+    let name = require_non_null_patch(payload.name)?;
+    let slug = require_non_null_patch(payload.slug)?;
+    let spa_fallback = require_non_null_patch(payload.spa_fallback)?;
+    let cache_policy =
+        require_non_null_patch(payload.cache_policy)?.map(|policy| policy.as_str().to_owned());
+    let project = state
+        .projects
+        .update_project(UpdateProjectCommand {
+            actor_id: session.user.id,
+            project_id,
+            name,
+            slug,
+            description: payload.description,
+            spa_fallback,
+            cache_policy,
+        })
+        .await?;
+    Ok(no_store(Json(ProjectEnvelope {
+        project: project.into(),
+    })))
+}
+
 impl From<ProjectsError> for ApiError {
     fn from(error: ProjectsError) -> Self {
         let status = match error {
@@ -309,5 +401,24 @@ impl From<Project> for ProjectResponse {
             created_at: format_timestamp(project.created_at),
             updated_at: format_timestamp(project.updated_at),
         }
+    }
+}
+
+fn deserialize_present_field<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
+}
+
+fn require_non_null_patch<T>(value: Option<Option<T>>) -> Result<Option<T>, ApiError> {
+    match value {
+        Some(Some(value)) => Ok(Some(value)),
+        Some(None) => Err(ApiError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ProjectsError::InvalidInput.code(),
+        )),
+        None => Ok(None),
     }
 }

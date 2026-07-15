@@ -145,7 +145,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        patch: operations["update_project"];
         trace?: never;
     };
     "/_api/projects/{project_id}/deployments": {
@@ -439,6 +439,8 @@ export interface components {
         OrganizationsResponse: {
             organizations: components["schemas"]["OrganizationResponse"][];
         };
+        /** @enum {string} */
+        ProjectCachePolicyRequest: "standard" | "aggressive";
         ProjectEnvelope: {
             project: components["schemas"]["ProjectResponse"];
         };
@@ -496,6 +498,13 @@ export interface components {
         };
         ReleasesResponse: {
             releases: components["schemas"]["ReleaseResponse"][];
+        };
+        UpdateProjectRequest: {
+            cachePolicy?: components["schemas"]["ProjectCachePolicyRequest"];
+            description?: string | null;
+            name?: string;
+            slug?: string;
+            spaFallback?: boolean;
         };
         UploadEnvelope: {
             upload: components["schemas"]["UploadResponse"];
@@ -1071,6 +1080,99 @@ export interface operations {
             };
             /** @description Project is missing or not visible */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Project storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_project: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token issued with the session */
+                "x-csrf-token": string;
+            };
+            path: {
+                /** @description Project ID */
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated project settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectEnvelope"];
+                };
+            };
+            /** @description JSON or path parameter is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Current role cannot manage this project */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Project is missing or not visible */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Project slug already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Project settings are invalid or empty */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

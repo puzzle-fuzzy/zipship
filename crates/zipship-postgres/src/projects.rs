@@ -1,13 +1,14 @@
 use async_trait::async_trait;
+use serde_json::json;
 use sqlx::{FromRow, PgPool};
 use std::str::FromStr;
 use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::Uuid;
-use zipship_domain::{CachePolicy, MemberRole};
+use zipship_domain::{CachePolicy, MemberRole, PermissionAction};
 use zipship_projects::{
     MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
-    ProjectsRepositoryError,
+    ProjectsRepositoryError, UpdateProject,
 };
 
 #[derive(Debug, Clone)]
@@ -165,7 +166,7 @@ impl ProjectsRepository for PgProjectsRepository {
         .bind(project.created_at)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(map_project_insert_error)?
+        .map_err(map_project_write_error)?
         .ok_or(ProjectsRepositoryError::Forbidden)?;
 
         sqlx::query(
@@ -191,6 +192,150 @@ impl ProjectsRepository for PgProjectsRepository {
         .await
         .map_err(ProjectsRepositoryError::unavailable)?;
 
+        transaction
+            .commit()
+            .await
+            .map_err(ProjectsRepositoryError::unavailable)?;
+        row.try_into()
+    }
+
+    async fn update_project(
+        &self,
+        update: UpdateProject,
+    ) -> Result<Project, ProjectsRepositoryError> {
+        let mut transaction = self
+            .pool
+            .begin()
+            .await
+            .map_err(ProjectsRepositoryError::unavailable)?;
+        let row = sqlx::query_as::<_, ProjectAccessRow>(
+            r#"
+            SELECT
+                projects.id,
+                projects.organization_id,
+                projects.name,
+                projects.slug,
+                projects.description,
+                projects.spa_fallback,
+                projects.cache_policy,
+                project_active_releases.release_id AS active_release_id,
+                projects.created_by,
+                projects.created_at,
+                projects.updated_at,
+                memberships.role
+            FROM projects
+            INNER JOIN memberships
+                ON memberships.organization_id = projects.organization_id
+               AND memberships.user_id = $2
+            LEFT JOIN project_active_releases
+                ON project_active_releases.project_id = projects.id
+            WHERE projects.id = $1 AND projects.deleted_at IS NULL
+            FOR UPDATE OF projects
+            "#,
+        )
+        .bind(update.project_id)
+        .bind(update.actor_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(ProjectsRepositoryError::unavailable)?
+        .ok_or(ProjectsRepositoryError::NotFound)?;
+        let access = ProjectAccess::try_from(row)?;
+        if !access.role.can(PermissionAction::ManageProject) {
+            return Err(ProjectsRepositoryError::Forbidden);
+        }
+        let mut project = access.project;
+        let mut changed_fields = Vec::new();
+        if let Some(name) = update.name
+            && project.name != name.as_str()
+        {
+            project.name = name.as_str().to_owned();
+            changed_fields.push("name");
+        }
+        if let Some(slug) = update.slug
+            && project.slug != slug.as_str()
+        {
+            project.slug = slug.as_str().to_owned();
+            changed_fields.push("slug");
+        }
+        if let Some(description) = update.description {
+            let description = description.into_inner();
+            if project.description != description {
+                project.description = description;
+                changed_fields.push("description");
+            }
+        }
+        if let Some(spa_fallback) = update.spa_fallback
+            && project.spa_fallback != spa_fallback
+        {
+            project.spa_fallback = spa_fallback;
+            changed_fields.push("spaFallback");
+        }
+        if let Some(cache_policy) = update.cache_policy
+            && project.cache_policy != cache_policy
+        {
+            project.cache_policy = cache_policy;
+            changed_fields.push("cachePolicy");
+        }
+        if changed_fields.is_empty() {
+            transaction
+                .commit()
+                .await
+                .map_err(ProjectsRepositoryError::unavailable)?;
+            return Ok(project);
+        }
+
+        let row = sqlx::query_as::<_, ProjectRow>(
+            r#"
+            UPDATE projects
+            SET name = $2,
+                slug = $3,
+                description = $4,
+                spa_fallback = $5,
+                cache_policy = $6,
+                updated_at = $7
+            WHERE id = $1 AND deleted_at IS NULL
+            RETURNING
+                id,
+                organization_id,
+                name,
+                slug,
+                description,
+                spa_fallback,
+                cache_policy,
+                (SELECT release_id FROM project_active_releases WHERE project_id = $1)
+                    AS active_release_id,
+                created_by,
+                created_at,
+                updated_at
+            "#,
+        )
+        .bind(update.project_id)
+        .bind(&project.name)
+        .bind(&project.slug)
+        .bind(&project.description)
+        .bind(project.spa_fallback)
+        .bind(project.cache_policy.as_str())
+        .bind(update.updated_at)
+        .fetch_one(&mut *transaction)
+        .await
+        .map_err(map_project_write_error)?;
+        sqlx::query(
+            r#"
+            INSERT INTO audit_logs (
+                organization_id, project_id, actor_id, action,
+                target_type, target_id, metadata, created_at
+            )
+            VALUES ($1, $2, $3, 'project.updated', 'project', $2, $4, $5)
+            "#,
+        )
+        .bind(project.organization_id)
+        .bind(update.project_id)
+        .bind(update.actor_id)
+        .bind(json!({ "changedFields": changed_fields }))
+        .bind(update.updated_at)
+        .execute(&mut *transaction)
+        .await
+        .map_err(ProjectsRepositoryError::unavailable)?;
         transaction
             .commit()
             .await
@@ -286,7 +431,7 @@ impl ProjectsRepository for PgProjectsRepository {
     }
 }
 
-fn map_project_insert_error(error: sqlx::Error) -> ProjectsRepositoryError {
+fn map_project_write_error(error: sqlx::Error) -> ProjectsRepositoryError {
     if let sqlx::Error::Database(database_error) = &error
         && database_error.constraint() == Some("projects_slug_unique")
     {

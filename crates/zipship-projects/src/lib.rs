@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 use async_trait::async_trait;
-use std::{error::Error as StdError, sync::Arc};
+use std::{error::Error as StdError, str::FromStr, sync::Arc};
 use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -68,10 +68,35 @@ pub struct CreateProjectCommand {
     pub description: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct UpdateProject {
+    pub actor_id: Uuid,
+    pub project_id: Uuid,
+    pub name: Option<ProjectName>,
+    pub slug: Option<ProjectSlug>,
+    pub description: Option<ProjectDescription>,
+    pub spa_fallback: Option<bool>,
+    pub cache_policy: Option<CachePolicy>,
+    pub updated_at: OffsetDateTime,
+}
+
+#[derive(Debug)]
+pub struct UpdateProjectCommand {
+    pub actor_id: Uuid,
+    pub project_id: Uuid,
+    pub name: Option<String>,
+    pub slug: Option<String>,
+    pub description: Option<Option<String>>,
+    pub spa_fallback: Option<bool>,
+    pub cache_policy: Option<String>,
+}
+
 #[derive(Debug, Error)]
 pub enum ProjectsRepositoryError {
     #[error("project slug already exists")]
     DuplicateSlug,
+    #[error("project was not found or is not visible")]
+    NotFound,
     #[error("membership no longer authorizes this operation")]
     Forbidden,
     #[error("projects repository is unavailable")]
@@ -110,6 +135,11 @@ pub trait ProjectsRepository: Send + Sync + 'static {
 
     async fn create_project(&self, project: NewProject)
     -> Result<Project, ProjectsRepositoryError>;
+
+    async fn update_project(
+        &self,
+        project: UpdateProject,
+    ) -> Result<Project, ProjectsRepositoryError>;
 
     async fn list_projects(
         &self,
@@ -249,6 +279,53 @@ impl ProjectsService {
             .map_err(map_repository_error)
     }
 
+    pub async fn update_project(
+        &self,
+        command: UpdateProjectCommand,
+    ) -> Result<Project, ProjectsError> {
+        if command.name.is_none()
+            && command.slug.is_none()
+            && command.description.is_none()
+            && command.spa_fallback.is_none()
+            && command.cache_policy.is_none()
+        {
+            return Err(ProjectsError::InvalidInput);
+        }
+        let name = command
+            .name
+            .map(ProjectName::parse)
+            .transpose()
+            .map_err(|_| ProjectsError::InvalidInput)?;
+        let slug = command
+            .slug
+            .map(ProjectSlug::parse_normalized)
+            .transpose()
+            .map_err(|_| ProjectsError::InvalidInput)?;
+        let description = command
+            .description
+            .map(|description| ProjectDescription::parse(description.as_deref()))
+            .transpose()
+            .map_err(|_| ProjectsError::InvalidInput)?;
+        let cache_policy = command
+            .cache_policy
+            .map(|policy| CachePolicy::from_str(&policy))
+            .transpose()
+            .map_err(|_| ProjectsError::InvalidInput)?;
+        self.repository
+            .update_project(UpdateProject {
+                actor_id: command.actor_id,
+                project_id: command.project_id,
+                name,
+                slug,
+                description,
+                spa_fallback: command.spa_fallback,
+                cache_policy,
+                updated_at: self.clock.now(),
+            })
+            .await
+            .map_err(map_repository_error)
+    }
+
     pub async fn get_project(
         &self,
         actor_id: Uuid,
@@ -287,6 +364,7 @@ impl ProjectsService {
 fn map_repository_error(error: ProjectsRepositoryError) -> ProjectsError {
     match error {
         ProjectsRepositoryError::DuplicateSlug => ProjectsError::DuplicateSlug,
+        ProjectsRepositoryError::NotFound => ProjectsError::NotFound,
         ProjectsRepositoryError::Forbidden => ProjectsError::Forbidden,
         ProjectsRepositoryError::Unavailable { .. } => ProjectsError::Infrastructure,
     }
@@ -406,6 +484,78 @@ mod tests {
             };
             state.projects.push(project.clone());
             Ok(project)
+        }
+
+        async fn update_project(
+            &self,
+            update: UpdateProject,
+        ) -> Result<Project, ProjectsRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            let Some(index) = state
+                .projects
+                .iter()
+                .position(|project| project.id == update.project_id)
+            else {
+                return Err(ProjectsRepositoryError::NotFound);
+            };
+            let organization_id = state.projects[index].organization_id;
+            let role = state
+                .memberships
+                .iter()
+                .find(|membership| {
+                    membership.organization_id == organization_id
+                        && membership.user_id == update.actor_id
+                })
+                .map(|membership| membership.role)
+                .ok_or(ProjectsRepositoryError::NotFound)?;
+            if !role.can(PermissionAction::ManageProject) {
+                return Err(ProjectsRepositoryError::Forbidden);
+            }
+            if let Some(slug) = update.slug.as_ref()
+                && state
+                    .projects
+                    .iter()
+                    .any(|project| project.id != update.project_id && project.slug == slug.as_str())
+            {
+                return Err(ProjectsRepositoryError::DuplicateSlug);
+            }
+            let project = &mut state.projects[index];
+            let mut changed = false;
+            if let Some(name) = update.name
+                && project.name != name.as_str()
+            {
+                project.name = name.as_str().to_owned();
+                changed = true;
+            }
+            if let Some(slug) = update.slug
+                && project.slug != slug.as_str()
+            {
+                project.slug = slug.as_str().to_owned();
+                changed = true;
+            }
+            if let Some(description) = update.description {
+                let description = description.into_inner();
+                if project.description != description {
+                    project.description = description;
+                    changed = true;
+                }
+            }
+            if let Some(spa_fallback) = update.spa_fallback
+                && project.spa_fallback != spa_fallback
+            {
+                project.spa_fallback = spa_fallback;
+                changed = true;
+            }
+            if let Some(cache_policy) = update.cache_policy
+                && project.cache_policy != cache_policy
+            {
+                project.cache_policy = cache_policy;
+                changed = true;
+            }
+            if changed {
+                project.updated_at = update.updated_at;
+            }
+            Ok(project.clone())
         }
 
         async fn list_projects(
@@ -564,6 +714,90 @@ mod tests {
         assert_eq!(
             service.get_project(Uuid::new_v4(), project.id).await,
             Err(ProjectsError::NotFound),
+        );
+    }
+
+    #[tokio::test]
+    async fn only_managers_update_normalized_project_settings() {
+        let (repository, service, user_id, organization_id) = fixture(MemberRole::Owner);
+        let project = service
+            .create_project(create_command(user_id, organization_id))
+            .await
+            .unwrap();
+        let updated = service
+            .update_project(UpdateProjectCommand {
+                actor_id: user_id,
+                project_id: project.id,
+                name: Some(" Product Site ".to_owned()),
+                slug: Some(" Product-Site ".to_owned()),
+                description: Some(None),
+                spa_fallback: Some(false),
+                cache_policy: Some("aggressive".to_owned()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(updated.name, "Product Site");
+        assert_eq!(updated.slug, "product-site");
+        assert_eq!(updated.description, None);
+        assert!(!updated.spa_fallback);
+        assert_eq!(updated.cache_policy, CachePolicy::Aggressive);
+
+        let viewer_id = Uuid::new_v4();
+        repository
+            .state
+            .lock()
+            .unwrap()
+            .memberships
+            .push(Membership {
+                organization_id,
+                user_id: viewer_id,
+                role: MemberRole::Viewer,
+            });
+        assert_eq!(
+            service
+                .update_project(UpdateProjectCommand {
+                    actor_id: viewer_id,
+                    project_id: project.id,
+                    name: Some("Forbidden".to_owned()),
+                    slug: None,
+                    description: None,
+                    spa_fallback: None,
+                    cache_policy: None,
+                })
+                .await,
+            Err(ProjectsError::Forbidden)
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_or_invalid_project_updates_before_persistence() {
+        let (_, service, user_id, _) = fixture(MemberRole::Owner);
+        let empty = UpdateProjectCommand {
+            actor_id: user_id,
+            project_id: Uuid::new_v4(),
+            name: None,
+            slug: None,
+            description: None,
+            spa_fallback: None,
+            cache_policy: None,
+        };
+        assert_eq!(
+            service.update_project(empty).await,
+            Err(ProjectsError::InvalidInput)
+        );
+        assert_eq!(
+            service
+                .update_project(UpdateProjectCommand {
+                    actor_id: user_id,
+                    project_id: Uuid::new_v4(),
+                    name: None,
+                    slug: None,
+                    description: None,
+                    spa_fallback: None,
+                    cache_policy: Some("forever".to_owned()),
+                })
+                .await,
+            Err(ProjectsError::InvalidInput)
         );
     }
 }
