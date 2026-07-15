@@ -10,20 +10,25 @@ repository.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
+futures-util.workspace = true
 secrecy.workspace = true
 serde.workspace = true
 time.workspace = true
+tokio-util.workspace = true
 tower-http.workspace = true
 tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
 zipship-projects = { path = "../zipship-projects" }
+zipship-storage = { path = "../zipship-storage" }
+zipship-uploads = { path = "../zipship-uploads" }
 
 [dev-dependencies]
 serde_json.workspace = true
 tokio.workspace = true
 tower.workspace = true
+tempfile.workspace = true
 zipship-domain = { path = "../zipship-domain" }
 
 [lints]

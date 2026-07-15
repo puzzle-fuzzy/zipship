@@ -21,6 +21,7 @@ zipship-config = { path = "../../crates/zipship-config" }
 zipship-postgres = { path = "../../crates/zipship-postgres" }
 zipship-projects = { path = "../../crates/zipship-projects" }
 zipship-storage = { path = "../../crates/zipship-storage" }
+zipship-uploads = { path = "../../crates/zipship-uploads" }
 
 [lints]
 workspace = true

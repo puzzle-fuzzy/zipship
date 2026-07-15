@@ -1,18 +1,17 @@
 use super::AppState;
 use crate::{
-    auth,
     error::{ApiError, ErrorResponse},
+    request::{authenticate, format_timestamp, no_store, parse_uuid, require_csrf},
 };
 use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
 };
 use axum_extra::extract::CookieJar;
 use serde::{Deserialize, Serialize};
-use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zipship_projects::{
@@ -256,43 +255,6 @@ pub(crate) async fn get_project(
     Ok(no_store(Json(ProjectEnvelope {
         project: project.into(),
     })))
-}
-
-async fn authenticate(
-    state: &AppState,
-    jar: &CookieJar,
-) -> Result<zipship_auth::ResolvedSession, ApiError> {
-    let token = auth::session_token(jar)?;
-    state.auth.authenticate(token).await.map_err(Into::into)
-}
-
-fn require_csrf(
-    state: &AppState,
-    session: &zipship_auth::ResolvedSession,
-    headers: &HeaderMap,
-) -> Result<(), ApiError> {
-    let csrf = headers
-        .get(auth::CSRF_HEADER)
-        .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| ApiError::new(StatusCode::FORBIDDEN, "INVALID_CSRF_TOKEN"))?;
-    state.auth.verify_csrf(session, csrf).map_err(Into::into)
-}
-
-fn parse_uuid(value: &str) -> Result<Uuid, ApiError> {
-    Uuid::parse_str(value).map_err(|_| ApiError::invalid_path_parameter())
-}
-
-fn no_store<T>(body: Json<T>) -> ([(header::HeaderName, HeaderValue); 1], Json<T>) {
-    (
-        [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
-        body,
-    )
-}
-
-fn format_timestamp(value: OffsetDateTime) -> String {
-    value
-        .format(&Rfc3339)
-        .expect("OffsetDateTime must be representable as RFC 3339")
 }
 
 impl From<ProjectsError> for ApiError {

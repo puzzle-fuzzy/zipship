@@ -20,10 +20,14 @@ use tower_http::{
 use utoipa::{OpenApi, ToSchema};
 use zipship_auth::AuthService;
 use zipship_projects::ProjectsService;
+use zipship_storage::LocalArtifactStore;
+use zipship_uploads::UploadsService;
 
 mod auth;
 mod error;
 mod projects;
+mod request;
+mod uploads;
 
 pub use auth::CookiePolicy;
 use error::ErrorResponse;
@@ -53,6 +57,8 @@ pub struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) auth: AuthService,
     pub(crate) projects: ProjectsService,
+    pub(crate) uploads: UploadsService,
+    pub(crate) storage: LocalArtifactStore,
     pub(crate) cookie_policy: CookiePolicy,
 }
 
@@ -61,12 +67,16 @@ impl AppState {
         readiness: Arc<dyn ReadinessProbe>,
         auth: AuthService,
         projects: ProjectsService,
+        uploads: UploadsService,
+        storage: LocalArtifactStore,
         cookie_policy: CookiePolicy,
     ) -> Self {
         Self {
             readiness,
             auth,
             projects,
+            uploads,
+            storage,
             cookie_policy,
         }
     }
@@ -85,7 +95,11 @@ impl AppState {
         projects::list_members,
         projects::list_projects,
         projects::create_project,
-        projects::get_project
+        projects::get_project,
+        uploads::create_upload,
+        uploads::upload_content,
+        uploads::finalize_upload,
+        uploads::get_upload
     ),
     components(schemas(
         CheckStatus,
@@ -102,13 +116,18 @@ impl AppState {
         projects::ProjectResponse,
         projects::ProjectEnvelope,
         projects::ProjectsResponse,
+        uploads::CreateUploadRequest,
+        uploads::UploadEnvelope,
+        uploads::UploadResponse,
+        uploads::FinalizeUploadResponse,
         ErrorResponse
     )),
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "auth", description = "Browser session authentication"),
         (name = "organizations", description = "Organizations and memberships"),
-        (name = "projects", description = "Static deployment projects")
+        (name = "projects", description = "Static deployment projects"),
+        (name = "uploads", description = "Bounded archive ingestion and processing")
     )
 )]
 pub struct ApiDoc;
@@ -116,14 +135,22 @@ pub struct ApiDoc;
 pub fn build_router(state: AppState) -> Router {
     let request_id_header = HeaderName::from_static("x-request-id");
 
-    Router::new()
+    let standard_routes = Router::new()
         .route("/_health/live", get(liveness))
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
         .merge(projects::router())
-        .with_state(state)
+        .merge(uploads::standard_router())
         .layer(DefaultBodyLimit::max(16 * 1_024))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::REQUEST_TIMEOUT,
+            Duration::from_secs(30),
+        ));
+
+    standard_routes
+        .merge(uploads::content_router())
+        .with_state(state)
         .layer(SetResponseHeaderLayer::if_not_present(
             header::X_CONTENT_TYPE_OPTIONS,
             HeaderValue::from_static("nosniff"),
@@ -132,10 +159,6 @@ pub fn build_router(state: AppState) -> Router {
             header::AUTHORIZATION,
             header::COOKIE,
         ]))
-        .layer(TimeoutLayer::with_status_code(
-            StatusCode::REQUEST_TIMEOUT,
-            Duration::from_secs(30),
-        ))
         .layer(CatchPanicLayer::new())
         .layer(TraceLayer::new_for_http())
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
@@ -214,16 +237,21 @@ mod tests {
         AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
         NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
     };
-    use zipship_domain::{CachePolicy, MemberRole};
+    use zipship_domain::{CachePolicy, MemberRole, UploadStatus};
     use zipship_projects::{
         MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
         ProjectsRepositoryError,
+    };
+    use zipship_uploads::{
+        BeginReceiveResult, FinalizeResult, FinalizedUpload, NewUpload, ReceiveLease, UploadLimits,
+        UploadRecord, UploadsRepository, UploadsRepositoryError,
     };
 
     const TEST_ORGANIZATION_ID: Uuid = Uuid::from_u128(1);
 
     struct Probe {
         status: CheckStatus,
+        _storage_root: tempfile::TempDir,
     }
 
     #[async_trait]
@@ -247,6 +275,186 @@ mod tests {
     #[derive(Default)]
     struct TestProjectsRepository {
         projects: Mutex<Vec<Project>>,
+    }
+
+    #[derive(Default)]
+    struct UploadState {
+        upload: Option<UploadRecord>,
+        transfer_id: Option<Uuid>,
+        finalized: Option<FinalizedUpload>,
+    }
+
+    #[derive(Default)]
+    struct TestUploadsRepository {
+        state: Mutex<UploadState>,
+    }
+
+    #[async_trait]
+    impl UploadsRepository for TestUploadsRepository {
+        async fn project_role(
+            &self,
+            _project_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Option<MemberRole>, UploadsRepositoryError> {
+            Ok(Some(MemberRole::Owner))
+        }
+
+        async fn create_upload(
+            &self,
+            upload: NewUpload,
+        ) -> Result<UploadRecord, UploadsRepositoryError> {
+            let record = UploadRecord {
+                id: upload.id,
+                project_id: upload.project_id,
+                release_id: None,
+                original_filename: upload.original_filename.as_str().to_owned(),
+                status: UploadStatus::Pending,
+                expected_size: upload.expected_size.bytes(),
+                received_size: 0,
+                staging_key: upload.staging_key,
+                created_by: upload.created_by,
+                created_at: upload.created_at,
+                uploaded_at: None,
+                completed_at: None,
+                expires_at: upload.expires_at,
+                error_code: None,
+            };
+            self.state.lock().unwrap().upload = Some(record.clone());
+            Ok(record)
+        }
+
+        async fn begin_receive(
+            &self,
+            upload_id: Uuid,
+            _actor_id: Uuid,
+            transfer_id: Uuid,
+            now: OffsetDateTime,
+            _lease_expires_at: OffsetDateTime,
+        ) -> Result<BeginReceiveResult, UploadsRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            let upload = state
+                .upload
+                .as_mut()
+                .filter(|upload| upload.id == upload_id)
+                .ok_or(UploadsRepositoryError::NotFound)?;
+            if upload.expires_at <= now {
+                return Err(UploadsRepositoryError::Expired);
+            }
+            if matches!(
+                upload.status,
+                UploadStatus::Uploaded | UploadStatus::Processing | UploadStatus::Completed
+            ) {
+                return Ok(BeginReceiveResult::AlreadyUploaded(upload.clone()));
+            }
+            if upload.status != UploadStatus::Pending {
+                return Err(UploadsRepositoryError::StateConflict);
+            }
+            upload.status = UploadStatus::Receiving;
+            upload.received_size = 0;
+            upload.error_code = None;
+            let upload = upload.clone();
+            state.transfer_id = Some(transfer_id);
+            Ok(BeginReceiveResult::Started(ReceiveLease {
+                upload,
+                transfer_id,
+            }))
+        }
+
+        async fn mark_uploaded(
+            &self,
+            upload_id: Uuid,
+            _actor_id: Uuid,
+            transfer_id: Uuid,
+            received_size: u64,
+            now: OffsetDateTime,
+        ) -> Result<UploadRecord, UploadsRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            if state.transfer_id != Some(transfer_id) {
+                return Err(UploadsRepositoryError::StateConflict);
+            }
+            let upload = state
+                .upload
+                .as_mut()
+                .filter(|upload| upload.id == upload_id)
+                .ok_or(UploadsRepositoryError::NotFound)?;
+            if received_size != upload.expected_size {
+                return Err(UploadsRepositoryError::SizeMismatch);
+            }
+            upload.status = UploadStatus::Uploaded;
+            upload.received_size = received_size;
+            upload.uploaded_at = Some(now);
+            upload.error_code = None;
+            Ok(upload.clone())
+        }
+
+        async fn requeue_receive(
+            &self,
+            upload_id: Uuid,
+            _actor_id: Uuid,
+            transfer_id: Uuid,
+            error_code: &'static str,
+            _now: OffsetDateTime,
+        ) -> Result<(), UploadsRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            if state.transfer_id != Some(transfer_id) {
+                return Err(UploadsRepositoryError::StateConflict);
+            }
+            let upload = state
+                .upload
+                .as_mut()
+                .filter(|upload| upload.id == upload_id)
+                .ok_or(UploadsRepositoryError::NotFound)?;
+            upload.status = UploadStatus::Pending;
+            upload.received_size = 0;
+            upload.error_code = Some(error_code.to_owned());
+            state.transfer_id = None;
+            Ok(())
+        }
+
+        async fn finalize_upload(
+            &self,
+            upload_id: Uuid,
+            _actor_id: Uuid,
+            _now: OffsetDateTime,
+        ) -> Result<FinalizeResult, UploadsRepositoryError> {
+            let mut state = self.state.lock().unwrap();
+            if let Some(finalized) = state.finalized.clone() {
+                return Ok(FinalizeResult::Existing(finalized));
+            }
+            let upload = state
+                .upload
+                .as_mut()
+                .filter(|upload| upload.id == upload_id)
+                .ok_or(UploadsRepositoryError::NotFound)?;
+            if upload.status != UploadStatus::Uploaded {
+                return Err(UploadsRepositoryError::StateConflict);
+            }
+            let release_id = Uuid::new_v4();
+            let job_id = Uuid::new_v4();
+            upload.status = UploadStatus::Processing;
+            upload.release_id = Some(release_id);
+            let finalized = FinalizedUpload {
+                upload: upload.clone(),
+                release_id,
+                job_id,
+            };
+            state.finalized = Some(finalized.clone());
+            Ok(FinalizeResult::Created(finalized))
+        }
+
+        async fn find_upload_for_member(
+            &self,
+            upload_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Option<UploadRecord>, UploadsRepositoryError> {
+            Ok(self
+                .state
+                .lock()
+                .unwrap()
+                .upload
+                .clone()
+                .filter(|upload| upload.id == upload_id))
+        }
     }
 
     #[async_trait]
@@ -436,16 +644,40 @@ mod tests {
     }
 
     async fn test_app(status: CheckStatus, secure_cookies: bool) -> Router {
+        test_app_with_storage(status, secure_cookies).await.0
+    }
+
+    async fn test_app_with_storage(
+        status: CheckStatus,
+        secure_cookies: bool,
+    ) -> (Router, LocalArtifactStore) {
         let auth = AuthService::new(Arc::new(TestAuthRepository::default()))
             .await
             .unwrap();
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
-        build_router(AppState::new(
-            Arc::new(Probe { status }),
+        let uploads = UploadsService::new(
+            Arc::new(TestUploadsRepository::default()),
+            UploadLimits {
+                maximum_bytes: 1_024 * 1_024,
+                upload_ttl: Duration::from_secs(600),
+                receive_lease: Duration::from_secs(60),
+            },
+        );
+        let storage_root = tempfile::tempdir().unwrap();
+        let storage = LocalArtifactStore::new(storage_root.path());
+        storage.ensure_layout().await.unwrap();
+        let app = build_router(AppState::new(
+            Arc::new(Probe {
+                status,
+                _storage_root: storage_root,
+            }),
             auth,
             projects,
+            uploads,
+            storage.clone(),
             CookiePolicy::new(secure_cookies),
-        ))
+        ));
+        (app, storage)
     }
 
     fn register_request() -> Request<Body> {
@@ -532,6 +764,8 @@ mod tests {
         assert!(document["paths"]["/_api/auth/logout"].is_object());
         assert!(document["paths"]["/_api/organizations"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
+        assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
+        assert!(document["paths"]["/_api/uploads/{upload_id}/content"].is_object());
     }
 
     #[tokio::test]
@@ -736,5 +970,157 @@ mod tests {
             json_body(invalid_path).await,
             json!({ "code": "INVALID_PATH_PARAMETER" }),
         );
+    }
+
+    #[tokio::test]
+    async fn upload_routes_stream_exact_archives_and_finalize_idempotently() {
+        let (app, storage) = test_app_with_storage(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+
+        let project_path = format!("/_api/organizations/{TEST_ORGANIZATION_ID}/projects");
+        let created_project = app
+            .clone()
+            .oneshot(
+                Request::post(project_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(
+                        json!({
+                            "name": "Marketing Site",
+                            "slug": "marketing-site"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let project = json_body(created_project).await;
+        let project_id = project["project"]["id"].as_str().unwrap();
+
+        let archive = b"PK\x03\x04streamed frontend archive".to_vec();
+        let created_upload = app
+            .clone()
+            .oneshot(
+                Request::post(format!("/_api/projects/{project_id}/uploads"))
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(
+                        json!({
+                            "filename": "frontend.zip",
+                            "sizeBytes": archive.len()
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created_upload.status(), StatusCode::CREATED);
+        let created_upload = json_body(created_upload).await;
+        let upload_id = created_upload["upload"]["id"].as_str().unwrap();
+        let upload_uuid = Uuid::parse_str(upload_id).unwrap();
+        let content_path = format!("/_api/uploads/{upload_id}/content");
+
+        let missing_length = app
+            .clone()
+            .oneshot(
+                Request::put(&content_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/zip")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(archive.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_length.status(), StatusCode::LENGTH_REQUIRED);
+        assert_eq!(
+            json_body(missing_length).await,
+            json!({ "code": "CONTENT_LENGTH_REQUIRED" }),
+        );
+
+        let interrupted = app
+            .clone()
+            .oneshot(
+                Request::put(&content_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/zip")
+                    .header(header::CONTENT_LENGTH, archive.len())
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(archive[..archive.len() - 1].to_vec()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(interrupted.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            json_body(interrupted).await,
+            json!({ "code": "UPLOAD_SIZE_MISMATCH" }),
+        );
+        assert!(
+            !tokio::fs::try_exists(storage.upload_archive_path(upload_uuid))
+                .await
+                .unwrap(),
+        );
+
+        let uploaded = app
+            .clone()
+            .oneshot(
+                Request::put(&content_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/zip")
+                    .header(header::CONTENT_LENGTH, archive.len())
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(archive.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(uploaded.status(), StatusCode::OK);
+        assert_eq!(json_body(uploaded).await["upload"]["status"], "uploaded");
+        assert_eq!(
+            tokio::fs::read(storage.upload_archive_path(upload_uuid))
+                .await
+                .unwrap(),
+            archive,
+        );
+
+        let complete_path = format!("/_api/uploads/{upload_id}/complete");
+        let first = app
+            .clone()
+            .oneshot(
+                Request::post(&complete_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.status(), StatusCode::ACCEPTED);
+        let first = json_body(first).await;
+        assert_eq!(first["upload"]["status"], "processing");
+
+        let second = app
+            .clone()
+            .oneshot(
+                Request::post(&complete_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(second.status(), StatusCode::ACCEPTED);
+        let second = json_body(second).await;
+        assert_eq!(first["releaseId"], second["releaseId"]);
+        assert_eq!(first["jobId"], second["jobId"]);
     }
 }
