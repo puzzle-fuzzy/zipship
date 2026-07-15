@@ -42,9 +42,9 @@ describe("parseReleaseReport", () => {
       },
       runtime: {
         level: "warning",
-        url: "http://localhost:3001/_sites/demo/abcdef123456/",
+        url: "http://localhost:5007/_sites/demo/release-1/",
         snapshot: {
-          finalUrl: "http://localhost:3001/_sites/demo/abcdef123456/",
+          finalUrl: "http://localhost:5007/_sites/demo/release-1/",
           status: 200,
           bodyText: "Demo",
           consoleMessages: [

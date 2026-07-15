@@ -13,15 +13,17 @@ import './index.css';
 export interface AppProps {
   runtime: RuntimeAdapter;
   apiBaseUrl: string;
+  accessBaseUrl: string;
 }
 
-export function App({ apiBaseUrl }: AppProps) {
+export function App({ apiBaseUrl, accessBaseUrl }: AppProps) {
   const { status, initSession } = useAuthStore();
   const { t } = useTranslation();
 
   // Expose base URL so AppLayout can reach it without prop drilling.
   if (typeof window !== 'undefined') {
     (window as any).__ZIPSHIP_API_BASE_URL = apiBaseUrl;
+    (window as any).__ZIPSHIP_ACCESS_BASE_URL = accessBaseUrl;
   }
 
   useEffect(() => {

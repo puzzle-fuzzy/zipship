@@ -21,15 +21,12 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
     previewUrl: null,
     fullHash: "full",
     status: "active",
-    storagePath: "/tmp/site",
-    rawUploadPath: "/tmp/upload.zip",
     fileCount: 12,
     totalSize: 4096,
     manifest: {},
     detectResult: { level: "pass", items: [] },
     createdBy: "user-1",
     createdAt: "2026-07-09T00:00:00.000Z",
-    activatedAt: "2026-07-09T00:00:00.000Z",
     archivedAt: null,
     ...overrides,
   };
@@ -56,12 +53,12 @@ describe("ProjectProductionPanel", () => {
     );
 
     expect(screen.getByText("Production")).toBeInTheDocument();
-    expect(screen.getByText("http://localhost:3000/demo/")).toBeInTheDocument();
-    expect(screen.getByText("http://localhost:3000/demo/abcdef123456/")).toBeInTheDocument();
+    expect(screen.getByText("http://localhost:5007/demo/")).toBeInTheDocument();
+    expect(screen.getByText("http://localhost:5007/_sites/demo/release-1/")).toBeInTheDocument();
     expect(screen.getByText("v4")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Copy live production URL" }));
-    await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("http://localhost:3000/demo/"));
+    await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("http://localhost:5007/demo/"));
   });
 
   it("shows an empty production state before a release is active", () => {
@@ -78,10 +75,10 @@ describe("ProjectProductionPanel", () => {
     expect(screen.getByRole("button", { name: "Upload build" })).toBeDisabled();
   });
 
-  it("builds live and pinned URLs from the current origin", () => {
-    expect(buildProductionUrls("demo", "abcdef123456")).toEqual({
-      liveUrl: "http://localhost:3000/demo/",
-      pinnedUrl: "http://localhost:3000/demo/abcdef123456/",
+  it("builds live and pinned URLs from the independent Access Plane origin", () => {
+    expect(buildProductionUrls("http://access.example/", "demo", "release-1")).toEqual({
+      liveUrl: "http://access.example/demo/",
+      pinnedUrl: "http://access.example/_sites/demo/release-1/",
     });
   });
 });

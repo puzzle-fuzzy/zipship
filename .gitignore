@@ -3,7 +3,6 @@ bun.lockb
 .env
 .env.*
 !.env.example
-!.env.test
 dist
 build
 .vite
@@ -16,6 +15,7 @@ coverage
 packages/*/tests/.tmp-*/
 /storage
 /tmp
+# First-stage local artifacts are deliberately preserved but never tracked.
 apps/api/storage
 /target
 /.zipship

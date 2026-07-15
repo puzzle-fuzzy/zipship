@@ -15,11 +15,9 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
     projectId: "project-1",
     versionNumber: 1,
     releaseHash: "abcdef123456",
-    previewUrl: "/_sites/demo/abcdef123456/",
+    previewUrl: "/_sites/demo/release-1/",
     fullHash: "full",
     status: "ready",
-    storagePath: "/tmp/site",
-    rawUploadPath: "/tmp/upload.zip",
     fileCount: 3,
     totalSize: 4096,
     manifest: {},
@@ -36,7 +34,7 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
       },
       runtime: {
         level: "warning",
-        url: "http://localhost:3001/_sites/demo/abcdef123456/",
+        url: "http://localhost:5007/_sites/demo/release-1/",
         snapshot: {
           status: 200,
           consoleMessages: [{ type: "error", text: "boom" }],
@@ -47,7 +45,6 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
     },
     createdBy: "user-1",
     createdAt: "2026-07-09T00:00:00.000Z",
-    activatedAt: null,
     archivedAt: null,
     ...overrides,
   };

@@ -6,12 +6,19 @@ import {
 
 type ZipShipRuntimeWindow = Window & {
   __ZIPSHIP_API_BASE_URL?: string;
+  __ZIPSHIP_ACCESS_BASE_URL?: string;
 };
 
 /** Base URL injected by the web or desktop shell before the first API call. */
 export function getApiBaseUrl(): string {
   if (typeof window === "undefined") return "";
   return (window as ZipShipRuntimeWindow).__ZIPSHIP_API_BASE_URL ?? "";
+}
+
+/** Independent-origin base URL for immutable previews and live project traffic. */
+export function getAccessPlaneBaseUrl(): string {
+  if (typeof window === "undefined") return "";
+  return (window as ZipShipRuntimeWindow).__ZIPSHIP_ACCESS_BASE_URL ?? "";
 }
 
 let client: ApiClient | null = null;

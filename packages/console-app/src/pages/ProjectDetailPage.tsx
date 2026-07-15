@@ -2,7 +2,7 @@ import { Code2, History, Rocket, Settings, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
 import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
-import { getApiBaseUrl } from "../api/client";
+import { getAccessPlaneBaseUrl } from "../api/client";
 import { useTranslation } from "../i18n";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { InviteMemberDialog } from "../features/members/InviteMemberDialog";
@@ -147,11 +147,11 @@ export function ProjectDetailPage() {
     projectReleases.find((release) => release.releaseHash) ??
     null;
   const previewUrl = previewRelease
-    ? buildSitePreviewUrl(getApiBaseUrl(), project.slug, previewRelease.releaseHash)
+    ? buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, previewRelease.id)
     : null;
 
   const handlePreview = (release: Release) => {
-    window.open(buildSitePreviewUrl(getApiBaseUrl(), project.slug, release.releaseHash), "_blank");
+    window.open(buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, release.id), "_blank");
   };
 
   const handleRetryReleases = () => {

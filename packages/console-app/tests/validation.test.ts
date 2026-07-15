@@ -9,9 +9,9 @@ import {
 } from "../src/lib/validation";
 
 /**
- * Client-side validation mirrors the server rules (see `isValidProjectSlug`
- * in `@zipship/deploy-core` and the auth model). These schemas are the first
- * line of defense before anything hits the API, so we pin their behaviour.
+ * Client-side validation mirrors the Rust domain and generated API contract.
+ * These schemas are the first line of defense before anything hits the API,
+ * so we pin their behaviour.
  */
 describe("projectSlugSchema", () => {
   test("accepts lowercase slugs with numbers, hyphens, underscores", () => {

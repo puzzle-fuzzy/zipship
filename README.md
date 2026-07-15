@@ -1,89 +1,87 @@
 # ZipShip
 
-ZipShip 是一个面向静态产物的私有化部署工具。第一阶段聚焦上传产物、检测、生成测试地址、发布正式版本和回滚。
+ZipShip 是面向静态前端产物的自托管发布平台。用户上传已经构建好的 ZIP，系统负责流式接收、安全解压、不可变版本、固定预览、正式发布、回滚、成员权限和审计。
 
-`rust-dev` 正在进行第二阶段完整 Rust 重构。目标后端为 Axum + Tokio + SQLx/PostgreSQL；不兼容旧 Elysia API、旧数据库结构或软链接发布模型。现有 React Console 保留；Rust OpenAPI 与生成的 TypeScript Client 已建立契约门禁，成员与邀请生命周期已经闭合，待密码重置等账号接口补齐后一次性切换 Store，不保留双 Client 运行模式。
+当前 `rust-dev` 分支采用完整 Rust 后端，不兼容第一阶段 Elysia API、Drizzle schema、软链接发布模型或旧数据。React Console 与 Tauri 薄壳保留，通过 Rust OpenAPI 生成的 TypeScript Client 调用最终接口。
 
-## 文档
-
-- [产品设计](docs/01-产品设计.md)
-- [技术架构](docs/02-技术架构.md)
-- [测试规范与实施路线](docs/03-测试规范与实施路线.md)
-
-## Workspace
+## 当前架构
 
 ```txt
-apps/api              Bun + Elysia API
-apps/web-shell        Web 控制台外壳
-apps/desktop-shell    Tauri 桌面外壳
-packages/console-app  Web / Desktop 共用 React 页面
-packages/db           Drizzle schema / migrations
-packages/deploy-core  产物检测、hash、发布、回滚核心逻辑
-packages/storage      文件系统与未来对象存储抽象
-services/zipshipd     Rust 控制面与访问平面
-services/zipship-worker 独立 Artifact 后台处理进程
-crates/zipship-*      Rust 领域、配置、数据库、任务、存储与 HTTP 边界
+apps/web-shell             Vite Web 入口
+apps/desktop-shell         Tauri 桌面入口
+packages/console-app       Web/Desktop 共用 React Console
+packages/api-client        Rust OpenAPI 快照与生成 Client
+packages/runtime           Web/Desktop 能力适配边界
+crates/zipship-*           Rust 领域、HTTP、SQLx、存储、任务与邮件模块
+services/zipshipd          Control Plane + 独立 Origin Access Plane
+services/zipship-worker    Artifact 与邮件后台 Worker
 ```
 
-## Rust 第二阶段开发
+核心事实边界：
+
+- PostgreSQL 保存账号、组织、权限、上传、任务、不可变版本、活动版本指针、部署和审计。
+- Artifact 存储只保存 staging 与内容寻址的不可变文件；发布和回滚不写 `current` 软链接。
+- `zipshipd` 分别监听 Control Plane 与 Access Plane；正式访问每次依据数据库活动指针解析 Artifact。
+- Worker 使用数据库 lease、heartbeat、重试和终态收敛处理 ZIP 与可靠邮件 Outbox。
+- Console 只使用生成 Client、HttpOnly Cookie Session、CSRF 和受 scope 限制的 API Token。
+
+## 本地启动
+
+需要 Bun 1.3、Rust 1.94、Docker 与 PostgreSQL 17。
 
 ```bash
-# 复制并按需修改配置
 cp .env.example .env
+bun install
+bun run infra:up
+bun run db:migrate
+bun run dev
+```
 
-# 启动开发 PostgreSQL
-bun run db:up
+`bun run dev` 并行启动：
 
-# 应用全新的 SQLx migrations
-bun run rust:migrate
+- Rust Control Plane：`http://127.0.0.1:5006`
+- Rust Access Plane：`http://127.0.0.1:5007`
+- Web Console：`http://127.0.0.1:4015`
+- Artifact/Mail Worker
 
-# 启动 Rust API / Access Plane
-bun run rust:dev
+也可以分别运行 `bun run dev:api`、`bun run dev:worker` 和 `bun run dev:web`。桌面开发使用 `bun run desktop:dev`。
 
-# 在独立终端启动 Artifact Worker
-bun run rust:worker
+健康与契约端点：
 
-# Rust 质量门
+- `GET /_health/live`
+- `GET /_health/ready`
+- `GET /_api/openapi.json`
+
+## 质量门
+
+```bash
+# Rust 最终架构和旧后端退场门禁
+bun run cutover:check
+
+# OpenAPI / Frontend
+bun run api:check
+bun run lint
+bun run typecheck:workspaces
+bun run test
+bun run build
+
+# Rust
 bun run rust:fmt
 bun run rust:check
 bun run rust:clippy
 bun run rust:test
 ```
 
-健康检查：
+真实 PostgreSQL、SMTP 与完整 HTTP/Worker 测试由 CI 在隔离服务中串行执行。`bun run test:all` 可运行 Console 与常规 Rust 测试；带 `#[ignore]` 的外部服务测试仍要求专用测试数据库，不能直接指向开发库。
 
-- `GET /_health/live`：进程存活，不依赖外部服务。
-- `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
-- `GET /_api/openapi.json`：当前 Rust API 契约。
+## 基础设施状态
 
-当前 Rust 最小纵向切片已经贯通注册、个人组织、项目、上传入队、异步 Artifact 处理、固定 Release 预览、发布、正式访问和回滚。上传协议为：
+`infra/docker/docker-compose.yml` 只提供本地 PostgreSQL 和 Mailpit，不冒充生产发行栈。旧 Elysia 镜像和基于软链接的 Nginx Access Plane 已删除。最终生产镜像、Console 静态托管、TLS/反向代理和从空环境启动 smoke test 将在独立部署切片中完成。
 
-- `POST /_api/projects/{project_id}/uploads`：预留 ZIP 文件名与精确字节数。
-- `PUT /_api/uploads/{upload_id}/content`：携带 Cookie、CSRF、`Content-Length`，以原始 Body 流式写入 staging。
-- `POST /_api/uploads/{upload_id}/complete`：幂等创建 processing Release 与持久化 Artifact Job，返回 `202`。
-- `GET /_api/uploads/{upload_id}`：查询当前上传状态。
+## 文档
 
-发布协议为：
+- [产品设计](docs/01-产品设计.md)
+- [Rust 第二阶段重构方案与实施记录](docs/06-Rust-第二阶段重构方案.md)
+- [第一阶段问题基线与关闭记录](docs/05-当前状态与问题清单.md)
 
-- `POST /_api/projects/{project_id}/releases/{release_id}/publish`：携带 Cookie、CSRF、JSON Body 和必填 `Idempotency-Key`，原子切换活动版本。
-- `POST /_api/projects/{project_id}/releases/{release_id}/rollback`：回滚到曾成功激活的 ready Release，同样要求新的幂等键。
-- `GET /_api/projects/{project_id}/deployments`：查询当前成员可见的部署历史。
-
-独立 Worker 使用 PostgreSQL lease claim 任务并持续 heartbeat；过期 lease 可回收重试。Worker 对 ZIP 执行路径、类型、大小、层级、压缩率和入口目录校验，生成稳定 Manifest 与完整 SHA-256，将内容只写一次地提交到不可变 Artifact 存储，并在同一数据库事务中收敛 Upload、Release、Artifact、Job 和 Audit 状态。
-
-Access Plane 使用独立 Origin。`/_sites/{project_slug}/{release_id}/` 提供不可变的固定版本预览，`/{project_slug}/` 根据 PostgreSQL 中唯一的活动版本指针提供正式访问。它只服务 ready Release/Artifact 和 Manifest 内登记的普通文件，支持 MIME、强 ETag、条件请求、单字节 Range、项目缓存策略以及仅限 HTML 导航的 SPA fallback；发布和回滚不写软链接，也不产生数据库/文件系统双写窗口。
-
-## 开发端口
-
-- Rust API：`http://127.0.0.1:5006`
-- Rust Access Plane：`http://127.0.0.1:5007`
-- Web Shell：`http://127.0.0.1:4015`
-- Desktop Shell renderer：`http://localhost:1420`（Tauri 约定端口；完整桌面开发用 `bun --filter @zipship/desktop-shell tauri dev`，需 Rust 工具链）
-
-`dev:api`、`dev:web`、`dev:desktop` 都会在启动前清理对应端口；Web 与 Desktop 的 Vite 配置使用 `strictPort`，端口被占用时不会自动漂移。
-
-## 配置
-
-环境变量统一从仓库根目录 `.env` 读取，模板见 `.env.example`。前端只使用 `VITE_` 前缀变量；数据库、存储路径和服务端密钥只给后端与脚本读取。
-
-Drizzle 配置位于 `packages/db/drizzle.config.ts`，根目录的 `db:generate`、`db:migrate` 脚本会显式指向这个配置文件。
+`docs/02-技术架构.md`、`docs/03-测试规范与实施路线.md` 和 `docs/superpowers/` 保存第一阶段历史决策，只用于追溯，不再是当前实现规范。

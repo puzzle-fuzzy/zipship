@@ -5,6 +5,7 @@ import { Button } from "../../components/ui/button";
 import { useTranslation } from "../../i18n";
 import type { Release } from "../../stores/projectsStore";
 import { buildProductionUrls } from "./projectProductionUrls";
+import { getAccessPlaneBaseUrl } from "../../api/client";
 import { parseReleaseReport, summarizeReleaseGate } from "./releaseReport";
 
 interface ProjectProductionPanelProps {
@@ -21,7 +22,9 @@ export function ProjectProductionPanel({
   onUploadClick,
 }: ProjectProductionPanelProps) {
   const { t } = useTranslation();
-  const urls = activeRelease ? buildProductionUrls(projectSlug, activeRelease.releaseHash) : null;
+  const urls = activeRelease
+    ? buildProductionUrls(getAccessPlaneBaseUrl(), projectSlug, activeRelease.id)
+    : null;
   const gate = activeRelease ? summarizeReleaseGate(parseReleaseReport(activeRelease.detectResult)) : null;
 
   const copyUrl = async (url: string) => {

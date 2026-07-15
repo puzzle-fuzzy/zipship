@@ -1,170 +1,108 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+用 Python 脚本读取或检查包含中文的文件，避免 PowerShell 编码问题。
 
-## Project Overview
+## Project
 
-ZipShip is a self-hosted static artifact deployment tool — think lightweight Netlify/Vercel self-hosted. Users upload built static assets (zip or folder), the platform detects, versions, serves preview URLs, publishes releases, and supports rollback.
+ZipShip 是自托管静态产物发布平台：接收已经构建好的 ZIP，安全展开为不可变 Artifact，提供固定预览，并通过 PostgreSQL 活动版本指针完成原子发布和回滚。
+
+当前后端是最终 Rust 架构。不要重新引入 Elysia、Eden、Drizzle、旧 TypeScript deploy/storage 包、Nginx 动态项目配置、软链接发布或双 Client 兼容分支。`bun run cutover:check` 会验证这条边界。
 
 ## Commands
 
 ```bash
-# Development
-bun run dev            # API + web-shell simultaneously (Turbo)
-bun run dev:api        # API server on http://localhost:3001
-bun run dev:web        # Web shell on http://127.0.0.1:5173
-bun run dev:desktop    # Tauri desktop shell (renderer on http://localhost:1420)
-# (Each dev:target kills its port before starting via scripts/kill-port.ts)
+# Local infrastructure and migrations
+bun run infra:up
+bun run infra:down
+bun run db:migrate
 
-# Testing
-bun test               # Run all tests (root + packages)
-bun test tests/unit/auth-routes.test.ts  # Single file
-bun test -- --grep "logout"              # Filter by name
-# pretest auto-starts Docker postgres, creates zipship_test DB, runs migrations
+# Development: API + Access Plane + Worker + Web Console
+bun run dev
+bun run dev:api
+bun run dev:worker
+bun run dev:web
+bun run desktop:dev
 
-# Type checking
-bun run typecheck      # Root project only
-bun run typecheck:workspaces  # All packages via Turbo
+# Frontend and contract
+bun run cutover:check
+bun run api:generate
+bun run api:check
+bun run lint
+bun run typecheck:workspaces
+bun run test
+bun run build
 
-# Database
-bun run db:up          # docker compose up -d
-bun run db:down        # docker compose down
-bun run db:generate    # Generate Drizzle migrations
-bun run db:migrate     # Apply Drizzle migrations
-bun run db:create-test # Create zipship_test database in the postgres container
+# Rust
+bun run rust:fmt
+bun run rust:check
+bun run rust:clippy
+bun run rust:test
 ```
 
-Environment variables from `.env` at repo root. Copy `.env.example` to `.env`. Frontend uses `VITE_`-prefixed vars; `DATABASE_URL`, `ZIPSHIP_STORAGE_ROOT` are server-only.
+`bun run test:all` 运行 Console 与常规 Rust 测试。真实 PostgreSQL、SMTP 和完整 HTTP/Worker 测试带 `#[ignore]`，只使用隔离测试数据库；CI 会显式运行它们。
 
-## Architecture
+## Workspace
 
-### Monorepo (Bun Workspaces + Bun Catalogs)
-
+```txt
+apps/web-shell             Web Vite entry
+apps/desktop-shell         Tauri entry
+packages/console-app       Shared React Console
+packages/api-client        Rust OpenAPI snapshot + generated TypeScript Client
+packages/runtime           Web/Desktop capability adapter
+crates/zipship-api         Axum Control Plane HTTP boundary
+crates/zipship-access      Independent-Origin Access Plane
+crates/zipship-postgres    SQLx repositories and embedded migrations
+crates/zipship-storage     Artifact storage boundary
+crates/zipship-artifact    Safe ZIP extraction and immutable manifest pipeline
+crates/zipship-*           Domain services for auth/projects/uploads/etc.
+services/zipshipd          Control + Access server binary
+services/zipship-worker    Artifact and mail worker binary
 ```
-apps/api              Bun + Elysia backend (control plane) — PostgreSQL via Drizzle
-apps/web-shell        Vite + React + Tailwind CSS v4 entry (thin shell)
-apps/desktop-shell    Tauri entry (thin shell)
-packages/console-app  Shared React UI — shadcn/ui + Tailwind CSS v4 + Zustand
-packages/db           Drizzle ORM schema + migrations (PostgreSQL)
-packages/deploy-core  Unzip, detect, hash, manifest, publish, rollback
-packages/storage      File system abstraction (local filesystem today; StorageAdapter interface + S3/MinIO planned)
-packages/api-client   Eden Treaty client — type-safe API calls
-packages/runtime      RuntimeAdapter interface (web vs desktop capabilities)
-packages/shared       Shared types, constants, reserved slugs
-packages/config       Env and path configuration
-```
 
-Dependency versions use root `package.json` `catalog` field; sub-packages use `"catalog:"`. Cross-package deps use `"workspace:*"`.
+## Backend architecture
 
-### Control Plane vs Access Plane
+- Domain crates own invariants, commands, repository traits and stable errors. They do not depend on Axum or SQLx.
+- `zipship-postgres` implements repository traits. Transactions and row-lock ordering live here; schema migrations are embedded from `crates/zipship-postgres/migrations`.
+- `zipship-api` maps HTTP DTOs/authentication to domain services. Responses return stable `code` values, never localized user-facing messages.
+- `zipshipd migrate` is the only migration entry. `zipshipd serve` starts Control and Access listeners and does not silently mutate schema.
+- Cookie Sessions are HttpOnly and stateful; browser writes require CSRF. API Tokens are separate credentials with explicit scopes, and effective permission is scope intersected with current organization RBAC.
+- Upload content is streamed to staging with an exact byte reservation. Completion creates a persistent job; it does not synchronously unzip in the request.
+- Worker claims jobs with lease/heartbeat/retry, safely extracts ZIPs, builds a stable manifest and commits content-addressed immutable Artifacts.
+- Release is immutable. Publish/rollback atomically updates the database activity pointer with deployment and audit records; filesystem symlinks are not a source of truth.
+- Access Plane serves only ready Artifact files present in the manifest. Fixed preview and live paths share MIME, ETag, Range, cache and HTML-navigation SPA fallback rules.
+- Password recovery and invitations use one-time secrets. Database, audit and logs store only digests or encrypted Outbox envelopes.
 
-- **Elysia** = control plane (`/_api/`). Auth, projects, uploads, deployments, members, invitations.
-- **Nginx** = access plane (serves user static artifacts, SPA fallback, tail-slash redirects, Cache-Control headers). Template at [infra/nginx/zipship.conf](infra/nginx/zipship.conf).
-- **PostgreSQL** = all metadata (users, sessions, orgs, projects, releases, deployments, audit logs, upload tasks). **Fully wired** via Drizzle ORM.
-- **File system** = artifact storage (uploaded zips, extracted sites, symlinked `current`).
+## API contract
 
-### API Module Convention (Elysia Feature-Based)
+Rust `utoipa` output is the source of truth:
 
-Each domain in `apps/api/src/modules/:feature/` follows:
+1. `cargo run -p zipship-api --bin zipship-openapi` emits the snapshot.
+2. `scripts/generate-api-client.ts` generates `packages/api-client/src/generated/schema.ts`.
+3. `bun run api:check` must detect any drift.
+4. Console imports only `@zipship/api-client`; do not hand-write a parallel server contract.
 
-- `index.ts` — Elysia plugin (controller). Exports named factory function receiving dependencies.
-- `model.ts` — TypeBox (`t.Object`) validation schemas, derived types, error classes.
-- `service.ts` — Business logic class. Receives repository interfaces, hash functions, clock via constructor. Never touches HTTP context.
-- `drizzle-repository.ts` — Drizzle implementation of the repository interface.
+## Frontend
 
-Shared cross-module helpers live in `apps/api/src/lib/` (e.g. `auth.ts` for bearer-token parsing + session resolution). Don't redefine these per module.
+- `packages/console-app` is shared by Web and Tauri.
+- State uses Zustand only for durable UI/session metadata. One-time secrets must remain in the smallest component-local memory boundary and be destroyed on close/unmount.
+- API calls use the generated OpenAPI Client, Cookie Session and CSRF helpers in `src/api`.
+- Stable Rust error codes are mapped to English/Chinese copy in Console; backend errors do not contain presentation strings.
+- Theme uses the existing `day`/`night` settings and Tailwind CSS v4 tokens. Preserve keyboard access, focus indicators, responsive layouts and both locales.
+- Access URLs follow Rust routing: fixed preview is `/_sites/{project_slug}/{release_id}/`; live is `/{project_slug}/` on the Access Plane origin.
 
-**Error handling**: Services return success OR typed error objects. Controllers map errors to HTTP status codes. Error responses contain only stable `code` strings (e.g. `"DUPLICATE_EMAIL"`), never user-facing text. Frontend maps codes to i18n.
+## Testing
 
-**Auth**: Bearer tokens with SHA-256 hashed refresh tokens. 7-day TTL. Server-side session revocation (`POST /_api/auth/logout` sets `revokedAt`). The shared `parseBearerToken` in `apps/api/src/lib/auth.ts` is case-insensitive (`bearer`/`Bearer`); services import it instead of redefining.
+- Rust unit tests live beside crate code; real repository tests live under `crates/zipship-postgres/tests`.
+- Full upload/publish/recovery HTTP pipelines live in `services/zipship-worker/tests/artifact_pipeline.rs`.
+- External-service Rust tests are ignored by default and require `ZIPSHIP_TEST_DATABASE_URL` or `ZIPSHIP_TEST_SMTP_URL`.
+- Console uses Vitest + Testing Library under `packages/console-app/tests`.
+- Route/auth tests must verify stable error shape, CSRF, credential priority, scope + RBAC intersection and secret non-disclosure.
+- Filesystem tests use temporary storage and guaranteed cleanup; never point tests at `.zipship` development data.
 
-**Type safety**: `apps/api` exports `type App = typeof app`. `packages/api-client` uses `treaty<App>()` for typed client.
+## Working rules
 
-**App initialization**: `createApp({ db?, storageRoot?, exposeTestRoutes? })` assembles the full Elysia app with dependency injection. Each module receives its repository implementations, hash functions, and clock via its options object — tests replace `db` with a fresh Drizzle connection.
-
-**Auth repository**: a single Drizzle implementation at `apps/api/src/modules/auth/drizzle-repository.ts` (production + integration tests). The old in-memory implementation was removed (it had no importers); pure service tests in `tests/unit/auth-login` / `auth-registration` inject lightweight inline stub repositories.
-
-### Implemented API Modules
-
-| Module | Routes | Notes |
-|--------|--------|-------|
-| auth | `POST /register`, `POST /login`, `GET /me`, `PATCH /me`, `POST /logout` | Email normalization, register creates session directly, SHA-256 refresh tokens, server-side revocation |
-| organizations | `GET /` | List user's orgs via membership |
-| projects | `POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id` | Slug validation + uniqueness, owner/admin-only mutate |
-| members | `GET /` (org-scoped) | List members with user info, role badges |
-| invitations | `POST /` (org-scoped) | Invite by email, role selection, duplicate/prevent checks |
-| releases | `GET /` | List project releases (newest first) |
-| deployments | `POST /publish`, `POST /rollback`, `GET /deployments` | Atomic symlink swap via `switchCurrentReleaseLink`, audit logged |
-| uploads | `POST /`, `PUT /raw`, `POST /complete`, `GET /:id` | 3-step pipeline, triggers release-processing on complete |
-| site-preview | `GET /`, `GET /*` | Internal preview at `/_sites/:slug/:hash/` with SPA fallback |
-| permissions | internal service | RBAC: 5 roles × 9 actions matrix in `permissions/service.ts` |
-| audit | internal service | Logs operations to `audit_logs` table |
-| release-processing | internal service | Calls deploy-core `processRelease()` → extract → detect → manifest → store |
-
-**Session storage**: Refresh tokens stored in `sessionStorage` keyed as `zipship_refresh_token`. On app mount, `authStore.initSession()` calls `GET /_api/auth/me` with the stored token — if it fails, redirects to login. Logout removes the key and resets store.
-
-**Test API pattern**: Tests wire `window.__ZIPSHIP_API_BASE_URL` via `createApp({db})` by importing the Eden Treaty client directly against the test app instance — no HTTP server needed.
-
-### Frontend Tech Stack
-
-**`packages/console-app`** is the shared React UI:
-- **Tailwind CSS v4** with `@import "tailwindcss"` (no tailwind.config.js). CSS variables in `index.css`.
-- **shadcn/ui** "radix-nova" style using `@base-ui/react` + `radix-ui`. 32 components in `src/components/ui/`.
-- **Icons**: `lucide-react`.
-- **State**: Zustand v5 stores: `authStore`, `projectsStore`, `membersStore`, `settingsStore`.
-- **i18n**: Custom hook `useTranslation()` with `en.ts` / `zh.ts` maps.
-- **Routing**: React Router 7 (browser router).
-- **Theme**: `.night` class on `<html>` toggled via `settingsStore`.
-
-Key patterns:
-- `apiBaseUrl` exposed via `window.__ZIPSHIP_API_BASE_URL`.
-- Each store uses `createApiClient(apiBaseUrl)` for type-safe API calls via Eden Treaty.
-- Error codes from API are mapped to user-facing messages in stores (not in UI components).
-
-### Permission Model
-
-Roles: `owner` → `admin` → `developer` → `deployer` → `viewer`. Matrix in `permissions/service.ts`. Key checks:
-- `invite_member`: owner/admin only
-- `manage_member`: owner/admin only
-- `create_project`: developer+
-- `upload_release`: developer+
-- `publish_release` / `rollback_release`: deployer+
-- `view_project`: all roles
-
-### Database (Drizzle ORM)
-
-Schema at [packages/db/src/schema.ts](packages/db/src/schema.ts). Core tables: `users`, `sessions` (with `revokedAt`), `organizations`, `members` (role: owner/admin/developer/deployer/viewer), `invitations`, `projects`, `releases`, `deployments`, `upload_tasks`, `audit_logs`.
-
-### Release Model
-
-- **Release** = immutable artifact version. Status flow: `uploading → processing → ready → active | failed | archived | deleted`.
-- **Deployment** = publish/rollback action. Links a release to `current`.
-- **current** = symlink `sites/:slug/current → releases/:hash`. Zero-downtime via `symlink → rename`.
-- `release_hash` = content-derived (manifest hash, truncated to 12 chars).
-
-### Upload Flow
-
-Frontend supports three upload modes: ZIP file, folder (webkitdirectory → JSZip), single HTML file (JSZip wrapper). The pipeline:
-1. `POST /uploads` → create upload task (sends filename + size)
-2. `PUT /uploads/:id/raw` → upload raw bytes
-3. `POST /uploads/:id/complete` → trigger `processRelease()` (unzip → detect → hash → manifest)
-
-## Test Structure
-
-Tests live in `tests/` and `packages/*/tests/`. Run with `bun test` — `pretest` auto-starts Docker PostgreSQL, creates `zipship_test` database, and runs migrations against it.
-
-- **`tests/unit/`** — Pure-logic tests (services with inline stub repos, slug/permission/storage helpers). No DB required. Run with `bun run test:unit`.
-- **`tests/integration/`** — Full HTTP route tests via Eden Treaty client against `createApp({ db })`. Each test creates a fresh PostgreSQL connection and uses `beforeEach` with `truncateAllTables()`. Database must be running. Run with `bun run test:integration`.
-- **`tests/e2e/`** — Multi-step end-to-end flows (register → login → create project → upload → deploy).
-- **`packages/deploy-core/tests/unit/`** — Pure unit tests (zip extraction, detection, manifest hashing, pipeline orchestration). Use fixtures in `packages/deploy-core/tests/fixtures/` (`.zip` files at various sizes).
-- **`packages/storage/tests/`** — Filesystem tests using `createTempStorageRoot()` + `try/finally` cleanup pattern.
-- **`tests/nginx/`** — Nginx routing tests (auto-skips on Windows).
-- **`tests/helpers/path.ts`** — Cross-platform path utilities (`readLinkTarget`, `normalizePath`).
-
-Testing conventions:
-- Route-level tests use the **real PostgreSQL via Drizzle** — create a Drizzle connection, pass to `createApp({ db })`, truncate all tables between tests with `truncateAllTables()`.
-- Pure service tests (`tests/unit/auth-login`, `auth-registration`) inject inline stub repositories; no in-memory repo ships in the source tree.
-- For filesystem tests, always use `createTempStorageRoot()` + cleanup in `try/finally`.
-- Cross-platform path handling: use `join()`, `normalizePath()` helpers.
-- Auth tests should verify error response shape is exactly `{ code: string }` (no extra fields).
-- Bearer token tests should cover both `bearer` and `Bearer` (case-insensitive).
+- Use `rg` / `rg --files` for discovery.
+- Preserve unrelated user changes and ignored local Artifact data.
+- Each independently completed issue gets its own commit on `rust-dev`.
+- Run checks proportional to risk; changes to workspace/dependencies require `bun install`, cutover/API checks, tests, typecheck, lint and production builds.
+- Do not claim production readiness from `infra/docker/docker-compose.yml`; it intentionally contains only PostgreSQL and Mailpit until the production deployment slice is delivered.

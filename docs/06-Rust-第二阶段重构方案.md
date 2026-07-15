@@ -426,4 +426,12 @@ Control Plane HTTP 与鉴权切片已完成：
 5. Console 新增 10 项针对 Client、安全内存边界、创建校验、复制、撤销、错误重试和设置导航的测试，当前 38 个测试文件共 165 项通过；11 个工作区类型检查、Lint、Web/Desktop 生产构建和 OpenAPI 生成契约均保持通过。
 6. 真实浏览器验收覆盖桌面与 390px、中英文、日间/夜间、真实创建/复制/清除/撤销、Escape 与设置关闭重开；浏览器控制台 0 warning/error，且明文在关闭后从 DOM 完全消失。主包约 976 KB 的拆包警告继续作为独立性能问题处理。
 
-下一个独立问题是删除旧 TypeScript API 及其仅为兼容旧后端保留的工作区依赖、脚本和测试入口。Rust 已覆盖当前控制面纵向能力，后续不再用安装旧依赖的方式修补根构建；删除前先建立引用清单和 Rust 对等能力门禁，确保只移除已被最终 Rust 架构取代的代码。
+### 已完成切片：旧 TypeScript 后端完整退场
+
+1. 删除 `apps/api`、Drizzle `packages/db`、旧 `config/deploy-core/storage/shared` 服务端包、第一阶段 unit/integration/e2e/Nginx 测试、Drizzle 脚本与 migrations、Elysia Dockerfile、动态 Nginx 配置和过期 TODO；不保留兼容路由、双数据库、旧 Client 或运行时 fallback。
+2. 根 Bun 工作区收敛为 Web Shell、Desktop Shell、Console、生成 API Client 和 Runtime 五个包；移除 Elysia、Eden、Drizzle、Playwright、`pg`、`yauzl`、Nodemailer 等旧后端直接依赖并重建锁文件，根 `bun run build` 不再被 `chromium-bidi` 阻塞。
+3. 新增 `cutover:check` 永久门禁：阻止旧目录和依赖重新进入仓库，同时验证 Rust OpenAPI 的 23 个关键操作以及 API/PostgreSQL/Storage/Artifact/Server/Worker/Migrations 七个运行边界仍存在。CI 在契约、Lint、根/工作区类型、Console 测试和生产构建前执行该门禁。
+4. Console Access Plane 配置从 Control Plane 中彻底分离：Web/Desktop Shell 同时注入 API 与 Access Origin；固定预览统一使用 `/_sites/{project_slug}/{release_id}/`，正式访问使用 `/{project_slug}/`，不再根据 Console 当前 Origin 或旧 release hash 拼接地址。
+5. `infra/docker/docker-compose.yml` 只保留本地 PostgreSQL 与 Mailpit，并明确不冒充生产栈；旧 Elysia 镜像和软链接 Nginx Access Plane 已删除。本机忽略的第一阶段 Artifact 仅作为未跟踪数据保留，不参与任何 workspace、运行时或测试路径。
+6. 验收通过：Console 38 个文件共 166 项测试、根与五个工作区 TypeScript、Lint、OpenAPI 漂移、冻结安装、Web/Desktop 生产构建、Rust fmt/Clippy 和 129 项常规测试全部通过；独立数据库中 15 项 PostgreSQL 仓储测试、1 项真实 SMTP 和 2 项完整 HTTP/Worker 流程通过并完成清理。
+7. 主前端包约 975 KB 的拆包警告仍是独立性能问题。下一个优先切片是最终 Rust 生产发行：构建非 root、多阶段、锁定依赖的 `zipshipd`/Worker/Console 镜像，建立迁移顺序、健康检查、持久卷、TLS/反向代理拓扑，并在干净环境执行可重复的 Compose smoke test。

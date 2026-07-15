@@ -41,15 +41,12 @@ function makeRelease(overrides: Partial<Release> = {}): Release {
     previewUrl: null,
     fullHash: "full",
     status: "active",
-    storagePath: "/tmp/site",
-    rawUploadPath: "/tmp/upload.zip",
     fileCount: 3,
     totalSize: 4096,
     manifest: {},
     detectResult: {},
     createdBy: "user-1",
     createdAt: "2026-07-09T00:00:00.000Z",
-    activatedAt: null,
     archivedAt: null,
     ...overrides,
   };
@@ -76,7 +73,7 @@ describe("ProjectSettingsTab", () => {
     expect(screen.getByText("Project profile")).toBeInTheDocument();
     expect(screen.getByText("Production access")).toBeInTheDocument();
     expect(screen.getByText("/demo/")).toBeInTheDocument();
-    expect(screen.getByText("/demo/abcdef123456/")).toBeInTheDocument();
+    expect(screen.getByText("/_sites/demo/release-1/")).toBeInTheDocument();
     expect(screen.getAllByText("SPA fallback").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Cache policy").length).toBeGreaterThan(0);
     expect(screen.getByText("Reserved paths")).toBeInTheDocument();

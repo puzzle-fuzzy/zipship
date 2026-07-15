@@ -7,9 +7,9 @@ import { afterEach, beforeEach } from 'vitest';
  *
  * jsdom provides `window`, `document`, `sessionStorage`, and `localStorage`,
  * but NOT the browser APIs the app reaches for at boot. We stub the shell-
- * injected API base URL, the missing `matchMedia` (used by the sidebar's mobile
- * hook), and isolate storage between tests so store state and tokens never leak
- * across cases.
+ * injected Control/Access base URLs, the missing `matchMedia` (used by the
+ * sidebar's mobile hook), and isolate storage between tests so store state and
+ * tokens never leak across cases.
  */
 
 // jsdom does not implement matchMedia; polyfill once so any component using the
@@ -33,9 +33,13 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  // The shells inject this onto `window` before rendering <App />.
-  (window as unknown as { __ZIPSHIP_API_BASE_URL?: string }).__ZIPSHIP_API_BASE_URL =
-    'http://localhost:3001';
+  // The shells inject both independent origins before rendering <App />.
+  const runtimeWindow = window as unknown as {
+    __ZIPSHIP_API_BASE_URL?: string;
+    __ZIPSHIP_ACCESS_BASE_URL?: string;
+  };
+  runtimeWindow.__ZIPSHIP_API_BASE_URL = 'http://localhost:5006';
+  runtimeWindow.__ZIPSHIP_ACCESS_BASE_URL = 'http://localhost:5007';
 
   localStorage.clear();
   sessionStorage.clear();

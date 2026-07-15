@@ -18,15 +18,12 @@ function makeRelease(): Release {
     previewUrl: null,
     fullHash: "full",
     status: "ready",
-    storagePath: "/tmp/site",
-    rawUploadPath: "/tmp/upload.zip",
     fileCount: 3,
     totalSize: 4096,
     manifest: {},
     detectResult: {},
     createdBy: "user-1",
     createdAt: "2026-07-09T00:00:00.000Z",
-    activatedAt: null,
     archivedAt: null,
   };
 }
@@ -38,7 +35,7 @@ describe("ProjectPreviewPanel", () => {
     render(
       <ProjectPreviewPanel
         release={makeRelease()}
-        previewUrl="http://localhost:3001/_sites/demo/abcdef123456/"
+        previewUrl="http://localhost:5007/_sites/demo/release-1/"
         canUpload={true}
         onOpenPreview={onOpenPreview}
         onUploadClick={() => {}}
@@ -47,7 +44,7 @@ describe("ProjectPreviewPanel", () => {
 
     expect(screen.getByTitle("Preview v7")).toHaveAttribute(
       "src",
-      "http://localhost:3001/_sites/demo/abcdef123456/",
+      "http://localhost:5007/_sites/demo/release-1/",
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Mobile" }));

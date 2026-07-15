@@ -1,1 +1,0 @@
-DROP INDEX "releases_project_release_hash_unique";

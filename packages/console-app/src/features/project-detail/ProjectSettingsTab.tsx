@@ -1,4 +1,3 @@
-import { buildAccessPlanePreview } from "@zipship/shared";
 import {
   Globe2,
   LockKeyhole,
@@ -30,7 +29,10 @@ import {
 import { Switch } from "../../components/ui/switch";
 import { Textarea } from "../../components/ui/textarea";
 import type { Project, Release } from "../../stores/projectsStore";
-import { buildProjectProductionPaths } from "./projectSettingsModel";
+import {
+  buildAccessPlanePolicyPreview,
+  buildProjectProductionPaths,
+} from "./projectSettingsModel";
 
 type ProjectSettingsSaveInput = {
   name?: string;
@@ -63,11 +65,9 @@ export function ProjectSettingsTab({
   const [saving, setSaving] = useState(false);
   const [savingProduction, setSavingProduction] = useState(false);
   const productionPaths = buildProjectProductionPaths(project.slug, activeRelease);
-  const accessPreview = buildAccessPlanePreview({
-    slug: project.slug,
+  const accessPreview = buildAccessPlanePolicyPreview({
     spaFallback: editingSpaFallback,
     cachePolicy: editingCachePolicy,
-    customDomains: [],
   });
 
   // Re-seed the form if a different project mounts into the same instance.

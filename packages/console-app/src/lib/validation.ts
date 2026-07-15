@@ -1,9 +1,8 @@
 import { z } from "zod";
 
 /**
- * Shared client-side validation schemas. Mirror the server's rules (see
- * `@zipship/deploy-core` `isValidProjectSlug` and the auth model min/max lengths)
- * so a form can't submit a value the API will reject.
+ * Shared client-side validation schemas. These mirror the final Rust domain
+ * constraints and OpenAPI bounds so forms can reject invalid values early.
  */
 
 /** Project slug: lowercase letters/digits/`-`/`_`, starting alnum, ≤ 80 chars. */

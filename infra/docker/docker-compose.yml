@@ -1,10 +1,6 @@
-# ZipShip infrastructure stack.
-#
-# - `docker compose up -d`: postgres + Mailpit (local development and tests)
-# - `docker compose --profile prod up -d`: postgres + Mailpit + api + nginx
-#
-# The explicit `name: zipship` makes the postgres container predictably
-# `zipship-postgres-1`, which the root `db:create-test` script depends on.
+# ZipShip local infrastructure stack.
+# Production images and orchestration are intentionally handled separately;
+# this file contains only stateful dependencies used by Rust development and tests.
 name: zipship
 
 services:
@@ -24,56 +20,12 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # Local-only SMTP capture for password recovery development.
+  # Local SMTP capture for password recovery development and integration tests.
   mailpit:
     image: axllent/mailpit:v1.30.3
     ports:
       - "1025:1025"
       - "8025:8025"
 
-  # ── Control-plane API (only with --profile prod) ─────────────────────────
-  api:
-    profiles: ["prod"]
-    build:
-      context: ../..
-      dockerfile: apps/api/Dockerfile
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      NODE_ENV: production
-      ZIPSHIP_API_PORT: "5006"
-      DATABASE_URL: postgres://zipship:zipship@postgres:5432/zipship
-      ZIPSHIP_STORAGE_ROOT: /data/sites
-      ZIPSHIP_APP_URL: http://localhost:8080
-    volumes:
-      - sites:/data/sites
-    ports:
-      - "5006:5006"
-
-  # ── Access plane: nginx (only with --profile prod) ───────────────────────
-  nginx:
-    profiles: ["prod"]
-    image: nginx:1.27-alpine
-    depends_on:
-      - api
-    environment:
-      ZIPSHIP_LISTEN_PORT: "8080"
-      ZIPSHIP_MAX_BODY_SIZE: "500m"
-      ZIPSHIP_API_UPSTREAM: "http://api:5006"
-      ZIPSHIP_SITES_ROOT: "/data/sites"
-      ZIPSHIP_CONSOLE_ROOT: "/var/www/console"
-      ZIPSHIP_PROJECTS_CONF: "/etc/nginx/zipship-projects.conf"
-    volumes:
-      # template + renderer (renderer runs on container start via entrypoint.d)
-      - ../nginx/zipship.conf:/etc/nginx/zipship.conf.template:ro
-      - ../nginx/projects.conf:/etc/nginx/zipship-projects.conf:ro
-      - ../nginx/render.sh:/docker-entrypoint.d/40-render-zipship.sh:ro
-      # shared static artifacts
-      - sites:/data/sites:ro
-    ports:
-      - "8080:8080"
-
 volumes:
   pgdata:
-  sites:

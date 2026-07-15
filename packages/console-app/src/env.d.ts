@@ -7,4 +7,5 @@ declare module '*.css' {
 
 interface Window {
   __ZIPSHIP_API_BASE_URL?: string;
+  __ZIPSHIP_ACCESS_BASE_URL?: string;
 }
