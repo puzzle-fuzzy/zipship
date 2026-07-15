@@ -35,38 +35,11 @@ struct TestInvitationsRepository {
     invitations: Mutex<Vec<(Invitation, TokenDigest)>>,
 }
 
-#[derive(Default)]
-struct RecoveryState {
-    created: Vec<NewPasswordReset>,
-    consumed: Vec<ConsumePasswordReset>,
-}
-
-#[derive(Default)]
-struct TestRecoveryRepository {
-    state: Mutex<RecoveryState>,
-}
-
 mod tokens;
 use tokens::TestApiTokensRepository;
 
-#[async_trait]
-impl PasswordRecoveryRepository for TestRecoveryRepository {
-    async fn create_password_reset(
-        &self,
-        reset: NewPasswordReset,
-    ) -> Result<PasswordResetRequestDisposition, PasswordRecoveryRepositoryError> {
-        self.state.lock().unwrap().created.push(reset);
-        Ok(PasswordResetRequestDisposition::Created)
-    }
-
-    async fn consume_password_reset(
-        &self,
-        reset: ConsumePasswordReset,
-    ) -> Result<(), PasswordRecoveryRepositoryError> {
-        self.state.lock().unwrap().consumed.push(reset);
-        Ok(())
-    }
-}
+mod recovery;
+use recovery::TestRecoveryRepository;
 
 #[derive(Default)]
 struct UploadState {
