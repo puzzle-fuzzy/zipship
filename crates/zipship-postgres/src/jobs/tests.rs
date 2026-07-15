@@ -1,3 +1,4 @@
+use super::row::JobRow;
 use super::*;
 
 #[test]
