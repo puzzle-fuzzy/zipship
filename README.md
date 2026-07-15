@@ -52,6 +52,15 @@ bun run rust:test
 - `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
 - `GET /_api/openapi.json`：当前 Rust API 契约。
 
+当前 Rust 纵向切片已经贯通注册、个人组织、项目和上传入队。上传协议为：
+
+- `POST /_api/projects/{project_id}/uploads`：预留 ZIP 文件名与精确字节数。
+- `PUT /_api/uploads/{upload_id}/content`：携带 Cookie、CSRF、`Content-Length`，以原始 Body 流式写入 staging。
+- `POST /_api/uploads/{upload_id}/complete`：幂等创建 processing Release 与持久化 Artifact Job，返回 `202`。
+- `GET /_api/uploads/{upload_id}`：查询当前上传状态。
+
+Artifact Worker 尚在下一阶段；当前 `processing` Job 已可靠持久化，但不会自动变为 ready Release。
+
 ## 开发端口
 
 - Rust API：`http://127.0.0.1:5006`
