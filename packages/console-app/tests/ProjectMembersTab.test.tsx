@@ -33,18 +33,24 @@ function makeInvitation(overrides: Partial<Invitation> = {}): Invitation {
 
 beforeEach(() => {
   useSettingsStore.setState({ language: "en" });
+  Element.prototype.hasPointerCapture = vi.fn().mockReturnValue(false);
+  Element.prototype.setPointerCapture = vi.fn();
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
 });
 
 function renderTab(
   overrides: Partial<{
     members: Member[];
     invitations: Invitation[];
+    invitationsError: string | null;
     canManage: boolean;
     currentUserId: string | null;
     currentUserRole: string | null;
     onRemove: (member: Member) => Promise<void>;
     onChangeRole: (member: Member, role: string) => Promise<void>;
     onRevokeInvitation: (invitation: Invitation) => Promise<void>;
+    onRetryInvitations: () => void;
   }> = {},
 ) {
   const onRemove = overrides.onRemove ?? vi.fn().mockResolvedValue(undefined);
@@ -58,12 +64,12 @@ function renderTab(
       invitations={overrides.invitations ?? []}
       loading={false}
       invitationsLoading={false}
-      invitationsError={null}
+      invitationsError={overrides.invitationsError ?? null}
       canManage={overrides.canManage ?? true}
       currentUserId={overrides.currentUserId ?? "other"}
       currentUserRole={overrides.currentUserRole ?? "owner"}
       onInviteClick={() => {}}
-      onRetryInvitations={() => {}}
+      onRetryInvitations={overrides.onRetryInvitations ?? (() => {})}
       onChangeRole={onChangeRole}
       onRemove={onRemove}
       onRevokeInvitation={onRevokeInvitation}
@@ -83,6 +89,18 @@ describe("ProjectMembersTab", () => {
     renderTab({ members: [makeMember({ role: "owner" })] });
     expect(screen.getByText("Owner")).toBeInTheDocument();
     expect(screen.getByLabelText("Remove")).toBeDisabled();
+  });
+
+  it("changes a manageable member role", async () => {
+    const member = makeMember();
+    const onChangeRole = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    renderTab({ members: [member], onChangeRole });
+
+    await user.click(screen.getByLabelText("Role"));
+    await user.click(screen.getByRole("option", { name: "Deployer" }));
+
+    await waitFor(() => expect(onChangeRole).toHaveBeenCalledWith(member, "deployer"));
   });
 
   it("hides management controls and pending invitations from viewers", () => {
@@ -142,5 +160,16 @@ describe("ProjectMembersTab", () => {
       currentUserRole: "admin",
     });
     expect(screen.getByLabelText("Revoke invitation")).toBeDisabled();
+  });
+
+  it("shows invitation loading failures and retries in place", async () => {
+    const onRetryInvitations = vi.fn();
+    const user = userEvent.setup();
+    renderTab({ invitationsError: "Network unavailable", onRetryInvitations });
+
+    expect(screen.getByText("Could not load pending invitations")).toBeInTheDocument();
+    expect(screen.getByText("Network unavailable")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetryInvitations).toHaveBeenCalledOnce();
   });
 });
