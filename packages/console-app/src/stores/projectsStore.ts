@@ -2,54 +2,19 @@ import type { ApiClient, components } from "@zipship/api-client";
 import { create } from "zustand";
 import { getApi, getCsrfHeaders } from "../api/client";
 import { ApiClientError, API_ERROR_MESSAGES, mapApiError } from "../api/errors";
+import {
+  deploymentView,
+  projectView,
+  releaseView,
+  type Deployment,
+  type Project,
+  type Release,
+} from "./projectViews";
 
-type ProjectDto = components["schemas"]["ProjectResponse"];
+export type { Deployment, Project, Release } from "./projectViews";
+
 type ReleaseDto = components["schemas"]["ReleaseResponse"];
 type DeploymentDto = components["schemas"]["DeploymentResponse"];
-
-export interface Project {
-  id: string;
-  organizationId: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  currentReleaseId: string | null;
-  spaFallback: boolean;
-  cachePolicy: "standard" | "aggressive";
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Release {
-  id: string;
-  projectId: string;
-  versionNumber: number;
-  releaseHash: string;
-  previewUrl: string | null;
-  fullHash: string;
-  status: string;
-  fileCount: number;
-  totalSize: number;
-  manifest: Record<string, unknown>;
-  detectResult: Record<string, unknown>;
-  createdBy: string;
-  createdAt: string;
-  archivedAt: string | null;
-}
-
-export interface Deployment {
-  id: string;
-  projectId: string;
-  releaseId: string;
-  previousReleaseId: string | null;
-  action: "publish" | "rollback";
-  status: "success" | "failed";
-  operatorId: string;
-  message: string | null;
-  createdAt: string;
-  finishedAt: string | null;
-}
 
 interface ProjectsState {
   projects: Project[];
@@ -87,58 +52,6 @@ interface ProjectsState {
       cachePolicy?: "standard" | "aggressive";
     },
   ) => Promise<void>;
-}
-
-function projectView(project: ProjectDto): Project {
-  return {
-    id: project.id,
-    organizationId: project.organizationId,
-    name: project.name,
-    slug: project.slug,
-    description: project.description ?? null,
-    currentReleaseId: project.activeReleaseId ?? null,
-    spaFallback: project.spaFallback,
-    cachePolicy: project.cachePolicy as Project["cachePolicy"],
-    createdBy: project.createdBy,
-    createdAt: project.createdAt,
-    updatedAt: project.updatedAt,
-  };
-}
-
-function releaseView(release: ReleaseDto): Release {
-  const artifact = release.artifact ?? null;
-  const fullHash = artifact?.sha256 ?? "";
-  return {
-    id: release.id,
-    projectId: release.projectId,
-    versionNumber: release.versionNumber,
-    releaseHash: fullHash ? fullHash.slice(0, 12) : release.id.slice(0, 8),
-    previewUrl: release.previewPath ?? null,
-    fullHash,
-    status: release.isActive ? "active" : release.state,
-    fileCount: artifact?.fileCount ?? 0,
-    totalSize: artifact?.totalSize ?? 0,
-    manifest: (artifact?.manifest ?? {}) as Record<string, unknown>,
-    detectResult: (artifact?.detectReport ?? {}) as Record<string, unknown>,
-    createdBy: release.createdBy,
-    createdAt: release.createdAt,
-    archivedAt: release.archivedAt ?? null,
-  };
-}
-
-function deploymentView(deployment: DeploymentDto): Deployment {
-  return {
-    id: deployment.id,
-    projectId: deployment.projectId,
-    releaseId: deployment.releaseId,
-    previousReleaseId: deployment.previousReleaseId ?? null,
-    action: deployment.action as Deployment["action"],
-    status: deployment.status === "succeeded" ? "success" : "failed",
-    operatorId: deployment.actorId,
-    message: deployment.message ?? null,
-    createdAt: deployment.createdAt,
-    finishedAt: deployment.finishedAt ?? null,
-  };
 }
 
 export const useProjectsStore = create<ProjectsState>((set) => {
