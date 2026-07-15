@@ -5,6 +5,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::time::Duration;
 use zipship_config::Settings;
 
+mod auth;
+
+pub use auth::PgAuthRepository;
+
 static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 pub async fn connect(settings: &Settings) -> Result<PgPool, sqlx::Error> {

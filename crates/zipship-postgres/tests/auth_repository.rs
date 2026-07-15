@@ -1,0 +1,66 @@
+use secrecy::{ExposeSecret, SecretString};
+use sqlx::postgres::PgPoolOptions;
+use std::sync::Arc;
+use zipship_auth::{AuthError, AuthService, RegisterCommand};
+use zipship_postgres::PgAuthRepository;
+
+#[tokio::test]
+#[ignore = "requires an isolated PostgreSQL database"]
+async fn persists_registration_and_revokes_session() {
+    let database_url = std::env::var("ZIPSHIP_TEST_DATABASE_URL")
+        .expect("ZIPSHIP_TEST_DATABASE_URL is required for the PostgreSQL integration test");
+    let pool = PgPoolOptions::new()
+        .max_connections(4)
+        .connect(&database_url)
+        .await
+        .unwrap();
+    zipship_postgres::migrate(&pool).await.unwrap();
+    sqlx::query("TRUNCATE TABLE users CASCADE")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let repository = Arc::new(PgAuthRepository::new(pool.clone()));
+    let service = AuthService::new(repository).await.unwrap();
+    let outcome = service
+        .register(register_command(" Owner@Example.COM "))
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.user.email, "owner@example.com");
+    let stored_digest_size: i32 =
+        sqlx::query_scalar("SELECT octet_length(token_hash) FROM web_sessions WHERE id = $1")
+            .bind(outcome.session_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored_digest_size, 32);
+
+    let duplicate = service
+        .register(register_command("OWNER@example.com"))
+        .await
+        .unwrap_err();
+    assert_eq!(duplicate, AuthError::DuplicateEmail);
+    let user_count: i64 = sqlx::query_scalar("SELECT count(*) FROM users")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(user_count, 1);
+
+    let token = outcome.credentials.session_token().expose_secret();
+    let session = service.authenticate(token).await.unwrap();
+    assert_eq!(session.profile(), outcome.user);
+    service.logout(token).await.unwrap();
+    assert!(matches!(
+        service.authenticate(token).await,
+        Err(AuthError::Unauthenticated),
+    ));
+}
+
+fn register_command(email: &str) -> RegisterCommand {
+    RegisterCommand {
+        email: email.to_owned(),
+        display_name: "Owner".to_owned(),
+        password: SecretString::from("correct horse battery staple".to_owned()),
+    }
+}

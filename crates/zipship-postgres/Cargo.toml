@@ -7,9 +7,17 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+async-trait.workspace = true
 secrecy.workspace = true
 sqlx.workspace = true
+thiserror.workspace = true
+time.workspace = true
+uuid.workspace = true
+zipship-auth = { path = "../zipship-auth" }
 zipship-config = { path = "../zipship-config" }
+
+[dev-dependencies]
+tokio.workspace = true
 
 [lints]
 workspace = true

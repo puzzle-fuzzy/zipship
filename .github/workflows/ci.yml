@@ -9,13 +9,33 @@ jobs:
   rust:
     name: Rust
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: zipship
+          POSTGRES_PASSWORD: zipship
+          POSTGRES_DB: zipship_rust_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U zipship"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ZIPSHIP_DATABASE_URL: postgres://zipship:zipship@localhost:5432/zipship_rust_test
+      ZIPSHIP_TEST_DATABASE_URL: postgres://zipship:zipship@localhost:5432/zipship_rust_test
+      ZIPSHIP_STORAGE_ROOT: /tmp/zipship-rust-storage
     steps:
       - uses: actions/checkout@v4
       - name: Install pinned Rust toolchain
         run: rustup show
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo run -p zipshipd -- migrate
       - run: cargo test --workspace --all-targets
+      - run: cargo test -p zipship-postgres --test auth_repository -- --ignored
 
   quality:
     name: Lint & Typecheck
