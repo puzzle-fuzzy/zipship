@@ -29,6 +29,10 @@ pub enum DomainError {
     InvalidMemberRole,
     #[error("invalid cache policy")]
     InvalidCachePolicy,
+    #[error("invalid upload filename")]
+    InvalidUploadFilename,
+    #[error("invalid upload size")]
+    InvalidUploadSize,
     #[error("invalid SHA-256 artifact digest")]
     InvalidArtifactDigest,
     #[error("invalid state transition from {from} to {to}")]
@@ -36,6 +40,45 @@ pub enum DomainError {
         from: &'static str,
         to: &'static str,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UploadFilename(String);
+
+impl UploadFilename {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        let value = value.as_ref().trim();
+        let valid = !value.is_empty()
+            && value.len() <= 255
+            && !matches!(value, "." | "..")
+            && !value.contains(['/', '\\'])
+            && !value.chars().any(char::is_control)
+            && value.to_ascii_lowercase().ends_with(".zip");
+        valid
+            .then(|| Self(value.to_owned()))
+            .ok_or(DomainError::InvalidUploadFilename)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct UploadSize(u64);
+
+impl UploadSize {
+    pub fn parse(value: u64, maximum: u64) -> Result<Self, DomainError> {
+        (value > 0 && value <= maximum)
+            .then_some(Self(value))
+            .ok_or(DomainError::InvalidUploadSize)
+    }
+
+    pub const fn bytes(self) -> u64 {
+        self.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -281,6 +324,51 @@ pub enum ReleaseStatus {
     Archived,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UploadStatus {
+    Pending,
+    Receiving,
+    Uploaded,
+    Processing,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+impl UploadStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Receiving => "receiving",
+            Self::Uploaded => "uploaded",
+            Self::Processing => "processing",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn transition_to(self, next: Self) -> Result<Self, DomainError> {
+        let allowed = matches!(
+            (self, next),
+            (Self::Pending, Self::Receiving | Self::Cancelled)
+                | (
+                    Self::Receiving,
+                    Self::Uploaded | Self::Failed | Self::Cancelled
+                )
+                | (Self::Uploaded, Self::Processing | Self::Cancelled)
+                | (Self::Processing, Self::Completed | Self::Failed)
+        );
+        allowed
+            .then_some(next)
+            .ok_or(DomainError::InvalidStateTransition {
+                from: self.as_str(),
+                to: next.as_str(),
+            })
+    }
+}
+
 impl ReleaseStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -509,6 +597,37 @@ mod tests {
         assert!(
             ReleaseStatus::Ready
                 .transition_to(ReleaseStatus::Processing)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn validates_upload_metadata_and_state_transitions() {
+        assert_eq!(
+            UploadFilename::parse("  frontend.ZIP  ").unwrap().as_str(),
+            "frontend.ZIP",
+        );
+        assert!(UploadFilename::parse("../frontend.zip").is_err());
+        assert!(UploadFilename::parse("frontend.tar.gz").is_err());
+        assert_eq!(UploadSize::parse(512, 1_024).unwrap().bytes(), 512);
+        assert!(UploadSize::parse(0, 1_024).is_err());
+        assert!(UploadSize::parse(1_025, 1_024).is_err());
+        assert_eq!(
+            UploadStatus::Pending.transition_to(UploadStatus::Receiving),
+            Ok(UploadStatus::Receiving),
+        );
+        assert_eq!(
+            UploadStatus::Uploaded.transition_to(UploadStatus::Processing),
+            Ok(UploadStatus::Processing),
+        );
+        assert!(
+            UploadStatus::Pending
+                .transition_to(UploadStatus::Completed)
+                .is_err()
+        );
+        assert!(
+            UploadStatus::Completed
+                .transition_to(UploadStatus::Receiving)
                 .is_err()
         );
     }
