@@ -1,4 +1,4 @@
-use super::*;
+use super::row::{parse_role, parse_state};
 
 #[test]
 fn rejects_unknown_roles_and_states() {

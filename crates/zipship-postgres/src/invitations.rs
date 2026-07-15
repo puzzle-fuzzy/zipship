@@ -1,16 +1,21 @@
 use async_trait::async_trait;
 use serde_json::json;
-use sqlx::{FromRow, PgPool, Postgres, Transaction};
-use std::str::FromStr;
-use thiserror::Error;
-use time::OffsetDateTime;
+use sqlx::PgPool;
 use uuid::Uuid;
-use zipship_auth::NormalizedEmail;
-use zipship_domain::{MemberRole, PermissionAction};
+use zipship_domain::PermissionAction;
 use zipship_invitations::{
-    AcceptInvitation, AcceptedInvitation, Invitation, InvitationPolicyError, InvitationState,
-    InvitationsRepository, InvitationsRepositoryError, ListInvitations, NewInvitation,
-    RevokeInvitation, validate_invitation_management,
+    AcceptInvitation, AcceptedInvitation, Invitation, InvitationState, InvitationsRepository,
+    InvitationsRepositoryError, ListInvitations, NewInvitation, RevokeInvitation,
+    validate_invitation_management,
+};
+
+mod row;
+mod support;
+
+use row::InvitationRow;
+use support::{
+    expire_invitation, insert_audit, lock_organization, lock_organization_and_actor,
+    map_create_error, map_membership_insert_error, map_policy_error,
 };
 
 #[derive(Debug, Clone)]
@@ -471,180 +476,6 @@ impl InvitationsRepository for PgInvitationsRepository {
             replayed: false,
         })
     }
-}
-
-async fn lock_organization_and_actor(
-    transaction: &mut Transaction<'_, Postgres>,
-    organization_id: Uuid,
-    actor_id: Uuid,
-) -> Result<MemberRole, InvitationsRepositoryError> {
-    lock_organization(transaction, organization_id).await?;
-    let role = sqlx::query_scalar::<_, String>(
-        r#"
-        SELECT role
-        FROM memberships
-        WHERE organization_id = $1 AND user_id = $2
-        FOR UPDATE
-        "#,
-    )
-    .bind(organization_id)
-    .bind(actor_id)
-    .fetch_optional(&mut **transaction)
-    .await
-    .map_err(InvitationsRepositoryError::unavailable)?
-    .ok_or(InvitationsRepositoryError::Forbidden)?;
-    parse_role(&role)
-}
-
-async fn lock_organization(
-    transaction: &mut Transaction<'_, Postgres>,
-    organization_id: Uuid,
-) -> Result<(), InvitationsRepositoryError> {
-    let exists = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        SELECT id
-        FROM organizations
-        WHERE id = $1 AND deleted_at IS NULL
-        FOR UPDATE
-        "#,
-    )
-    .bind(organization_id)
-    .fetch_optional(&mut **transaction)
-    .await
-    .map_err(InvitationsRepositoryError::unavailable)?
-    .is_some();
-    if !exists {
-        return Err(InvitationsRepositoryError::Forbidden);
-    }
-    Ok(())
-}
-
-async fn expire_invitation(
-    transaction: &mut Transaction<'_, Postgres>,
-    invitation_id: Uuid,
-    expired_at: OffsetDateTime,
-) -> Result<(), InvitationsRepositoryError> {
-    sqlx::query("UPDATE invitations SET state = 'expired', resolved_at = $2 WHERE id = $1")
-        .bind(invitation_id)
-        .bind(expired_at)
-        .execute(&mut **transaction)
-        .await
-        .map_err(InvitationsRepositoryError::unavailable)?;
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn insert_audit(
-    transaction: &mut Transaction<'_, Postgres>,
-    organization_id: Uuid,
-    actor_id: Uuid,
-    action: &str,
-    target_type: &str,
-    target_id: Uuid,
-    metadata: serde_json::Value,
-    created_at: OffsetDateTime,
-) -> Result<(), InvitationsRepositoryError> {
-    sqlx::query(
-        r#"
-        INSERT INTO audit_logs (
-            organization_id,
-            actor_id,
-            action,
-            target_type,
-            target_id,
-            metadata,
-            created_at
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        "#,
-    )
-    .bind(organization_id)
-    .bind(actor_id)
-    .bind(action)
-    .bind(target_type)
-    .bind(target_id)
-    .bind(metadata)
-    .bind(created_at)
-    .execute(&mut **transaction)
-    .await
-    .map_err(InvitationsRepositoryError::unavailable)?;
-    Ok(())
-}
-
-fn map_policy_error(_error: InvitationPolicyError) -> InvitationsRepositoryError {
-    InvitationsRepositoryError::Forbidden
-}
-
-fn map_create_error(error: sqlx::Error) -> InvitationsRepositoryError {
-    if constraint_name(&error) == Some("invitations_organization_email_pending_unique") {
-        InvitationsRepositoryError::Pending
-    } else {
-        InvitationsRepositoryError::unavailable(error)
-    }
-}
-
-fn map_membership_insert_error(error: sqlx::Error) -> InvitationsRepositoryError {
-    if constraint_name(&error) == Some("memberships_pkey") {
-        InvitationsRepositoryError::AlreadyMember
-    } else {
-        InvitationsRepositoryError::unavailable(error)
-    }
-}
-
-fn constraint_name(error: &sqlx::Error) -> Option<&str> {
-    error.as_database_error()?.constraint()
-}
-
-fn parse_role(value: &str) -> Result<MemberRole, InvitationsRepositoryError> {
-    MemberRole::from_str(value).map_err(|_| corrupt_record("invitations.role"))
-}
-
-fn parse_state(value: &str) -> Result<InvitationState, InvitationsRepositoryError> {
-    InvitationState::from_str(value).map_err(|_| corrupt_record("invitations.state"))
-}
-
-#[derive(Debug, FromRow)]
-struct InvitationRow {
-    id: Uuid,
-    organization_id: Uuid,
-    email: String,
-    role: String,
-    state: String,
-    invited_by: Option<Uuid>,
-    accepted_by: Option<Uuid>,
-    created_at: OffsetDateTime,
-    expires_at: OffsetDateTime,
-    resolved_at: Option<OffsetDateTime>,
-}
-
-impl TryFrom<InvitationRow> for Invitation {
-    type Error = InvitationsRepositoryError;
-
-    fn try_from(row: InvitationRow) -> Result<Self, Self::Error> {
-        NormalizedEmail::parse(&row.email).map_err(|_| corrupt_record("invitations.email"))?;
-        Ok(Self {
-            id: row.id,
-            organization_id: row.organization_id,
-            email: row.email,
-            role: parse_role(&row.role)?,
-            state: parse_state(&row.state)?,
-            invited_by: row.invited_by,
-            accepted_by: row.accepted_by,
-            created_at: row.created_at,
-            expires_at: row.expires_at,
-            resolved_at: row.resolved_at,
-        })
-    }
-}
-
-#[derive(Debug, Error)]
-#[error("database contains an invalid invitations value in {field}")]
-struct CorruptInvitationRecord {
-    field: &'static str,
-}
-
-fn corrupt_record(field: &'static str) -> InvitationsRepositoryError {
-    InvitationsRepositoryError::unavailable(CorruptInvitationRecord { field })
 }
 
 #[cfg(test)]
