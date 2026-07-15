@@ -1,0 +1,21 @@
+[package]
+name = "zipship-artifact"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+unicode-normalization.workspace = true
+zip.workspace = true
+zipship-domain = { path = "../zipship-domain" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

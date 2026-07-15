@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
   "crates/zipship-api",
+  "crates/zipship-artifact",
   "crates/zipship-auth",
   "crates/zipship-config",
   "crates/zipship-domain",
@@ -70,8 +71,10 @@ tower-http = { version = "0.7.0", features = [
 ] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+unicode-normalization = "0.1.25"
 utoipa = { version = "5.5.0", features = ["axum_extras", "time", "uuid"] }
 uuid = { version = "1.23.5", features = ["serde", "v4"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 subtle = "2.6.1"
 
 [workspace.lints.rust]
