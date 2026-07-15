@@ -1,0 +1,9 @@
+services:
+  edge:
+    command:
+      - caddy
+      - run
+      - --config
+      - /etc/caddy/Caddyfile.smoke
+      - --adapter
+      - caddyfile

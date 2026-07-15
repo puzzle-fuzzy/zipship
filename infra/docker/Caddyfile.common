@@ -1,0 +1,47 @@
+(security_headers) {
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
+	}
+}
+
+http://127.0.0.1:2019 {
+	@health path /healthz
+	respond @health "ok" 200
+	respond 404
+}
+
+https://{$ZIPSHIP_CONSOLE_HOST} {
+	import security_headers
+
+	root * /srv/console
+	encode zstd gzip
+
+	@immutable path /assets/*
+	header @immutable Cache-Control "public, max-age=31536000, immutable"
+	@mutable not path /assets/*
+	header @mutable Cache-Control "no-cache, no-store, must-revalidate"
+	header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self' {$ZIPSHIP_API_ORIGIN}; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; frame-src {$ZIPSHIP_ACCESS_ORIGIN}; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; upgrade-insecure-requests"
+	header X-Frame-Options "DENY"
+
+	try_files {path} /index.html
+	file_server
+}
+
+https://{$ZIPSHIP_API_HOST} {
+	import security_headers
+
+	reverse_proxy zipshipd:5006 {
+		health_uri /_health/ready
+		health_interval 10s
+		health_timeout 3s
+	}
+}
+
+https://{$ZIPSHIP_ACCESS_HOST} {
+	import security_headers
+	reverse_proxy zipshipd:5007
+}

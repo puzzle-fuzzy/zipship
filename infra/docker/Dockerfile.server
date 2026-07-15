@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUST_VERSION=1.97.0
+FROM rust:${RUST_VERSION}-bookworm AS builder
+
+WORKDIR /src
+COPY . .
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    cargo build --locked --release -p zipshipd -p zipship-worker && \
+    install -Dm755 target/release/zipshipd /out/zipshipd && \
+    install -Dm755 target/release/zipship-worker /out/zipship-worker
+
+FROM debian:bookworm-slim AS runtime
+
+ARG ZIPSHIP_UID=10001
+ARG ZIPSHIP_GID=10001
+
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends ca-certificates curl && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd --gid "${ZIPSHIP_GID}" zipship && \
+    useradd --uid "${ZIPSHIP_UID}" --gid zipship --no-create-home \
+      --home-dir /nonexistent --shell /usr/sbin/nologin zipship && \
+    install -d -o zipship -g zipship -m 0750 /var/lib/zipship
+
+COPY --from=builder --chown=zipship:zipship /out/zipshipd /usr/local/bin/zipshipd
+COPY --from=builder --chown=zipship:zipship /out/zipship-worker /usr/local/bin/zipship-worker
+
+ENV ZIPSHIP_HTTP_BIND=0.0.0.0:5006 \
+    ZIPSHIP_ACCESS_BIND=0.0.0.0:5007 \
+    ZIPSHIP_STORAGE_ROOT=/var/lib/zipship
+
+USER zipship:zipship
+WORKDIR /var/lib/zipship
+
+EXPOSE 5006 5007
+STOPSIGNAL SIGTERM
+CMD ["zipshipd", "serve"]

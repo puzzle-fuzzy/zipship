@@ -57,3 +57,16 @@ jobs:
       - run: bun run typecheck:workspaces
       - run: bun run test
       - run: bun run build
+
+  production-smoke:
+    name: Production distribution smoke
+    needs: [rust, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - run: bun run smoke:production

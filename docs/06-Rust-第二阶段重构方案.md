@@ -435,3 +435,15 @@ Control Plane HTTP 与鉴权切片已完成：
 5. `infra/docker/docker-compose.yml` 只保留本地 PostgreSQL 与 Mailpit，并明确不冒充生产栈；旧 Elysia 镜像和软链接 Nginx Access Plane 已删除。本机忽略的第一阶段 Artifact 仅作为未跟踪数据保留，不参与任何 workspace、运行时或测试路径。
 6. 验收通过：Console 38 个文件共 166 项测试、根与五个工作区 TypeScript、Lint、OpenAPI 漂移、冻结安装、Web/Desktop 生产构建、Rust fmt/Clippy 和 129 项常规测试全部通过；独立数据库中 15 项 PostgreSQL 仓储测试、1 项真实 SMTP 和 2 项完整 HTTP/Worker 流程通过并完成清理。
 7. 主前端包约 975 KB 的拆包警告仍是独立性能问题。下一个优先切片是最终 Rust 生产发行：构建非 root、多阶段、锁定依赖的 `zipshipd`/Worker/Console 镜像，建立迁移顺序、健康检查、持久卷、TLS/反向代理拓扑，并在干净环境执行可重复的 Compose smoke test。
+
+### 已完成切片：最终 Rust 生产发行
+
+1. `Dockerfile.server` 使用锁定的 Rust 1.97 多阶段构建，同一次 release 构建产出 `zipshipd` 与 `zipship-worker`；运行时只保留 CA/curl 与两个 binary，并固定 UID/GID 10001。迁移、Server 和 Worker 引用同一不可变镜像，不再构建或携带旧 TypeScript 后端。
+2. `Dockerfile.edge` 在锁定 Bun 1.3.14 和冻结 lockfile 下构建 Web Console，再复制到锁定 Caddy Alpine 运行时。Edge 使用官方 `caddy` 非 root 用户和内部 8080/8443 高端口，drop all capabilities，不通过 root/setcap 绑定特权端口。
+3. Caddy 只承担平台 Console/API/Access 三个 Origin 的自动 HTTPS、静态压缩缓存、安全响应头和反向代理。项目固定预览、活动版本解析、Manifest、SPA fallback 和缓存业务策略仍完全由 Rust Access Plane 决定，不恢复 Nginx 动态项目配置或软链接事实源。
+4. `compose.production.yml` 把 PostgreSQL 放在 internal backend 网络且不暴露宿主端口；一次性 migration 成功后才启动 Server/Worker，二者健康后才启动 Edge。PostgreSQL、Artifact、Caddy certificate/config 各自使用持久卷；只有 Worker/Edge 接入出网网络。
+5. 应用与 Edge 使用只读根文件系统、临时 `/tmp`、`no-new-privileges`、capability 全删除和 PID 上限。生产必需配置通过 Compose required substitution 与 Rust production validation 双重拒绝缺失值；生产栈不包含 Mailpit。
+6. `scripts/smoke-production.ts` 使用随机项目名、端口、子网、数据库密码、Outbox Key 与临时卷，通过 Caddy 内部 CA 的真实 HTTPS 执行注册、组织、项目、ZIP 流式上传、Worker 处理、ready Release、发布、固定预览和正式访问，并在任何结果下清理自己的 Compose 卷。
+7. CI 新增独立 `production-smoke` 门禁，在 Rust 与 Frontend 任务成功后从空 Docker 环境构建最终两只镜像并执行上述发布链路；本地开发 Compose 继续只提供 PostgreSQL/Mailpit，不能代替生产栈。
+8. 平台三域 TLS 与可重复发行物已经进入 R3；用户自定义域名验证/证书状态机、Artifact 保留/GC、指标告警、PostgreSQL/Artifact 备份恢复演练和 Console 首包拆分仍是后续独立问题。
+9. 本轮 Windows 本机的完整生产 smoke 未能进入容器启动阶段：Docker Hub 拉取官方 Bun/Caddy/Rust 基础镜像多次出现 `unexpected EOF`，共享 BuildKit 长时间停留在 0 个 Dockerfile 步骤，最终 Docker Desktop 报告无法启动。测试未创建业务容器/卷，PostgreSQL 17.6 镜像已完整落地；冻结安装、Compose 合并配置、OpenAPI、切换门禁、Lint、TypeScript、Console 166 项测试、Web/Desktop 构建、Rust fmt/check/Clippy 和 129 项常规测试均通过。最终生产链路必须在 Docker 引擎恢复后本机重跑或由新增 CI 门禁成功执行，不能把本次外部阻塞记作 smoke 通过。

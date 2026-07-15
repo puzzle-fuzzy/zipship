@@ -27,6 +27,7 @@ bun run desktop:dev
 bun run cutover:check
 bun run api:generate
 bun run api:check
+bun run smoke:production
 bun run lint
 bun run typecheck:workspaces
 bun run test
@@ -40,6 +41,8 @@ bun run rust:test
 ```
 
 `bun run test:all` 运行 Console 与常规 Rust 测试。真实 PostgreSQL、SMTP 和完整 HTTP/Worker 测试带 `#[ignore]`，只使用隔离测试数据库；CI 会显式运行它们。
+
+`bun run smoke:production` 构建最终非 root Server/Worker 与 Console/Caddy 镜像，并在随机隔离的 HTTPS Compose 环境执行真实上传发布链路。生产编排位于 `infra/docker/compose.production.yml`；`infra/docker/docker-compose.yml` 仅用于本地依赖，不得向其中加入生产服务。
 
 ## Workspace
 

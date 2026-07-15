@@ -27,7 +27,7 @@ services/zipship-worker    Artifact 与邮件后台 Worker
 
 ## 本地启动
 
-需要 Bun 1.3、Rust 1.94、Docker 与 PostgreSQL 17。
+需要 Bun 1.3.14、Rust 1.97、Docker Compose v2 与 PostgreSQL 17。
 
 ```bash
 cp .env.example .env
@@ -74,9 +74,37 @@ bun run rust:test
 
 真实 PostgreSQL、SMTP 与完整 HTTP/Worker 测试由 CI 在隔离服务中串行执行。`bun run test:all` 可运行 Console 与常规 Rust 测试；带 `#[ignore]` 的外部服务测试仍要求专用测试数据库，不能直接指向开发库。
 
-## 基础设施状态
+## 生产发行
 
-`infra/docker/docker-compose.yml` 只提供本地 PostgreSQL 和 Mailpit，不冒充生产发行栈。旧 Elysia 镜像和基于软链接的 Nginx Access Plane 已删除。最终生产镜像、Console 静态托管、TLS/反向代理和从空环境启动 smoke test 将在独立部署切片中完成。
+生产栈由 [compose.production.yml](infra/docker/compose.production.yml) 定义：
+
+- `migrate`、`zipshipd` 与 `worker` 共享一只锁定 Rust 工具链构建的非 root 镜像；迁移成功后才启动长驻进程。
+- `edge` 在锁定 Bun 版本下构建 Console，再由非 root Caddy 提供静态文件、自动 HTTPS、Control Plane 和 Access Plane 反向代理。
+- PostgreSQL、Control Plane、Access Plane 均不直接暴露宿主端口；外部只进入 Caddy 的 HTTP/HTTPS 端口。
+- PostgreSQL、Artifact 与 Caddy 证书状态使用独立持久卷；后端网络为 internal，Worker 单独获得 SMTP 出网能力。
+- 生产模式强制 HTTPS Console URL、Secure Cookie、显式 CORS Origin、加密 Outbox Key 和安全 SMTP。
+
+先复制 [production.env.example](infra/docker/production.env.example) 到仓库外的受保护路径并替换所有占位符。Console/API/Access 应使用同一主域下的三个 HTTPS 子域；Origin 在 Console 构建时固化，改变域名需要重建 Edge 镜像。
+
+```bash
+docker compose \
+  --env-file /secure/path/zipship-production.env \
+  -f infra/docker/compose.production.yml \
+  config --quiet
+
+docker compose \
+  --env-file /secure/path/zipship-production.env \
+  -f infra/docker/compose.production.yml \
+  up -d --build --wait
+```
+
+CI 和本机发行验收使用：
+
+```bash
+bun run smoke:production
+```
+
+该命令使用随机 Compose 项目、端口、密钥、子网和一次性数据卷，通过 Caddy 内部 CA 的 HTTPS 执行真实的“注册 → 项目 → ZIP 流式上传 → Worker → ready Release → 发布 → 固定预览/正式访问”链路，并在成功或失败后清理测试卷。`infra/docker/docker-compose.yml` 仍只服务本地 PostgreSQL/Mailpit 开发依赖。
 
 ## 文档
 

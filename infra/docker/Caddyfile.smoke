@@ -1,0 +1,10 @@
+{
+	admin off
+	persist_config off
+	http_port 8080
+	https_port 8443
+	local_certs
+	skip_install_trust
+}
+
+import Caddyfile.common
