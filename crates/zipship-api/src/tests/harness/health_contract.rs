@@ -136,7 +136,7 @@ async fn publishes_the_openapi_contract() {
 #[test]
 fn committed_openapi_snapshot_matches_the_rust_contract() {
     let expected: Value = serde_json::from_str(include_str!(
-        "../../../../packages/api-client/openapi/zipship.json"
+        "../../../../../packages/api-client/openapi/zipship.json"
     ))
     .unwrap();
     let actual = serde_json::to_value(openapi_document()).unwrap();
