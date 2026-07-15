@@ -51,7 +51,7 @@ pub(crate) enum MemberRoleDto {
 }
 
 impl MemberRoleDto {
-    const fn as_str(&self) -> &'static str {
+    pub(crate) const fn as_str(&self) -> &'static str {
         match self {
             Self::Owner => "owner",
             Self::Admin => "admin",

@@ -22,6 +22,7 @@ use utoipa::{OpenApi, ToSchema};
 use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
+use zipship_invitations::InvitationsService;
 use zipship_members::MembersService;
 use zipship_projects::ProjectsService;
 use zipship_releases::ReleasesService;
@@ -32,6 +33,7 @@ mod audit;
 mod auth;
 mod deployments;
 mod error;
+mod invitations;
 mod members;
 mod projects;
 mod releases;
@@ -128,35 +130,14 @@ pub trait ReadinessProbe: Send + Sync + 'static {
 
 #[derive(Clone)]
 pub struct AppServices {
-    auth: AuthService,
-    audit: AuditService,
-    deployments: DeploymentsService,
-    members: MembersService,
-    projects: ProjectsService,
-    releases: ReleasesService,
-    uploads: UploadsService,
-}
-
-impl AppServices {
-    pub fn new(
-        auth: AuthService,
-        audit: AuditService,
-        deployments: DeploymentsService,
-        members: MembersService,
-        projects: ProjectsService,
-        releases: ReleasesService,
-        uploads: UploadsService,
-    ) -> Self {
-        Self {
-            auth,
-            audit,
-            deployments,
-            members,
-            projects,
-            releases,
-            uploads,
-        }
-    }
+    pub auth: AuthService,
+    pub audit: AuditService,
+    pub deployments: DeploymentsService,
+    pub invitations: InvitationsService,
+    pub members: MembersService,
+    pub projects: ProjectsService,
+    pub releases: ReleasesService,
+    pub uploads: UploadsService,
 }
 
 #[derive(Clone)]
@@ -165,6 +146,7 @@ pub struct AppState {
     pub(crate) auth: AuthService,
     pub(crate) audit: AuditService,
     pub(crate) deployments: DeploymentsService,
+    pub(crate) invitations: InvitationsService,
     pub(crate) members: MembersService,
     pub(crate) projects: ProjectsService,
     pub(crate) releases: ReleasesService,
@@ -186,6 +168,7 @@ impl AppState {
             auth: services.auth,
             audit: services.audit,
             deployments: services.deployments,
+            invitations: services.invitations,
             members: services.members,
             projects: services.projects,
             releases: services.releases,
@@ -216,6 +199,10 @@ impl AppState {
         members::list_members,
         members::update_member_role,
         members::remove_member,
+        invitations::create_invitation,
+        invitations::list_invitations,
+        invitations::revoke_invitation,
+        invitations::accept_invitation,
         projects::list_projects,
         projects::create_project,
         projects::get_project,
@@ -252,6 +239,13 @@ impl AppState {
         members::MemberResponse,
         members::UpdateMemberRoleRequest,
         members::MemberRoleDto,
+        invitations::CreateInvitationRequest,
+        invitations::AcceptInvitationRequest,
+        invitations::IssuedInvitationResponse,
+        invitations::InvitationsResponse,
+        invitations::InvitationResponse,
+        invitations::InvitationStateDto,
+        invitations::AcceptedInvitationResponse,
         projects::CreateProjectRequest,
         projects::UpdateProjectRequest,
         projects::ProjectCachePolicyRequest,
@@ -271,6 +265,7 @@ impl AppState {
         (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
         (name = "members", description = "Organization member lifecycle"),
+        (name = "invitations", description = "Secure organization invitation lifecycle"),
         (name = "projects", description = "Static deployment projects"),
         (name = "releases", description = "Immutable project release history"),
         (name = "uploads", description = "Bounded archive ingestion and processing")
@@ -293,6 +288,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(auth::router())
         .merge(audit::router())
         .merge(deployments::router())
+        .merge(invitations::router())
         .merge(members::router())
         .merge(projects::router())
         .merge(releases::router())
@@ -403,6 +399,11 @@ mod tests {
         DeploymentsRepositoryError, DeploymentsService, NewDeployment,
     };
     use zipship_domain::{ArtifactDigest, CachePolicy, MemberRole, ReleaseStatus, UploadStatus};
+    use zipship_invitations::{
+        AcceptInvitation, AcceptedInvitation, Invitation, InvitationState, InvitationsRepository,
+        InvitationsRepositoryError, InvitationsService, ListInvitations, NewInvitation,
+        RevokeInvitation,
+    };
     use zipship_members::{
         Member, MembersRepository, MembersRepositoryError, RemoveMember, UpdateMemberRole,
     };
@@ -450,6 +451,11 @@ mod tests {
     }
 
     struct TestMembersRepository;
+
+    #[derive(Default)]
+    struct TestInvitationsRepository {
+        invitations: Mutex<Vec<(Invitation, TokenDigest)>>,
+    }
 
     #[derive(Default)]
     struct UploadState {
@@ -916,6 +922,111 @@ mod tests {
     }
 
     #[async_trait]
+    impl InvitationsRepository for TestInvitationsRepository {
+        async fn create_invitation(
+            &self,
+            invitation: NewInvitation,
+        ) -> Result<Invitation, InvitationsRepositoryError> {
+            let stored = Invitation {
+                id: invitation.id,
+                organization_id: invitation.organization_id,
+                email: invitation.email.as_str().to_owned(),
+                role: invitation.role,
+                state: InvitationState::Pending,
+                invited_by: Some(invitation.invited_by),
+                accepted_by: None,
+                created_at: invitation.created_at,
+                expires_at: invitation.expires_at,
+                resolved_at: None,
+            };
+            self.invitations
+                .lock()
+                .unwrap()
+                .push((stored.clone(), invitation.token_digest));
+            Ok(stored)
+        }
+
+        async fn list_invitations(
+            &self,
+            request: ListInvitations,
+        ) -> Result<Vec<Invitation>, InvitationsRepositoryError> {
+            if request.organization_id != TEST_ORGANIZATION_ID {
+                return Err(InvitationsRepositoryError::Forbidden);
+            }
+            Ok(self
+                .invitations
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(invitation, _)| invitation)
+                .filter(|invitation| {
+                    invitation.state == InvitationState::Pending
+                        && invitation.expires_at > request.now
+                })
+                .cloned()
+                .collect())
+        }
+
+        async fn revoke_invitation(
+            &self,
+            request: RevokeInvitation,
+        ) -> Result<(), InvitationsRepositoryError> {
+            let mut invitations = self.invitations.lock().unwrap();
+            let invitation = invitations
+                .iter_mut()
+                .map(|(invitation, _)| invitation)
+                .find(|invitation| {
+                    invitation.organization_id == request.organization_id
+                        && invitation.id == request.invitation_id
+                        && invitation.state == InvitationState::Pending
+                })
+                .ok_or(InvitationsRepositoryError::NotFound)?;
+            invitation.state = InvitationState::Revoked;
+            invitation.resolved_at = Some(request.revoked_at);
+            Ok(())
+        }
+
+        async fn accept_invitation(
+            &self,
+            request: AcceptInvitation,
+        ) -> Result<AcceptedInvitation, InvitationsRepositoryError> {
+            let mut invitations = self.invitations.lock().unwrap();
+            let invitation = invitations
+                .iter_mut()
+                .find(|(_, digest)| *digest == request.token_digest)
+                .map(|(invitation, _)| invitation)
+                .ok_or(InvitationsRepositoryError::NotFound)?;
+            if invitation.state == InvitationState::Accepted
+                && invitation.accepted_by == Some(request.actor_id)
+            {
+                return Ok(AcceptedInvitation {
+                    invitation_id: invitation.id,
+                    organization_id: invitation.organization_id,
+                    user_id: request.actor_id,
+                    role: invitation.role,
+                    replayed: true,
+                });
+            }
+            if invitation.state != InvitationState::Pending {
+                return Err(InvitationsRepositoryError::NotFound);
+            }
+            if invitation.email != request.actor_email.as_str() {
+                return Err(InvitationsRepositoryError::WrongRecipient);
+            }
+            invitation.state = InvitationState::Accepted;
+            invitation.accepted_by = Some(request.actor_id);
+            invitation.resolved_at = Some(request.accepted_at);
+            Ok(AcceptedInvitation {
+                invitation_id: invitation.id,
+                organization_id: invitation.organization_id,
+                user_id: request.actor_id,
+                role: invitation.role,
+                replayed: false,
+            })
+        }
+    }
+
+    #[async_trait]
     impl AuthRepository for TestAuthRepository {
         async fn create_user_with_session(
             &self,
@@ -1028,6 +1139,7 @@ mod tests {
             .await
             .unwrap();
         let audit = AuditService::new(Arc::new(TestAuditRepository));
+        let invitations = InvitationsService::new(Arc::new(TestInvitationsRepository::default()));
         let members = MembersService::new(Arc::new(TestMembersRepository));
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
@@ -1048,15 +1160,16 @@ mod tests {
                 status,
                 _storage_root: storage_root,
             }),
-            AppServices::new(
+            AppServices {
                 auth,
                 audit,
                 deployments,
+                invitations,
                 members,
                 projects,
                 releases,
                 uploads,
-            ),
+            },
             storage.clone(),
             BrowserPolicy::new(
                 CookiePolicy::new(secure_cookies),
@@ -1575,6 +1688,184 @@ mod tests {
         assert_eq!(
             json_body(remove_last_owner).await,
             json!({ "code": "LAST_OWNER" })
+        );
+    }
+
+    #[tokio::test]
+    async fn invitation_routes_issue_manage_and_accept_one_time_tokens() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let collection_path = format!("/_api/organizations/{TEST_ORGANIZATION_ID}/invitations");
+        let invitation_body = json!({
+            "email": "owner@example.com",
+            "role": "developer"
+        })
+        .to_string();
+
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::post(&collection_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(invitation_body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+
+        let invalid_email = app
+            .clone()
+            .oneshot(
+                Request::post(&collection_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(
+                        json!({ "email": "invalid", "role": "viewer" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invalid_email.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            json_body(invalid_email).await,
+            json!({ "code": "INVALID_EMAIL" })
+        );
+
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post(&collection_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(invitation_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        let created = json_body(created).await;
+        let token = created["acceptToken"].as_str().unwrap().to_owned();
+        assert_eq!(token.len(), 43);
+        assert_eq!(created["invitation"]["state"], "pending");
+        assert!(created["invitation"].get("acceptToken").is_none());
+
+        let listed = app
+            .clone()
+            .oneshot(
+                Request::get(&collection_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.status(), StatusCode::OK);
+        let listed = json_body(listed).await;
+        assert_eq!(listed["invitations"].as_array().unwrap().len(), 1);
+        assert!(listed["invitations"][0].get("acceptToken").is_none());
+
+        let missing_accept_csrf = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/invitations/accept")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "token": token }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_accept_csrf.status(), StatusCode::FORBIDDEN);
+
+        for replayed in [false, true] {
+            let accepted = app
+                .clone()
+                .oneshot(
+                    Request::post("/_api/invitations/accept")
+                        .header(header::COOKIE, &cookie_header)
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .header("x-csrf-token", cookie_value(&csrf))
+                        .body(Body::from(json!({ "token": token }).to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(accepted.status(), StatusCode::OK);
+            assert_eq!(json_body(accepted).await["replayed"], replayed);
+        }
+
+        let second_created = app
+            .clone()
+            .oneshot(
+                Request::post(&collection_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(
+                        json!({ "email": "other@example.com", "role": "viewer" }).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let second_created = json_body(second_created).await;
+        let second_id = second_created["invitation"]["id"].as_str().unwrap();
+        let second_token = second_created["acceptToken"].as_str().unwrap();
+
+        let wrong_recipient = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/invitations/accept")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(json!({ "token": second_token }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(wrong_recipient.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            json_body(wrong_recipient).await,
+            json!({ "code": "INVITATION_WRONG_RECIPIENT" })
+        );
+
+        let revoked = app
+            .clone()
+            .oneshot(
+                Request::delete(format!("{collection_path}/{second_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
+
+        let revoked_token = app
+            .oneshot(
+                Request::post("/_api/invitations/accept")
+                    .header(header::COOKIE, cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(json!({ "token": second_token }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revoked_token.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            json_body(revoked_token).await,
+            json!({ "code": "INVITATION_NOT_FOUND" })
         );
     }
 

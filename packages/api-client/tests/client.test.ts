@@ -166,3 +166,92 @@ test("binds the generated member removal contract", async () => {
   expect(request?.credentials).toBe("include");
   expect(request?.headers.get("x-csrf-token")).toBe("csrf-token");
 });
+
+test("binds invitation management without placing secrets in URLs", async () => {
+  const requests: Request[] = [];
+  const organizationId = "00000000-0000-0000-0000-000000000001";
+  const invitationId = "00000000-0000-0000-0000-000000000002";
+  const userId = "00000000-0000-0000-0000-000000000003";
+  const token = "a".repeat(43);
+  const invitation = {
+    id: invitationId,
+    organizationId,
+    email: "invitee@example.com",
+    role: "developer" as const,
+    state: "pending" as const,
+    invitedBy: userId,
+    createdAt: "2026-07-15T00:00:00Z",
+    expiresAt: "2026-07-22T00:00:00Z",
+  };
+  const api = createApiClient("https://control.example.test", {
+    fetch: async (input) => {
+      requests.push(input);
+      if (input.method === "POST" && input.url.endsWith("/invitations")) {
+        return Response.json({ invitation, acceptToken: token }, { status: 201 });
+      }
+      if (input.method === "POST") {
+        return Response.json({
+          invitationId,
+          organizationId,
+          userId,
+          role: "developer",
+          replayed: false,
+        });
+      }
+      if (input.method === "GET") {
+        return Response.json({ invitations: [invitation] });
+      }
+      return new Response(null, { status: 204 });
+    },
+  });
+
+  const created = await api.POST(
+    "/_api/organizations/{organization_id}/invitations",
+    {
+      params: {
+        path: { organization_id: organizationId },
+        header: { "x-csrf-token": "csrf-token" },
+      },
+      body: { email: "invitee@example.com", role: "developer" },
+    },
+  );
+  const listed = await api.GET(
+    "/_api/organizations/{organization_id}/invitations",
+    { params: { path: { organization_id: organizationId } } },
+  );
+  const accepted = await api.POST("/_api/invitations/accept", {
+    params: { header: { "x-csrf-token": "csrf-token" } },
+    body: { token },
+  });
+  const revoked = await api.DELETE(
+    "/_api/organizations/{organization_id}/invitations/{invitation_id}",
+    {
+      params: {
+        path: {
+          organization_id: organizationId,
+          invitation_id: invitationId,
+        },
+        header: { "x-csrf-token": "csrf-token" },
+      },
+    },
+  );
+
+  expect(created.data?.acceptToken).toBe(token);
+  expect(listed.data?.invitations[0]?.email).toBe("invitee@example.com");
+  expect(accepted.data?.replayed).toBe(false);
+  expect(revoked.error).toBeUndefined();
+  expect(requests.map((request) => request.method)).toEqual([
+    "POST",
+    "GET",
+    "POST",
+    "DELETE",
+  ]);
+  expect(requests[2]?.url).toBe(
+    "https://control.example.test/_api/invitations/accept",
+  );
+  expect(requests[2]?.url).not.toContain(token);
+  expect(await requests[2]?.clone().json()).toEqual({ token });
+  expect(requests[0]?.headers.get("x-csrf-token")).toBe("csrf-token");
+  expect(requests[2]?.headers.get("x-csrf-token")).toBe("csrf-token");
+  expect(requests[3]?.headers.get("x-csrf-token")).toBe("csrf-token");
+});

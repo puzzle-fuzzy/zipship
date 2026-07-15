@@ -198,6 +198,10 @@ impl OpaqueToken {
     pub fn digest(&self) -> TokenDigest {
         self.digest
     }
+
+    pub fn into_secret(self) -> SecretString {
+        self.secret
+    }
 }
 
 impl fmt::Debug for OpaqueToken {

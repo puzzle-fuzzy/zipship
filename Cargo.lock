@@ -2514,6 +2514,7 @@ dependencies = [
  "zipship-auth",
  "zipship-deployments",
  "zipship-domain",
+ "zipship-invitations",
  "zipship-members",
  "zipship-projects",
  "zipship-releases",
@@ -2599,6 +2600,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zipship-invitations"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "secrecy",
+ "thiserror",
+ "time",
+ "tokio",
+ "uuid",
+ "zipship-auth",
+ "zipship-domain",
+]
+
+[[package]]
 name = "zipship-jobs"
 version = "0.1.0"
 dependencies = [
@@ -2641,6 +2656,7 @@ dependencies = [
  "zipship-config",
  "zipship-deployments",
  "zipship-domain",
+ "zipship-invitations",
  "zipship-jobs",
  "zipship-members",
  "zipship-projects",
@@ -2723,6 +2739,7 @@ dependencies = [
  "zipship-config",
  "zipship-deployments",
  "zipship-domain",
+ "zipship-invitations",
  "zipship-jobs",
  "zipship-members",
  "zipship-postgres",
@@ -2750,6 +2767,7 @@ dependencies = [
  "zipship-auth",
  "zipship-config",
  "zipship-deployments",
+ "zipship-invitations",
  "zipship-members",
  "zipship-postgres",
  "zipship-projects",

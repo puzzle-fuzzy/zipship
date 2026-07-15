@@ -16,6 +16,7 @@ use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
 use zipship_deployments::DeploymentsService;
+use zipship_invitations::InvitationsService;
 use zipship_members::MembersService;
 use zipship_projects::ProjectsService;
 use zipship_releases::ReleasesService;
@@ -106,6 +107,9 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let members = MembersService::new(Arc::new(zipship_postgres::PgMembersRepository::new(
         readiness.pool.clone(),
     )));
+    let invitations = InvitationsService::new(Arc::new(
+        zipship_postgres::PgInvitationsRepository::new(readiness.pool.clone()),
+    ));
     let deployments = DeploymentsService::new(Arc::new(
         zipship_postgres::PgDeploymentsRepository::new(readiness.pool.clone()),
     ));
@@ -131,15 +135,16 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     ));
     let control_app = build_router(AppState::new(
         readiness,
-        AppServices::new(
+        AppServices {
             auth,
             audit,
             deployments,
+            invitations,
             members,
             projects,
             releases,
             uploads,
-        ),
+        },
         storage,
         BrowserPolicy::new(
             cookie_policy,
