@@ -33,6 +33,7 @@ zip.workspace = true
 zipship-access = { path = "../../crates/zipship-access" }
 zipship-api = { path = "../../crates/zipship-api" }
 zipship-auth = { path = "../../crates/zipship-auth" }
+zipship-deployments = { path = "../../crates/zipship-deployments" }
 zipship-projects = { path = "../../crates/zipship-projects" }
 zipship-uploads = { path = "../../crates/zipship-uploads" }
 

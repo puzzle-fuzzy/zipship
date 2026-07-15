@@ -14,11 +14,12 @@ use zipship_access::PreviewService;
 use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
 use zipship_artifact::ArtifactLimits;
 use zipship_auth::AuthService;
+use zipship_deployments::DeploymentsService;
 use zipship_domain::ArtifactDigest;
 use zipship_jobs::{JobLease, WorkerId};
 use zipship_postgres::{
-    PgArtifactJobsRepository, PgAuthRepository, PgJobsRepository, PgPreviewRepository,
-    PgProjectsRepository, PgUploadsRepository,
+    PgArtifactJobsRepository, PgAuthRepository, PgDeploymentsRepository, PgJobsRepository,
+    PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
 use zipship_storage::LocalArtifactStore;
@@ -275,6 +276,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
         .await
         .unwrap();
     let projects = ProjectsService::new(Arc::new(PgProjectsRepository::new(pool.clone())));
+    let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
     let uploads = UploadsService::new(
         Arc::new(PgUploadsRepository::new(pool.clone())),
         UploadLimits::default(),
@@ -282,6 +284,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
     build_router(AppState::new(
         Arc::new(Probe),
         auth,
+        deployments,
         projects,
         uploads,
         storage.clone(),

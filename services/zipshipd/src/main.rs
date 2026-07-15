@@ -11,6 +11,7 @@ use zipship_access::PreviewService;
 use zipship_api::{AppState, CheckStatus, CookiePolicy, ReadinessProbe, build_router};
 use zipship_auth::AuthService;
 use zipship_config::{Environment, Settings};
+use zipship_deployments::DeploymentsService;
 use zipship_projects::ProjectsService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::{UploadLimits, UploadsService};
@@ -93,6 +94,9 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let projects = ProjectsService::new(Arc::new(zipship_postgres::PgProjectsRepository::new(
         readiness.pool.clone(),
     )));
+    let deployments = DeploymentsService::new(Arc::new(
+        zipship_postgres::PgDeploymentsRepository::new(readiness.pool.clone()),
+    ));
     let uploads = UploadsService::new(
         Arc::new(zipship_postgres::PgUploadsRepository::new(
             readiness.pool.clone(),
@@ -113,6 +117,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let control_app = build_router(AppState::new(
         readiness,
         auth,
+        deployments,
         projects,
         uploads,
         storage,

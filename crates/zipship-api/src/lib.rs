@@ -19,11 +19,13 @@ use tower_http::{
 };
 use utoipa::{OpenApi, ToSchema};
 use zipship_auth::AuthService;
+use zipship_deployments::DeploymentsService;
 use zipship_projects::ProjectsService;
 use zipship_storage::LocalArtifactStore;
 use zipship_uploads::UploadsService;
 
 mod auth;
+mod deployments;
 mod error;
 mod projects;
 mod request;
@@ -56,6 +58,7 @@ pub trait ReadinessProbe: Send + Sync + 'static {
 pub struct AppState {
     pub(crate) readiness: Arc<dyn ReadinessProbe>,
     pub(crate) auth: AuthService,
+    pub(crate) deployments: DeploymentsService,
     pub(crate) projects: ProjectsService,
     pub(crate) uploads: UploadsService,
     pub(crate) storage: LocalArtifactStore,
@@ -66,6 +69,7 @@ impl AppState {
     pub fn new(
         readiness: Arc<dyn ReadinessProbe>,
         auth: AuthService,
+        deployments: DeploymentsService,
         projects: ProjectsService,
         uploads: UploadsService,
         storage: LocalArtifactStore,
@@ -74,6 +78,7 @@ impl AppState {
         Self {
             readiness,
             auth,
+            deployments,
             projects,
             uploads,
             storage,
@@ -91,6 +96,9 @@ impl AppState {
         auth::login,
         auth::me,
         auth::logout,
+        deployments::publish,
+        deployments::rollback,
+        deployments::list_deployments,
         projects::list_organizations,
         projects::list_members,
         projects::list_projects,
@@ -108,6 +116,10 @@ impl AppState {
         auth::LoginRequest,
         auth::AuthResponse,
         auth::UserResponse,
+        deployments::DeploymentMessageRequest,
+        deployments::DeploymentEnvelope,
+        deployments::DeploymentResponse,
+        deployments::DeploymentsResponse,
         projects::OrganizationsResponse,
         projects::OrganizationResponse,
         projects::MembersResponse,
@@ -125,6 +137,7 @@ impl AppState {
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "auth", description = "Browser session authentication"),
+        (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
         (name = "projects", description = "Static deployment projects"),
         (name = "uploads", description = "Bounded archive ingestion and processing")
@@ -140,6 +153,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
+        .merge(deployments::router())
         .merge(projects::router())
         .merge(uploads::standard_router())
         .layer(DefaultBodyLimit::max(16 * 1_024))
@@ -237,6 +251,10 @@ mod tests {
         AuthRepository, AuthRepositoryError, NewPersonalOrganization, NewSession, NewUser,
         NormalizedEmail, ResolvedSession, StoredUser, TokenDigest,
     };
+    use zipship_deployments::{
+        Deployment, DeploymentResult, DeploymentStatus, DeploymentsRepository,
+        DeploymentsRepositoryError, DeploymentsService, NewDeployment,
+    };
     use zipship_domain::{CachePolicy, MemberRole, UploadStatus};
     use zipship_projects::{
         MemberSummary, NewProject, OrganizationSummary, Project, ProjectAccess, ProjectsRepository,
@@ -287,6 +305,54 @@ mod tests {
     #[derive(Default)]
     struct TestUploadsRepository {
         state: Mutex<UploadState>,
+    }
+
+    #[derive(Default)]
+    struct TestDeploymentsRepository {
+        deployments: Mutex<Vec<Deployment>>,
+    }
+
+    #[async_trait]
+    impl DeploymentsRepository for TestDeploymentsRepository {
+        async fn execute(
+            &self,
+            command: NewDeployment,
+        ) -> Result<DeploymentResult, DeploymentsRepositoryError> {
+            let deployment = Deployment {
+                id: command.id,
+                project_id: command.project_id,
+                release_id: command.release_id,
+                previous_release_id: None,
+                action: command.action,
+                status: DeploymentStatus::Succeeded,
+                actor_id: command.actor_id,
+                message: command.message,
+                created_at: command.now,
+                finished_at: command.now,
+            };
+            self.deployments.lock().unwrap().push(deployment.clone());
+            Ok(DeploymentResult {
+                deployment,
+                active_release_id: command.release_id,
+                replayed: false,
+            })
+        }
+
+        async fn list_for_project(
+            &self,
+            project_id: Uuid,
+            _actor_id: Uuid,
+        ) -> Result<Vec<Deployment>, DeploymentsRepositoryError> {
+            Ok(self
+                .deployments
+                .lock()
+                .unwrap()
+                .iter()
+                .rev()
+                .filter(|deployment| deployment.project_id == project_id)
+                .cloned()
+                .collect())
+        }
     }
 
     #[async_trait]
@@ -655,6 +721,7 @@ mod tests {
             .await
             .unwrap();
         let projects = ProjectsService::new(Arc::new(TestProjectsRepository::default()));
+        let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
         let uploads = UploadsService::new(
             Arc::new(TestUploadsRepository::default()),
             UploadLimits {
@@ -672,6 +739,7 @@ mod tests {
                 _storage_root: storage_root,
             }),
             auth,
+            deployments,
             projects,
             uploads,
             storage.clone(),
@@ -762,6 +830,11 @@ mod tests {
         let document = json_body(response).await;
         assert!(document["paths"]["/_api/auth/register"].is_object());
         assert!(document["paths"]["/_api/auth/logout"].is_object());
+        assert!(
+            document["paths"]["/_api/projects/{project_id}/releases/{release_id}/publish"]
+                .is_object()
+        );
+        assert!(document["paths"]["/_api/projects/{project_id}/deployments"].is_object());
         assert!(document["paths"]["/_api/organizations"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
@@ -970,6 +1043,110 @@ mod tests {
             json_body(invalid_path).await,
             json!({ "code": "INVALID_PATH_PARAMETER" }),
         );
+    }
+
+    #[tokio::test]
+    async fn deployment_routes_require_csrf_and_idempotency_and_list_history() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let project_id = Uuid::from_u128(80);
+        let release_id = Uuid::from_u128(81);
+        let publish_path = format!("/_api/projects/{project_id}/releases/{release_id}/publish");
+        let body = json!({ "message": " Production release " }).to_string();
+
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::post(&publish_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("idempotency-key", "publish-81")
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+
+        let missing_idempotency_key = app
+            .clone()
+            .oneshot(
+                Request::post(&publish_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            missing_idempotency_key.status(),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+        assert_eq!(
+            json_body(missing_idempotency_key).await,
+            json!({ "code": "INVALID_DEPLOYMENT_INPUT" }),
+        );
+
+        let published = app
+            .clone()
+            .oneshot(
+                Request::post(&publish_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .header("idempotency-key", "publish-81")
+                    .header("x-request-id", Uuid::from_u128(82).to_string())
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(published.status(), StatusCode::OK);
+        assert_eq!(published.headers()[header::CACHE_CONTROL], "no-store");
+        let published = json_body(published).await;
+        assert_eq!(published["deployment"]["action"], "publish");
+        assert_eq!(published["deployment"]["message"], "Production release");
+        assert_eq!(published["activeReleaseId"], release_id.to_string());
+        assert_eq!(published["replayed"], false);
+
+        let rollback_path = format!("/_api/projects/{project_id}/releases/{release_id}/rollback");
+        let rolled_back = app
+            .clone()
+            .oneshot(
+                Request::post(rollback_path)
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .header("idempotency-key", "rollback-81")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rolled_back.status(), StatusCode::OK);
+        assert_eq!(
+            json_body(rolled_back).await["deployment"]["action"],
+            "rollback"
+        );
+
+        let history = app
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}/deployments"))
+                    .header(header::COOKIE, cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(history.status(), StatusCode::OK);
+        let history = json_body(history).await;
+        assert_eq!(history["deployments"].as_array().unwrap().len(), 2);
+        assert_eq!(history["deployments"][0]["action"], "rollback");
     }
 
     #[tokio::test]

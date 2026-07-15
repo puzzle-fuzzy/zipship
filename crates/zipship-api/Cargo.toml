@@ -20,6 +20,7 @@ tracing.workspace = true
 utoipa.workspace = true
 uuid.workspace = true
 zipship-auth = { path = "../zipship-auth" }
+zipship-deployments = { path = "../zipship-deployments" }
 zipship-projects = { path = "../zipship-projects" }
 zipship-storage = { path = "../zipship-storage" }
 zipship-uploads = { path = "../zipship-uploads" }
