@@ -20,6 +20,7 @@ ARG ZIPSHIP_EDGE_GID=10002
 RUN addgroup --system --gid "${ZIPSHIP_EDGE_GID}" zipship-edge && \
     adduser --system --disabled-password --no-create-home \
       --uid "${ZIPSHIP_EDGE_UID}" --ingroup zipship-edge zipship-edge && \
+    setcap -r /usr/bin/caddy && \
     mkdir -p /srv/console /data /config && \
     chown -R zipship-edge:zipship-edge /srv/console /data /config
 
