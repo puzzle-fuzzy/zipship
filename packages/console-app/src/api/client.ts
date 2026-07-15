@@ -4,10 +4,14 @@ import {
   type ApiClient,
 } from "@zipship/api-client";
 
+type ZipShipRuntimeWindow = Window & {
+  __ZIPSHIP_API_BASE_URL?: string;
+};
+
 /** Base URL injected by the web or desktop shell before the first API call. */
 export function getApiBaseUrl(): string {
   if (typeof window === "undefined") return "";
-  return window.__ZIPSHIP_API_BASE_URL ?? "";
+  return (window as ZipShipRuntimeWindow).__ZIPSHIP_API_BASE_URL ?? "";
 }
 
 let client: ApiClient | null = null;

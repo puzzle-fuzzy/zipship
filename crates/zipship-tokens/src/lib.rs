@@ -448,6 +448,10 @@ impl ApiTokensService {
             .map_err(map_repository_error)
     }
 
+    pub fn state(&self, token: &ApiToken) -> ApiTokenState {
+        token.state_at(self.clock.now())
+    }
+
     pub async fn revoke(&self, command: RevokeApiTokenCommand) -> Result<ApiToken, ApiTokensError> {
         self.repository
             .revoke_token(RevokeApiToken {

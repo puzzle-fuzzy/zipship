@@ -4,6 +4,38 @@
  */
 
 export interface paths {
+    "/_api/api-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_api_tokens"];
+        put?: never;
+        post: operations["create_api_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_api/api-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["revoke_api_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/_api/auth/login": {
         parameters: {
             query?: never;
@@ -421,6 +453,25 @@ export interface components {
             /** Format: uuid */
             userId: string;
         };
+        ApiTokenResponse: {
+            createdAt: string;
+            displayPrefix: string;
+            expiresAt: string;
+            /** Format: uuid */
+            id: string;
+            lastUsedAt?: string | null;
+            name: string;
+            revokedAt?: string | null;
+            scopes: components["schemas"]["ApiTokenScopeDto"][];
+            state: components["schemas"]["ApiTokenStateDto"];
+        };
+        /** @enum {string} */
+        ApiTokenScopeDto: "projects:read" | "releases:read" | "uploads:write" | "deployments:write";
+        /** @enum {string} */
+        ApiTokenStateDto: "active" | "expired" | "revoked";
+        ApiTokensResponse: {
+            apiTokens: components["schemas"]["ApiTokenResponse"][];
+        };
         ArtifactManifestResponse: {
             files: components["schemas"]["ManifestEntryResponse"][];
             /** Format: int32 */
@@ -462,6 +513,12 @@ export interface components {
         ConfirmPasswordResetRequest: {
             password: string;
             token: string;
+        };
+        CreateApiTokenRequest: {
+            /** Format: int32 */
+            expiresInDays: number;
+            name: string;
+            scopes: components["schemas"]["ApiTokenScopeDto"][];
         };
         CreateInvitationRequest: {
             email: string;
@@ -541,6 +598,10 @@ export interface components {
         InvitationStateDto: "pending" | "accepted" | "revoked" | "expired";
         InvitationsResponse: {
             invitations: components["schemas"]["InvitationResponse"][];
+        };
+        IssuedApiTokenResponse: {
+            apiToken: components["schemas"]["ApiTokenResponse"];
+            secret: string;
         };
         IssuedInvitationResponse: {
             acceptToken: string;
@@ -698,6 +759,194 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_api_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active tokens first followed by recent history */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokensResponse"];
+                };
+            };
+            /** @description Browser session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_api_token: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token issued with the session */
+                "x-csrf-token": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateApiTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Token created; the secret is returned only once */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedApiTokenResponse"];
+                };
+            };
+            /** @description JSON is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Browser session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF token is absent or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Active token limit reached */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Name, scopes, or expiration is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    revoke_api_token: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description CSRF token issued with the session */
+                "x-csrf-token": string;
+            };
+            path: {
+                /** @description API token ID */
+                token_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token revoked; replay is safe */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Path parameter is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Browser session is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description CSRF token is absent or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token does not belong to the current user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token storage is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     login: {
         parameters: {
             query?: never;
@@ -1719,7 +1968,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -1728,7 +1977,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Current user is not a member */
+            /** @description Token scope or current membership forbids access */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -1862,8 +2111,17 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description API token lacks projects:read scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2005,7 +2263,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentsResponse"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2014,7 +2272,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Current member cannot view this project */
+            /** @description Token scope or current member cannot view deployments */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2064,8 +2322,17 @@ export interface operations {
                     "application/json": components["schemas"]["ReleasesResponse"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description API token lacks releases:read scope */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2099,8 +2366,8 @@ export interface operations {
             header: {
                 /** @description Unique visible-ASCII operation key, up to 128 bytes */
                 "idempotency-key": string;
-                /** @description CSRF token issued with the session */
-                "x-csrf-token": string;
+                /** @description Required only for Cookie Session authentication */
+                "x-csrf-token"?: string | null;
             };
             path: {
                 /** @description Project ID */
@@ -2125,7 +2392,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentEnvelope"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2134,7 +2401,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Current role cannot publish releases */
+            /** @description Token scope or current role cannot publish releases */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2187,8 +2454,8 @@ export interface operations {
             header: {
                 /** @description Unique visible-ASCII operation key, up to 128 bytes */
                 "idempotency-key": string;
-                /** @description CSRF token issued with the session */
-                "x-csrf-token": string;
+                /** @description Required only for Cookie Session authentication */
+                "x-csrf-token"?: string | null;
             };
             path: {
                 /** @description Project ID */
@@ -2213,7 +2480,7 @@ export interface operations {
                     "application/json": components["schemas"]["DeploymentEnvelope"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2222,7 +2489,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Current role cannot roll releases back */
+            /** @description Token scope or current role cannot roll releases back */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2272,9 +2539,9 @@ export interface operations {
     create_upload: {
         parameters: {
             query?: never;
-            header: {
-                /** @description CSRF token issued with the session */
-                "x-csrf-token": string;
+            header?: {
+                /** @description Required only for Cookie Session authentication */
+                "x-csrf-token"?: string | null;
             };
             path: {
                 /** @description Project ID */
@@ -2297,7 +2564,7 @@ export interface operations {
                     "application/json": components["schemas"]["UploadEnvelope"];
                 };
             };
-            /** @description Session is absent or invalid */
+            /** @description Credential is absent or invalid */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -2306,7 +2573,7 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description Current role cannot upload releases */
+            /** @description Token scope or current role cannot upload releases */
             403: {
                 headers: {
                     [name: string]: unknown;
@@ -2356,6 +2623,24 @@ export interface operations {
                     "application/json": components["schemas"]["UploadEnvelope"];
                 };
             };
+            /** @description Credential is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description API token lacks uploads:write scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Upload is missing or not visible */
             404: {
                 headers: {
@@ -2379,9 +2664,9 @@ export interface operations {
     finalize_upload: {
         parameters: {
             query?: never;
-            header: {
-                /** @description CSRF token issued with the session */
-                "x-csrf-token": string;
+            header?: {
+                /** @description Required only for Cookie Session authentication */
+                "x-csrf-token"?: string | null;
             };
             path: {
                 /** @description Upload ID */
@@ -2398,6 +2683,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FinalizeUploadResponse"];
+                };
+            };
+            /** @description Credential is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token scope or current role cannot upload releases */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description The upload has not been received */
@@ -2435,8 +2738,8 @@ export interface operations {
             header: {
                 /** @description Exact byte count reserved for the upload */
                 "content-length": number;
-                /** @description CSRF token issued with the session */
-                "x-csrf-token": string;
+                /** @description Required only for Cookie Session authentication */
+                "x-csrf-token"?: string | null;
             };
             path: {
                 /** @description Upload ID */
@@ -2457,6 +2760,24 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UploadEnvelope"];
+                };
+            };
+            /** @description Credential is absent or invalid */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Token scope or current role cannot upload releases */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Content-Length is required */

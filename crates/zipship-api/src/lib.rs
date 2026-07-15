@@ -18,7 +18,7 @@ use tower_http::{
     timeout::TimeoutLayer,
     trace::TraceLayer,
 };
-use utoipa::{OpenApi, ToSchema};
+use utoipa::{Modify, OpenApi, ToSchema};
 use zipship_audit::AuditService;
 use zipship_auth::AuthService;
 use zipship_deployments::DeploymentsService;
@@ -28,6 +28,7 @@ use zipship_projects::ProjectsService;
 use zipship_recovery::PasswordRecoveryService;
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
+use zipship_tokens::ApiTokensService;
 use zipship_uploads::UploadsService;
 
 mod anonymous;
@@ -41,6 +42,7 @@ mod projects;
 mod recovery;
 mod releases;
 mod request;
+mod tokens;
 mod uploads;
 
 pub use anonymous::{AnonymousRequestPolicy, InvalidAnonymousRequestPolicy};
@@ -86,6 +88,7 @@ impl CorsPolicy {
                 Method::DELETE,
             ])
             .allow_headers([
+                header::AUTHORIZATION,
                 header::CONTENT_TYPE,
                 HeaderName::from_static("idempotency-key"),
                 HeaderName::from_static("x-csrf-token"),
@@ -142,6 +145,7 @@ pub struct AppServices {
     pub projects: ProjectsService,
     pub recovery: PasswordRecoveryService,
     pub releases: ReleasesService,
+    pub tokens: ApiTokensService,
     pub uploads: UploadsService,
 }
 
@@ -156,6 +160,7 @@ pub struct AppState {
     pub(crate) projects: ProjectsService,
     pub(crate) recovery: PasswordRecoveryService,
     pub(crate) releases: ReleasesService,
+    pub(crate) tokens: ApiTokensService,
     pub(crate) uploads: UploadsService,
     pub(crate) storage: LocalArtifactStore,
     pub(crate) cookie_policy: CookiePolicy,
@@ -181,6 +186,7 @@ impl AppState {
             projects: services.projects,
             recovery: services.recovery,
             releases: services.releases,
+            tokens: services.tokens,
             uploads: services.uploads,
             storage,
             cookie_policy: browser_policy.cookie_policy,
@@ -200,6 +206,9 @@ impl AppState {
         auth::me,
         auth::update_profile,
         auth::logout,
+        tokens::create_api_token,
+        tokens::list_api_tokens,
+        tokens::revoke_api_token,
         recovery::request_password_reset,
         recovery::confirm_password_reset,
         audit::list_audit_logs,
@@ -232,6 +241,12 @@ impl AppState {
         auth::UpdateProfileRequest,
         auth::AuthResponse,
         auth::UserResponse,
+        tokens::CreateApiTokenRequest,
+        tokens::IssuedApiTokenResponse,
+        tokens::ApiTokensResponse,
+        tokens::ApiTokenResponse,
+        tokens::ApiTokenScopeDto,
+        tokens::ApiTokenStateDto,
         recovery::RequestPasswordResetRequest,
         recovery::ConfirmPasswordResetRequest,
         audit::AuditLogsResponse,
@@ -275,6 +290,7 @@ impl AppState {
     tags(
         (name = "health", description = "Process and dependency health"),
         (name = "auth", description = "Browser session authentication"),
+        (name = "api-tokens", description = "Personal scoped API credentials"),
         (name = "audit", description = "Organization activity history"),
         (name = "deployments", description = "Idempotent release activation and rollback"),
         (name = "organizations", description = "Organizations and memberships"),
@@ -283,9 +299,30 @@ impl AppState {
         (name = "projects", description = "Static deployment projects"),
         (name = "releases", description = "Immutable project release history"),
         (name = "uploads", description = "Bounded archive ingestion and processing")
-    )
+    ),
+    modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;
+
+struct SecurityAddon;
+
+impl Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        use utoipa::openapi::security::{
+            ApiKey, ApiKeyValue, Http, HttpAuthScheme, SecurityScheme,
+        };
+
+        let components = openapi.components.get_or_insert_default();
+        components.add_security_scheme(
+            "cookieAuth",
+            SecurityScheme::ApiKey(ApiKey::Cookie(ApiKeyValue::new("zipship_session"))),
+        );
+        components.add_security_scheme(
+            "apiToken",
+            SecurityScheme::Http(Http::new(HttpAuthScheme::Bearer)),
+        );
+    }
+}
 
 pub fn openapi_document() -> utoipa::openapi::OpenApi {
     ApiDoc::openapi()
@@ -300,6 +337,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/_health/ready", get(readiness))
         .route("/_api/openapi.json", get(openapi))
         .merge(auth::router())
+        .merge(tokens::router())
         .merge(recovery::router())
         .merge(audit::router())
         .merge(deployments::router())
@@ -436,6 +474,10 @@ mod tests {
         ProjectReleases, Release, ReleaseArtifact, ReleasesRepository, ReleasesRepositoryError,
         ReleasesService,
     };
+    use zipship_tokens::{
+        ApiToken, ApiTokenState, ApiTokensRepository, ApiTokensRepositoryError, ListApiTokens,
+        NewApiToken, ResolveApiToken, ResolvedApiToken, RevokeApiToken,
+    };
     use zipship_uploads::{
         BeginReceiveResult, FinalizeResult, FinalizedUpload, NewUpload, ReceiveLease, UploadLimits,
         UploadRecord, UploadsRepository, UploadsRepositoryError,
@@ -487,6 +529,102 @@ mod tests {
     #[derive(Default)]
     struct TestRecoveryRepository {
         state: Mutex<RecoveryState>,
+    }
+
+    #[derive(Default)]
+    struct TestApiTokensRepository {
+        tokens: Mutex<Vec<(ApiToken, TokenDigest)>>,
+    }
+
+    #[async_trait]
+    impl ApiTokensRepository for TestApiTokensRepository {
+        async fn create_token(
+            &self,
+            token: NewApiToken,
+            active_token_limit: u16,
+        ) -> Result<ApiToken, ApiTokensRepositoryError> {
+            let mut tokens = self.tokens.lock().unwrap();
+            let active_count = tokens
+                .iter()
+                .filter(|(stored, _)| {
+                    stored.user_id == token.user_id
+                        && stored.state_at(token.created_at) == ApiTokenState::Active
+                })
+                .count();
+            if active_count >= usize::from(active_token_limit) {
+                return Err(ApiTokensRepositoryError::LimitReached);
+            }
+            let stored = ApiToken {
+                id: token.id,
+                user_id: token.user_id,
+                name: token.name.as_str().to_owned(),
+                display_prefix: token.display_prefix,
+                scopes: token.scopes.as_slice().to_vec(),
+                expires_at: token.expires_at,
+                last_used_at: None,
+                revoked_at: None,
+                created_at: token.created_at,
+            };
+            tokens.push((stored.clone(), token.token_digest));
+            Ok(stored)
+        }
+
+        async fn list_tokens(
+            &self,
+            request: ListApiTokens,
+        ) -> Result<Vec<ApiToken>, ApiTokensRepositoryError> {
+            let mut tokens = self
+                .tokens
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(token, _)| token.user_id == request.user_id)
+                .map(|(token, _)| token.clone())
+                .collect::<Vec<_>>();
+            tokens.sort_by_key(|token| {
+                (
+                    token.state_at(request.now) != ApiTokenState::Active,
+                    std::cmp::Reverse(token.created_at),
+                )
+            });
+            Ok(tokens)
+        }
+
+        async fn revoke_token(
+            &self,
+            request: RevokeApiToken,
+        ) -> Result<ApiToken, ApiTokensRepositoryError> {
+            let mut tokens = self.tokens.lock().unwrap();
+            let token = tokens
+                .iter_mut()
+                .find(|(token, _)| token.id == request.token_id && token.user_id == request.user_id)
+                .map(|(token, _)| token)
+                .ok_or(ApiTokensRepositoryError::NotFound)?;
+            token.revoked_at.get_or_insert(request.revoked_at);
+            Ok(token.clone())
+        }
+
+        async fn resolve_token(
+            &self,
+            request: ResolveApiToken,
+        ) -> Result<Option<ResolvedApiToken>, ApiTokensRepositoryError> {
+            let mut tokens = self.tokens.lock().unwrap();
+            let Some(token) = tokens
+                .iter_mut()
+                .find(|(token, digest)| {
+                    *digest == request.token_digest
+                        && token.state_at(request.used_at) == ApiTokenState::Active
+                })
+                .map(|(token, _)| token)
+            else {
+                return Ok(None);
+            };
+            token.last_used_at = Some(request.used_at);
+            Ok(Some(ResolvedApiToken {
+                token: token.clone(),
+                user_disabled_at: None,
+            }))
+        }
     }
 
     #[async_trait]
@@ -907,14 +1045,14 @@ mod tests {
         async fn find_project_for_member(
             &self,
             project_id: Uuid,
-            _actor_id: Uuid,
+            actor_id: Uuid,
         ) -> Result<Option<ProjectAccess>, ProjectsRepositoryError> {
             Ok(self
                 .projects
                 .lock()
                 .unwrap()
                 .iter()
-                .find(|project| project.id == project_id)
+                .find(|project| project.id == project_id && project.created_by == actor_id)
                 .cloned()
                 .map(|project| ProjectAccess {
                     project,
@@ -1212,6 +1350,7 @@ mod tests {
         );
         let deployments = DeploymentsService::new(Arc::new(TestDeploymentsRepository::default()));
         let releases = ReleasesService::new(Arc::new(TestReleasesRepository));
+        let tokens = ApiTokensService::new(Arc::new(TestApiTokensRepository::default()));
         let uploads = UploadsService::new(
             Arc::new(TestUploadsRepository::default()),
             UploadLimits {
@@ -1237,6 +1376,7 @@ mod tests {
                 projects,
                 recovery,
                 releases,
+                tokens,
                 uploads,
             },
             storage.clone(),
@@ -1249,18 +1389,22 @@ mod tests {
         (app, storage, recovery_repository)
     }
 
-    fn register_request() -> Request<Body> {
+    fn register_request_for(email: &str, display_name: &str) -> Request<Body> {
         Request::post("/_api/auth/register")
             .header(header::CONTENT_TYPE, "application/json")
             .body(Body::from(
                 json!({
-                    "email": "owner@example.com",
-                    "displayName": "Owner",
+                    "email": email,
+                    "displayName": display_name,
                     "password": "correct horse battery staple"
                 })
                 .to_string(),
             ))
             .unwrap()
+    }
+
+    fn register_request() -> Request<Body> {
+        register_request_for("owner@example.com", "Owner")
     }
 
     fn password_reset_request(email: &str, peer: &str) -> Request<Body> {
@@ -1352,7 +1496,7 @@ mod tests {
                     .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
                     .header(
                         header::ACCESS_CONTROL_REQUEST_HEADERS,
-                        "content-type,idempotency-key,x-csrf-token",
+                        "authorization,content-type,idempotency-key,x-csrf-token",
                     )
                     .body(Body::empty())
                     .unwrap(),
@@ -1367,6 +1511,14 @@ mod tests {
         assert_eq!(
             preflight.headers()[header::ACCESS_CONTROL_ALLOW_CREDENTIALS],
             "true"
+        );
+        assert!(
+            preflight.headers()[header::ACCESS_CONTROL_ALLOW_HEADERS]
+                .to_str()
+                .unwrap()
+                .split(',')
+                .map(str::trim)
+                .any(|value| value.eq_ignore_ascii_case("authorization"))
         );
 
         let rejected = app
@@ -1432,6 +1584,17 @@ mod tests {
         assert!(document["paths"]["/_api/projects/{project_id}"].is_object());
         assert!(document["paths"]["/_api/projects/{project_id}/uploads"].is_object());
         assert!(document["paths"]["/_api/uploads/{upload_id}/content"].is_object());
+        assert!(document["paths"]["/_api/api-tokens"].is_object());
+        assert!(document["paths"]["/_api/api-tokens/{token_id}"].is_object());
+        assert!(document["components"]["securitySchemes"]["cookieAuth"].is_object());
+        assert_eq!(
+            document["components"]["securitySchemes"]["apiToken"]["scheme"],
+            "bearer"
+        );
+        assert_eq!(
+            document["paths"]["/_api/projects/{project_id}"]["get"]["security"],
+            json!([{ "cookieAuth": [] }, { "apiToken": [] }])
+        );
     }
 
     #[test]
@@ -2061,6 +2224,342 @@ mod tests {
         assert_eq!(
             json_body(revoked_token).await,
             json!({ "code": "INVITATION_NOT_FOUND" })
+        );
+    }
+
+    #[tokio::test]
+    async fn api_token_routes_expose_secrets_once_and_revoke_idempotently() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let registered = app.clone().oneshot(register_request()).await.unwrap();
+        let session = response_cookie(&registered, "zipship_session");
+        let csrf = response_cookie(&registered, "zipship_csrf");
+        let cookie_header = format!("{}; {}", cookie_pair(&session), cookie_pair(&csrf));
+        let request_body = json!({
+            "name": " Deployment automation ",
+            "scopes": ["projects:read"],
+            "expiresInDays": 30
+        })
+        .to_string();
+
+        let missing_csrf = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/api-tokens")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(request_body.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            json_body(missing_csrf).await,
+            json!({ "code": "INVALID_CSRF_TOKEN" })
+        );
+
+        let created = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/api-tokens")
+                    .header(header::COOKIE, &cookie_header)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&csrf))
+                    .body(Body::from(request_body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(created.status(), StatusCode::CREATED);
+        assert_eq!(created.headers()[header::CACHE_CONTROL], "no-store");
+        let created = json_body(created).await;
+        let token_id = created["apiToken"]["id"].as_str().unwrap().to_owned();
+        let secret = created["secret"].as_str().unwrap().to_owned();
+        assert!(secret.starts_with("zps_"));
+        assert_eq!(created["apiToken"]["name"], "Deployment automation");
+        assert_eq!(created["apiToken"]["state"], "active");
+        assert_eq!(
+            created["apiToken"]["displayPrefix"].as_str().unwrap().len(),
+            12
+        );
+        assert!(created["apiToken"].get("tokenDigest").is_none());
+
+        let listed = app
+            .clone()
+            .oneshot(
+                Request::get("/_api/api-tokens")
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(listed.status(), StatusCode::OK);
+        assert_eq!(listed.headers()[header::CACHE_CONTROL], "no-store");
+        let listed = json_body(listed).await;
+        assert_eq!(listed["apiTokens"][0]["id"], token_id);
+        assert!(listed["apiTokens"][0].get("secret").is_none());
+        assert!(listed["apiTokens"][0].get("tokenDigest").is_none());
+
+        let bearer_cannot_manage_tokens = app
+            .clone()
+            .oneshot(
+                Request::get("/_api/api-tokens")
+                    .header(header::AUTHORIZATION, format!("Bearer {secret}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            bearer_cannot_manage_tokens.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let bearer_can_read_projects = app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/projects"
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {secret}"))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bearer_can_read_projects.status(), StatusCode::OK);
+
+        let missing_revoke_csrf = app
+            .clone()
+            .oneshot(
+                Request::delete(format!("/_api/api-tokens/{token_id}"))
+                    .header(header::COOKIE, &cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_revoke_csrf.status(), StatusCode::FORBIDDEN);
+
+        for _ in 0..2 {
+            let revoked = app
+                .clone()
+                .oneshot(
+                    Request::delete(format!("/_api/api-tokens/{token_id}"))
+                        .header(header::COOKIE, &cookie_header)
+                        .header("x-csrf-token", cookie_value(&csrf))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(revoked.status(), StatusCode::NO_CONTENT);
+            assert_eq!(revoked.headers()[header::CACHE_CONTROL], "no-store");
+        }
+
+        let rejected_after_revoke = app
+            .clone()
+            .oneshot(
+                Request::get(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/projects"
+                ))
+                .header(header::AUTHORIZATION, format!("Bearer {secret}"))
+                .body(Body::empty())
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rejected_after_revoke.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            json_body(rejected_after_revoke).await,
+            json!({ "code": "UNAUTHENTICATED" })
+        );
+
+        let listed_after_revoke = app
+            .oneshot(
+                Request::get("/_api/api-tokens")
+                    .header(header::COOKIE, cookie_header)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let listed_after_revoke = json_body(listed_after_revoke).await;
+        assert_eq!(listed_after_revoke["apiTokens"][0]["state"], "revoked");
+        assert!(listed_after_revoke["apiTokens"][0].get("secret").is_none());
+    }
+
+    #[tokio::test]
+    async fn bearer_tokens_intersect_scopes_with_current_project_access() {
+        let app = test_app(CheckStatus::Ok, false).await;
+        let owner_registration = app.clone().oneshot(register_request()).await.unwrap();
+        let owner_session = response_cookie(&owner_registration, "zipship_session");
+        let owner_csrf = response_cookie(&owner_registration, "zipship_csrf");
+        let owner_cookie = format!(
+            "{}; {}",
+            cookie_pair(&owner_session),
+            cookie_pair(&owner_csrf)
+        );
+
+        let project = app
+            .clone()
+            .oneshot(
+                Request::post(format!(
+                    "/_api/organizations/{TEST_ORGANIZATION_ID}/projects"
+                ))
+                .header(header::COOKIE, &owner_cookie)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-csrf-token", cookie_value(&owner_csrf))
+                .body(Body::from(
+                    json!({ "name": "Token Project", "slug": "token-project" }).to_string(),
+                ))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(project.status(), StatusCode::CREATED);
+        let project_id = json_body(project).await["project"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        let owner_token = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/api-tokens")
+                    .header(header::COOKIE, &owner_cookie)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&owner_csrf))
+                    .body(Body::from(
+                        json!({
+                            "name": "Read projects",
+                            "scopes": ["projects:read"],
+                            "expiresInDays": 30
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let owner_secret = json_body(owner_token).await["secret"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+
+        let allowed = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}"))
+                    .header(header::AUTHORIZATION, format!("Bearer {owner_secret}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(allowed.status(), StatusCode::OK);
+
+        let scope_cannot_fall_back_to_cookie = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}/releases"))
+                    .header(header::COOKIE, &owner_cookie)
+                    .header(header::AUTHORIZATION, format!("Bearer {owner_secret}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            scope_cannot_fall_back_to_cookie.status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            json_body(scope_cannot_fall_back_to_cookie).await,
+            json!({ "code": "API_TOKEN_SCOPE_FORBIDDEN" })
+        );
+
+        let invalid_bearer_cannot_fall_back_to_cookie = app
+            .clone()
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}"))
+                    .header(header::COOKIE, &owner_cookie)
+                    .header(header::AUTHORIZATION, "Bearer invalid")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            invalid_bearer_cannot_fall_back_to_cookie.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let bearer_cannot_update_projects = app
+            .clone()
+            .oneshot(
+                Request::patch(format!("/_api/projects/{project_id}"))
+                    .header(header::AUTHORIZATION, format!("Bearer {owner_secret}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(json!({ "name": "Denied" }).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            bearer_cannot_update_projects.status(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        let other_registration = app
+            .clone()
+            .oneshot(register_request_for("other@example.com", "Other"))
+            .await
+            .unwrap();
+        let other_session = response_cookie(&other_registration, "zipship_session");
+        let other_csrf = response_cookie(&other_registration, "zipship_csrf");
+        let other_cookie = format!(
+            "{}; {}",
+            cookie_pair(&other_session),
+            cookie_pair(&other_csrf)
+        );
+        let other_token = app
+            .clone()
+            .oneshot(
+                Request::post("/_api/api-tokens")
+                    .header(header::COOKIE, other_cookie)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .header("x-csrf-token", cookie_value(&other_csrf))
+                    .body(Body::from(
+                        json!({
+                            "name": "Other user token",
+                            "scopes": ["projects:read"],
+                            "expiresInDays": 30
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let other_secret = json_body(other_token).await["secret"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let forbidden_by_live_access = app
+            .oneshot(
+                Request::get(format!("/_api/projects/{project_id}"))
+                    .header(header::AUTHORIZATION, format!("Bearer {other_secret}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(forbidden_by_live_access.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            json_body(forbidden_by_live_access).await,
+            json!({ "code": "PROJECT_NOT_FOUND" })
         );
     }
 

@@ -1,7 +1,9 @@
 use super::AppState;
 use crate::{
     error::{ApiError, ErrorResponse},
-    request::{authenticate, format_timestamp, no_store, parse_uuid, require_csrf},
+    request::{
+        authenticate_resource, format_timestamp, no_store, parse_uuid, require_resource_csrf,
+    },
 };
 use axum::{
     Json, Router,
@@ -20,6 +22,7 @@ use tracing::warn;
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zipship_storage::StorageError;
+use zipship_tokens::ApiTokenScope;
 use zipship_uploads::{
     BeginReceiveResult, CreateUploadCommand, FinalizeResult, ReceiveLease, UploadRecord,
     UploadsError,
@@ -78,15 +81,16 @@ pub(crate) fn content_router() -> Router<AppState> {
     post,
     path = "/_api/projects/{project_id}/uploads",
     tag = "uploads",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(
         ("project_id" = Uuid, Path, description = "Project ID"),
-        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+        ("x-csrf-token" = Option<String>, Header, description = "Required only for Cookie Session authentication")
     ),
     request_body = CreateUploadRequest,
     responses(
         (status = 201, description = "Upload reservation created", body = UploadEnvelope),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current role cannot upload releases", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current role cannot upload releases", body = ErrorResponse),
         (status = 422, description = "Filename or size is invalid", body = ErrorResponse),
         (status = 503, description = "Upload storage is unavailable", body = ErrorResponse)
     )
@@ -98,14 +102,16 @@ pub(crate) async fn create_upload(
     Path(project_id): Path<String>,
     payload: Result<Json<CreateUploadRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
-    require_csrf(&state, &session, &headers)?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::UploadsWrite).await?;
+    require_resource_csrf(&state, &credential, &headers)?;
+    let actor_id = credential.user_id();
     let project_id = parse_uuid(&project_id)?;
     let Json(payload) = payload.map_err(|_| ApiError::invalid_json())?;
     let upload = state
         .uploads
         .create(CreateUploadCommand {
-            actor_id: session.user.id,
+            actor_id,
             project_id,
             original_filename: payload.filename,
             expected_size: payload.size_bytes,
@@ -123,14 +129,17 @@ pub(crate) async fn create_upload(
     put,
     path = "/_api/uploads/{upload_id}/content",
     tag = "uploads",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(
         ("upload_id" = Uuid, Path, description = "Upload ID"),
         ("content-length" = u64, Header, description = "Exact byte count reserved for the upload"),
-        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+        ("x-csrf-token" = Option<String>, Header, description = "Required only for Cookie Session authentication")
     ),
     request_body(content = Vec<u8>, content_type = "application/zip"),
     responses(
         (status = 200, description = "Archive streamed into durable staging", body = UploadEnvelope),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current role cannot upload releases", body = ErrorResponse),
         (status = 411, description = "Content-Length is required", body = ErrorResponse),
         (status = 413, description = "Body exceeds the configured maximum", body = ErrorResponse),
         (status = 415, description = "Content type is not a raw ZIP archive", body = ErrorResponse),
@@ -145,17 +154,15 @@ pub(crate) async fn upload_content(
     Path(upload_id): Path<String>,
     body: Body,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
-    require_csrf(&state, &session, &headers)?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::UploadsWrite).await?;
+    require_resource_csrf(&state, &credential, &headers)?;
+    let actor_id = credential.user_id();
     let upload_id = parse_uuid(&upload_id)?;
     let declared_size = declared_body_size(&headers, state.uploads.maximum_bytes())?;
     require_zip_content_type(&headers)?;
 
-    let lease = match state
-        .uploads
-        .begin_receive(upload_id, session.user.id)
-        .await?
-    {
+    let lease = match state.uploads.begin_receive(upload_id, actor_id).await? {
         BeginReceiveResult::AlreadyUploaded(upload) => {
             return Ok(no_store(Json(UploadEnvelope {
                 upload: upload.into(),
@@ -164,7 +171,7 @@ pub(crate) async fn upload_content(
         BeginReceiveResult::Started(lease) => lease,
     };
     if declared_size != lease.upload.expected_size {
-        best_effort_requeue(&state, &lease, session.user.id, "DECLARED_SIZE_MISMATCH").await;
+        best_effort_requeue(&state, &lease, actor_id, "DECLARED_SIZE_MISMATCH").await;
         return Err(ApiError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
             "UPLOAD_SIZE_MISMATCH",
@@ -187,18 +194,18 @@ pub(crate) async fn upload_content(
     let write = match write {
         Ok(write) => write,
         Err(error) => {
-            best_effort_requeue(&state, &lease, session.user.id, "UPLOAD_STREAM_FAILED").await;
+            best_effort_requeue(&state, &lease, actor_id, "UPLOAD_STREAM_FAILED").await;
             return Err(storage_error(error));
         }
     };
     let upload = match state
         .uploads
-        .mark_uploaded(&lease, session.user.id, write.bytes_written)
+        .mark_uploaded(&lease, actor_id, write.bytes_written)
         .await
     {
         Ok(upload) => upload,
         Err(error) => {
-            best_effort_requeue(&state, &lease, session.user.id, "UPLOAD_CONFIRM_FAILED").await;
+            best_effort_requeue(&state, &lease, actor_id, "UPLOAD_CONFIRM_FAILED").await;
             return Err(error.into());
         }
     };
@@ -211,12 +218,15 @@ pub(crate) async fn upload_content(
     post,
     path = "/_api/uploads/{upload_id}/complete",
     tag = "uploads",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(
         ("upload_id" = Uuid, Path, description = "Upload ID"),
-        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+        ("x-csrf-token" = Option<String>, Header, description = "Required only for Cookie Session authentication")
     ),
     responses(
         (status = 202, description = "Artifact processing is queued idempotently", body = FinalizeUploadResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current role cannot upload releases", body = ErrorResponse),
         (status = 409, description = "The upload has not been received", body = ErrorResponse),
         (status = 410, description = "The upload reservation expired", body = ErrorResponse),
         (status = 503, description = "Upload storage is unavailable", body = ErrorResponse)
@@ -228,10 +238,15 @@ pub(crate) async fn finalize_upload(
     headers: HeaderMap,
     Path(upload_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
-    require_csrf(&state, &session, &headers)?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::UploadsWrite).await?;
+    require_resource_csrf(&state, &credential, &headers)?;
     let upload_id = parse_uuid(&upload_id)?;
-    let finalized = match state.uploads.finalize(upload_id, session.user.id).await? {
+    let finalized = match state
+        .uploads
+        .finalize(upload_id, credential.user_id())
+        .await?
+    {
         FinalizeResult::Created(finalized) | FinalizeResult::Existing(finalized) => finalized,
     };
     Ok((
@@ -248,9 +263,12 @@ pub(crate) async fn finalize_upload(
     get,
     path = "/_api/uploads/{upload_id}",
     tag = "uploads",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(("upload_id" = Uuid, Path, description = "Upload ID")),
     responses(
         (status = 200, description = "Upload visible to the current member", body = UploadEnvelope),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "API token lacks uploads:write scope", body = ErrorResponse),
         (status = 404, description = "Upload is missing or not visible", body = ErrorResponse),
         (status = 503, description = "Upload storage is unavailable", body = ErrorResponse)
     )
@@ -258,11 +276,13 @@ pub(crate) async fn finalize_upload(
 pub(crate) async fn get_upload(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(upload_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::UploadsWrite).await?;
     let upload_id = parse_uuid(&upload_id)?;
-    let upload = state.uploads.get(upload_id, session.user.id).await?;
+    let upload = state.uploads.get(upload_id, credential.user_id()).await?;
     Ok(no_store(Json(UploadEnvelope {
         upload: upload.into(),
     })))

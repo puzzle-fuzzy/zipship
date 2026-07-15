@@ -43,6 +43,7 @@ zipship-members = { path = "../../crates/zipship-members" }
 zipship-projects = { path = "../../crates/zipship-projects" }
 zipship-releases = { path = "../../crates/zipship-releases" }
 zipship-recovery = { path = "../../crates/zipship-recovery" }
+zipship-tokens = { path = "../../crates/zipship-tokens" }
 zipship-uploads = { path = "../../crates/zipship-uploads" }
 
 [lints]

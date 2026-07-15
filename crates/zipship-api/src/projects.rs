@@ -1,7 +1,9 @@
 use super::AppState;
 use crate::{
     error::{ApiError, ErrorResponse},
-    request::{authenticate, format_timestamp, no_store, parse_uuid, require_csrf},
+    request::{
+        authenticate, authenticate_resource, format_timestamp, no_store, parse_uuid, require_csrf,
+    },
 };
 use axum::{
     Json, Router,
@@ -17,6 +19,7 @@ use uuid::Uuid;
 use zipship_projects::{
     CreateProjectCommand, OrganizationSummary, Project, ProjectsError, UpdateProjectCommand,
 };
+use zipship_tokens::ApiTokenScope;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct OrganizationsResponse {
@@ -143,25 +146,28 @@ pub(crate) async fn list_organizations(
     get,
     path = "/_api/organizations/{organization_id}/projects",
     tag = "projects",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(("organization_id" = Uuid, Path, description = "Organization ID")),
     responses(
         (status = 200, description = "Projects in the organization", body = ProjectsResponse),
         (status = 400, description = "Path parameter is invalid", body = ErrorResponse),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current user is not a member", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current membership forbids access", body = ErrorResponse),
         (status = 503, description = "Project storage is unavailable", body = ErrorResponse)
     )
 )]
 pub(crate) async fn list_projects(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(organization_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::ProjectsRead).await?;
     let organization_id = parse_uuid(&organization_id)?;
     let projects = state
         .projects
-        .list_projects(session.user.id, organization_id)
+        .list_projects(credential.user_id(), organization_id)
         .await?
         .into_iter()
         .map(Into::into)
@@ -221,11 +227,13 @@ pub(crate) async fn create_project(
     get,
     path = "/_api/projects/{project_id}",
     tag = "projects",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(("project_id" = Uuid, Path, description = "Project ID")),
     responses(
         (status = 200, description = "Project visible to the current user", body = ProjectEnvelope),
         (status = 400, description = "Path parameter is invalid", body = ErrorResponse),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "API token lacks projects:read scope", body = ErrorResponse),
         (status = 404, description = "Project is missing or not visible", body = ErrorResponse),
         (status = 503, description = "Project storage is unavailable", body = ErrorResponse)
     )
@@ -233,13 +241,15 @@ pub(crate) async fn create_project(
 pub(crate) async fn get_project(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::ProjectsRead).await?;
     let project_id = parse_uuid(&project_id)?;
     let project = state
         .projects
-        .get_project(session.user.id, project_id)
+        .get_project(credential.user_id(), project_id)
         .await?;
     Ok(no_store(Json(ProjectEnvelope {
         project: project.into(),

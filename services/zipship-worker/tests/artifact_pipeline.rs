@@ -26,14 +26,15 @@ use zipship_invitations::InvitationsService;
 use zipship_jobs::{JobLease, WorkerId};
 use zipship_members::MembersService;
 use zipship_postgres::{
-    PgArtifactJobsRepository, PgAuditRepository, PgAuthRepository, PgDeploymentsRepository,
-    PgInvitationsRepository, PgJobsRepository, PgMembersRepository, PgPasswordRecoveryRepository,
-    PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
+    PgApiTokensRepository, PgArtifactJobsRepository, PgAuditRepository, PgAuthRepository,
+    PgDeploymentsRepository, PgInvitationsRepository, PgJobsRepository, PgMembersRepository,
+    PgPasswordRecoveryRepository, PgPreviewRepository, PgProjectsRepository, PgUploadsRepository,
 };
 use zipship_projects::ProjectsService;
 use zipship_recovery::{EnvelopeKeyRing, PasswordRecoveryService};
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
+use zipship_tokens::ApiTokensService;
 use zipship_uploads::{UploadLimits, UploadsService};
 use zipship_worker::{ArtifactWorker, WorkOutcome};
 
@@ -113,6 +114,64 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
     let updated_project = json_body(updated_project).await;
     assert_eq!(updated_project["project"]["name"], "Marketing Production");
     assert_eq!(updated_project["project"]["cachePolicy"], "aggressive");
+
+    let issued_token = app
+        .clone()
+        .oneshot(
+            Request::post("/_api/api-tokens")
+                .header(header::COOKIE, &cookie_header)
+                .header(header::CONTENT_TYPE, "application/json")
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::from(
+                    json!({
+                        "name": "E2E reader",
+                        "scopes": ["projects:read"],
+                        "expiresInDays": 30
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(issued_token.status(), StatusCode::CREATED);
+    let issued_token = json_body(issued_token).await;
+    let token_id = issued_token["apiToken"]["id"].as_str().unwrap();
+    let token_secret = issued_token["secret"].as_str().unwrap();
+    let bearer_project = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/_api/projects/{project_id}"))
+                .header(header::AUTHORIZATION, format!("Bearer {token_secret}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bearer_project.status(), StatusCode::OK);
+    let revoked_token = app
+        .clone()
+        .oneshot(
+            Request::delete(format!("/_api/api-tokens/{token_id}"))
+                .header(header::COOKIE, &cookie_header)
+                .header("x-csrf-token", cookie_value(&csrf))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revoked_token.status(), StatusCode::NO_CONTENT);
+    let rejected_token = app
+        .clone()
+        .oneshot(
+            Request::get(format!("/_api/projects/{project_id}"))
+                .header(header::AUTHORIZATION, format!("Bearer {token_secret}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected_token.status(), StatusCode::UNAUTHORIZED);
 
     let worker = ArtifactWorker::new(
         Arc::new(PgJobsRepository::new(pool.clone())),
@@ -635,6 +694,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
         Arc::new(PgPasswordRecoveryRepository::new(pool.clone())),
         recovery_keys(),
     );
+    let tokens = ApiTokensService::new(Arc::new(PgApiTokensRepository::new(pool.clone())));
     let deployments = DeploymentsService::new(Arc::new(PgDeploymentsRepository::new(pool.clone())));
     let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
         pool.clone(),
@@ -654,6 +714,7 @@ async fn real_app(pool: &PgPool, storage: &LocalArtifactStore) -> Router {
             projects,
             recovery,
             releases,
+            tokens,
             uploads,
         },
         storage.clone(),

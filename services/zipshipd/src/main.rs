@@ -22,6 +22,7 @@ use zipship_projects::ProjectsService;
 use zipship_recovery::{EnvelopeKeyRing, PasswordRecoveryService};
 use zipship_releases::ReleasesService;
 use zipship_storage::LocalArtifactStore;
+use zipship_tokens::ApiTokensService;
 use zipship_uploads::{UploadLimits, UploadsService};
 
 #[derive(Debug, Parser)]
@@ -127,6 +128,9 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
     let releases = ReleasesService::new(Arc::new(zipship_postgres::PgReleasesRepository::new(
         readiness.pool.clone(),
     )));
+    let tokens = ApiTokensService::new(Arc::new(zipship_postgres::PgApiTokensRepository::new(
+        readiness.pool.clone(),
+    )));
     let uploads = UploadsService::new(
         Arc::new(zipship_postgres::PgUploadsRepository::new(
             readiness.pool.clone(),
@@ -155,6 +159,7 @@ async fn serve(settings: Settings, pool: PgPool) -> Result<(), Box<dyn Error + S
             projects,
             recovery,
             releases,
+            tokens,
             uploads,
         },
         storage,

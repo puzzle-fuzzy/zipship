@@ -32,6 +32,7 @@ zipship-projects = { path = "../zipship-projects" }
 zipship-recovery = { path = "../zipship-recovery" }
 zipship-releases = { path = "../zipship-releases" }
 zipship-storage = { path = "../zipship-storage" }
+zipship-tokens = { path = "../zipship-tokens" }
 zipship-uploads = { path = "../zipship-uploads" }
 
 [dev-dependencies]

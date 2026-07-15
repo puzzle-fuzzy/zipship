@@ -1,12 +1,12 @@
 use crate::{
     AppState,
     error::{ApiError, ErrorResponse},
-    request::{authenticate, format_timestamp, no_store, parse_uuid},
+    request::{authenticate_resource, format_timestamp, no_store, parse_uuid},
 };
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::get,
 };
@@ -18,6 +18,7 @@ use uuid::Uuid;
 use zipship_artifact::{ArtifactManifest, ManifestEntry};
 use zipship_domain::ProjectSlug;
 use zipship_releases::{ProjectReleases, Release, ReleaseArtifact, ReleasesError};
+use zipship_tokens::ApiTokenScope;
 
 #[derive(Debug, Serialize, ToSchema)]
 pub(crate) struct ReleasesResponse {
@@ -73,10 +74,12 @@ pub(crate) fn router() -> Router<AppState> {
     get,
     path = "/_api/projects/{project_id}/releases",
     tag = "releases",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(("project_id" = Uuid, Path, description = "Project ID")),
     responses(
         (status = 200, description = "Newest releases first", body = ReleasesResponse),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "API token lacks releases:read scope", body = ErrorResponse),
         (status = 404, description = "Project does not exist or is not visible", body = ErrorResponse),
         (status = 503, description = "Release storage is unavailable", body = ErrorResponse)
     )
@@ -84,11 +87,16 @@ pub(crate) fn router() -> Router<AppState> {
 pub(crate) async fn list_releases(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::ReleasesRead).await?;
     let project_id = parse_uuid(&project_id)?;
-    let project = state.releases.list(session.user.id, project_id).await?;
+    let project = state
+        .releases
+        .list(credential.user_id(), project_id)
+        .await?;
     Ok(no_store(Json(ReleasesResponse::from(project))))
 }
 

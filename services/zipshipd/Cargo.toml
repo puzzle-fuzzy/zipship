@@ -28,6 +28,7 @@ zipship-projects = { path = "../../crates/zipship-projects" }
 zipship-recovery = { path = "../../crates/zipship-recovery" }
 zipship-releases = { path = "../../crates/zipship-releases" }
 zipship-storage = { path = "../../crates/zipship-storage" }
+zipship-tokens = { path = "../../crates/zipship-tokens" }
 zipship-uploads = { path = "../../crates/zipship-uploads" }
 
 [lints]

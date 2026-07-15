@@ -1,7 +1,9 @@
 use crate::{
     AppState,
     error::{ApiError, ErrorResponse},
-    request::{authenticate, format_timestamp, no_store, parse_uuid, require_csrf},
+    request::{
+        authenticate_resource, format_timestamp, no_store, parse_uuid, require_resource_csrf,
+    },
 };
 use axum::{
     Json, Router,
@@ -15,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 use zipship_deployments::{Deployment, DeploymentRequest, DeploymentResult, DeploymentsError};
+use zipship_tokens::ApiTokenScope;
 
 const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 const REQUEST_ID_HEADER: &str = "x-request-id";
@@ -72,17 +75,18 @@ pub(crate) fn router() -> Router<AppState> {
     post,
     path = "/_api/projects/{project_id}/releases/{release_id}/publish",
     tag = "deployments",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(
         ("project_id" = Uuid, Path, description = "Project ID"),
         ("release_id" = Uuid, Path, description = "Ready release to activate"),
         ("idempotency-key" = String, Header, description = "Unique visible-ASCII operation key, up to 128 bytes"),
-        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+        ("x-csrf-token" = Option<String>, Header, description = "Required only for Cookie Session authentication")
     ),
     request_body = DeploymentMessageRequest,
     responses(
         (status = 200, description = "Release activated or the same request replayed", body = DeploymentEnvelope),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current role cannot publish releases", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current role cannot publish releases", body = ErrorResponse),
         (status = 404, description = "Project or release does not exist", body = ErrorResponse),
         (status = 409, description = "Release state or idempotency key conflicts", body = ErrorResponse),
         (status = 422, description = "Idempotency key or message is invalid", body = ErrorResponse),
@@ -112,17 +116,18 @@ pub(crate) async fn publish(
     post,
     path = "/_api/projects/{project_id}/releases/{release_id}/rollback",
     tag = "deployments",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(
         ("project_id" = Uuid, Path, description = "Project ID"),
         ("release_id" = Uuid, Path, description = "Previously active release to restore"),
         ("idempotency-key" = String, Header, description = "Unique visible-ASCII operation key, up to 128 bytes"),
-        ("x-csrf-token" = String, Header, description = "CSRF token issued with the session")
+        ("x-csrf-token" = Option<String>, Header, description = "Required only for Cookie Session authentication")
     ),
     request_body = DeploymentMessageRequest,
     responses(
         (status = 200, description = "Release restored or the same request replayed", body = DeploymentEnvelope),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current role cannot roll releases back", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current role cannot roll releases back", body = ErrorResponse),
         (status = 404, description = "Project or release does not exist", body = ErrorResponse),
         (status = 409, description = "Release is not a valid rollback target or idempotency key conflicts", body = ErrorResponse),
         (status = 422, description = "Idempotency key or message is invalid", body = ErrorResponse),
@@ -152,11 +157,12 @@ pub(crate) async fn rollback(
     get,
     path = "/_api/projects/{project_id}/deployments",
     tag = "deployments",
+    security(("cookieAuth" = []), ("apiToken" = [])),
     params(("project_id" = Uuid, Path, description = "Project ID")),
     responses(
         (status = 200, description = "Newest deployments first", body = DeploymentsResponse),
-        (status = 401, description = "Session is absent or invalid", body = ErrorResponse),
-        (status = 403, description = "Current member cannot view this project", body = ErrorResponse),
+        (status = 401, description = "Credential is absent or invalid", body = ErrorResponse),
+        (status = 403, description = "Token scope or current member cannot view deployments", body = ErrorResponse),
         (status = 404, description = "Project does not exist", body = ErrorResponse),
         (status = 503, description = "Deployment storage is unavailable", body = ErrorResponse)
     )
@@ -164,13 +170,15 @@ pub(crate) async fn rollback(
 pub(crate) async fn list_deployments(
     State(state): State<AppState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Path(project_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let session = authenticate(&state, &jar).await?;
+    let credential =
+        authenticate_resource(&state, &jar, &headers, ApiTokenScope::DeploymentsWrite).await?;
     let project_id = parse_uuid(&project_id)?;
     let deployments = state
         .deployments
-        .list(session.user.id, project_id)
+        .list(credential.user_id(), project_id)
         .await?
         .into_iter()
         .map(Into::into)
@@ -187,8 +195,9 @@ async fn execute(
     payload: Result<Json<DeploymentMessageRequest>, JsonRejection>,
     rollback: bool,
 ) -> Result<Response, ApiError> {
-    let session = authenticate(state, jar).await?;
-    require_csrf(state, &session, headers)?;
+    let credential =
+        authenticate_resource(state, jar, headers, ApiTokenScope::DeploymentsWrite).await?;
+    require_resource_csrf(state, &credential, headers)?;
     let project_id = parse_uuid(project_id)?;
     let release_id = parse_uuid(release_id)?;
     let idempotency_key = headers
@@ -202,7 +211,7 @@ async fn execute(
     let request = DeploymentRequest {
         project_id,
         release_id,
-        actor_id: session.user.id,
+        actor_id: credential.user_id(),
         idempotency_key,
         message: payload.message,
         request_id: headers

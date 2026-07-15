@@ -10,6 +10,244 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/_api/api-tokens": {
+      "get": {
+        "tags": [
+          "api-tokens"
+        ],
+        "operationId": "list_api_tokens",
+        "responses": {
+          "200": {
+            "description": "Active tokens first followed by recent history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiTokensResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Token storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "api-tokens"
+        ],
+        "operationId": "create_api_token",
+        "parameters": [
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Token created; the secret is returned only once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedApiTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "JSON is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Active token limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Name, scopes, or expiration is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Token storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/_api/api-tokens/{token_id}": {
+      "delete": {
+        "tags": [
+          "api-tokens"
+        ],
+        "operationId": "revoke_api_token",
+        "parameters": [
+          {
+            "name": "token_id",
+            "in": "path",
+            "description": "API token ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-csrf-token",
+            "in": "header",
+            "description": "CSRF token issued with the session",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Token revoked; replay is safe"
+          },
+          "400": {
+            "description": "Path parameter is invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Browser session is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "CSRF token is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Token does not belong to the current user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Token storage is unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/_api/auth/login": {
       "post": {
         "tags": [
@@ -1284,7 +1522,7 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1294,7 +1532,7 @@
             }
           },
           "403": {
-            "description": "Current user is not a member",
+            "description": "Token scope or current membership forbids access",
             "content": {
               "application/json": {
                 "schema": {
@@ -1313,7 +1551,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       },
       "post": {
         "tags": [
@@ -1465,7 +1711,17 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API token lacks projects:read scope",
             "content": {
               "application/json": {
                 "schema": {
@@ -1494,7 +1750,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       },
       "patch": {
         "tags": [
@@ -1646,7 +1910,7 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1656,7 +1920,7 @@
             }
           },
           "403": {
-            "description": "Current member cannot view this project",
+            "description": "Token scope or current member cannot view deployments",
             "content": {
               "application/json": {
                 "schema": {
@@ -1685,7 +1949,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/projects/{project_id}/releases": {
@@ -1718,7 +1990,17 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API token lacks releases:read scope",
             "content": {
               "application/json": {
                 "schema": {
@@ -1747,7 +2029,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/projects/{project_id}/releases/{release_id}/publish": {
@@ -1789,10 +2079,13 @@
           {
             "name": "x-csrf-token",
             "in": "header",
-            "description": "CSRF token issued with the session",
-            "required": true,
+            "description": "Required only for Cookie Session authentication",
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -1818,7 +2111,7 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1828,7 +2121,7 @@
             }
           },
           "403": {
-            "description": "Current role cannot publish releases",
+            "description": "Token scope or current role cannot publish releases",
             "content": {
               "application/json": {
                 "schema": {
@@ -1877,7 +2170,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/projects/{project_id}/releases/{release_id}/rollback": {
@@ -1919,10 +2220,13 @@
           {
             "name": "x-csrf-token",
             "in": "header",
-            "description": "CSRF token issued with the session",
-            "required": true,
+            "description": "Required only for Cookie Session authentication",
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -1948,7 +2252,7 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -1958,7 +2262,7 @@
             }
           },
           "403": {
-            "description": "Current role cannot roll releases back",
+            "description": "Token scope or current role cannot roll releases back",
             "content": {
               "application/json": {
                 "schema": {
@@ -2007,7 +2311,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/projects/{project_id}/uploads": {
@@ -2030,10 +2342,13 @@
           {
             "name": "x-csrf-token",
             "in": "header",
-            "description": "CSRF token issued with the session",
-            "required": true,
+            "description": "Required only for Cookie Session authentication",
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -2059,7 +2374,7 @@
             }
           },
           "401": {
-            "description": "Session is absent or invalid",
+            "description": "Credential is absent or invalid",
             "content": {
               "application/json": {
                 "schema": {
@@ -2069,7 +2384,7 @@
             }
           },
           "403": {
-            "description": "Current role cannot upload releases",
+            "description": "Token scope or current role cannot upload releases",
             "content": {
               "application/json": {
                 "schema": {
@@ -2098,7 +2413,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/uploads/{upload_id}": {
@@ -2130,6 +2453,26 @@
               }
             }
           },
+          "401": {
+            "description": "Credential is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API token lacks uploads:write scope",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Upload is missing or not visible",
             "content": {
@@ -2150,7 +2493,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/uploads/{upload_id}/complete": {
@@ -2173,10 +2524,13 @@
           {
             "name": "x-csrf-token",
             "in": "header",
-            "description": "CSRF token issued with the session",
-            "required": true,
+            "description": "Required only for Cookie Session authentication",
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -2187,6 +2541,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/FinalizeUploadResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credential is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token scope or current role cannot upload releases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2221,7 +2595,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_api/uploads/{upload_id}/content": {
@@ -2255,10 +2637,13 @@
           {
             "name": "x-csrf-token",
             "in": "header",
-            "description": "CSRF token issued with the session",
-            "required": true,
+            "description": "Required only for Cookie Session authentication",
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -2284,6 +2669,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/UploadEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credential is absent or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Token scope or current role cannot upload releases",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -2338,7 +2743,15 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "apiToken": []
+          }
+        ]
       }
     },
     "/_health/live": {
@@ -2432,6 +2845,88 @@
           "userId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "ApiTokenResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "displayPrefix",
+          "scopes",
+          "state",
+          "expiresAt",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "displayPrefix": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lastUsedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiTokenScopeDto"
+            }
+          },
+          "state": {
+            "$ref": "#/components/schemas/ApiTokenStateDto"
+          }
+        }
+      },
+      "ApiTokenScopeDto": {
+        "type": "string",
+        "enum": [
+          "projects:read",
+          "releases:read",
+          "uploads:write",
+          "deployments:write"
+        ]
+      },
+      "ApiTokenStateDto": {
+        "type": "string",
+        "enum": [
+          "active",
+          "expired",
+          "revoked"
+        ]
+      },
+      "ApiTokensResponse": {
+        "type": "object",
+        "required": [
+          "apiTokens"
+        ],
+        "properties": {
+          "apiTokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiTokenResponse"
+            }
           }
         }
       },
@@ -2590,6 +3085,31 @@
           },
           "token": {
             "type": "string"
+          }
+        }
+      },
+      "CreateApiTokenRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "scopes",
+          "expiresInDays"
+        ],
+        "properties": {
+          "expiresInDays": {
+            "type": "integer",
+            "format": "int32",
+            "maximum": 365,
+            "minimum": 1
+          },
+          "name": {
+            "type": "string"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiTokenScopeDto"
+            }
           }
         }
       },
@@ -2872,6 +3392,21 @@
             "items": {
               "$ref": "#/components/schemas/InvitationResponse"
             }
+          }
+        }
+      },
+      "IssuedApiTokenResponse": {
+        "type": "object",
+        "required": [
+          "apiToken",
+          "secret"
+        ],
+        "properties": {
+          "apiToken": {
+            "$ref": "#/components/schemas/ApiTokenResponse"
+          },
+          "secret": {
+            "type": "string"
           }
         }
       },
@@ -3422,6 +3957,17 @@
           }
         }
       }
+    },
+    "securitySchemes": {
+      "apiToken": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "zipship_session"
+      }
     }
   },
   "tags": [
@@ -3432,6 +3978,10 @@
     {
       "name": "auth",
       "description": "Browser session authentication"
+    },
+    {
+      "name": "api-tokens",
+      "description": "Personal scoped API credentials"
     },
     {
       "name": "audit",

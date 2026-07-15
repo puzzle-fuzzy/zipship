@@ -2661,6 +2661,7 @@ dependencies = [
  "zipship-recovery",
  "zipship-releases",
  "zipship-storage",
+ "zipship-tokens",
  "zipship-uploads",
 ]
 
@@ -2943,6 +2944,7 @@ dependencies = [
  "zipship-recovery",
  "zipship-releases",
  "zipship-storage",
+ "zipship-tokens",
  "zipship-uploads",
 ]
 
@@ -2971,6 +2973,7 @@ dependencies = [
  "zipship-recovery",
  "zipship-releases",
  "zipship-storage",
+ "zipship-tokens",
  "zipship-uploads",
 ]
 
