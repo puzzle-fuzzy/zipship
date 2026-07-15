@@ -45,7 +45,12 @@ docker compose \
 docker compose \
   --env-file /secure/path/zipship-production.env \
   -f infra/docker/compose.production.yml \
-  up -d --build --wait
+  pull
+
+docker compose \
+  --env-file /secure/path/zipship-production.env \
+  -f infra/docker/compose.production.yml \
+  up -d --wait
 ```
 
 关键运维约束：
@@ -53,6 +58,7 @@ docker compose \
 - `ZIPSHIP_DATABASE_URL` 中的密码必须 URL 编码，并与 PostgreSQL 初始化变量一致。
 - 三个公共 Origin 必须是 HTTPS 且无结尾 `/`；Host 与 Origin 必须成对一致。推荐同一主域的三个子域，以满足 Strict Cookie 的 same-site 边界。
 - 修改 API/Access Origin 后必须重建 Edge，因为 Vite 在构建时写入公共地址。
+- 生产 Compose 只消费 `ZIPSHIP_SERVER_IMAGE` 与 `ZIPSHIP_EDGE_IMAGE` 指定的发行镜像，不在服务器上从源码构建；应固定不可变版本标签或镜像 digest。源码构建仅存在于隔离的 `compose.smoke.yml` 覆盖文件。
 - `ZIPSHIP_PASSWORD_RECOVERY_KEYS` 必须使用 32 字节随机值的无填充 base64url；轮换时先追加新 key，再切 active id，旧 Outbox 排空后才能移除旧 key。
 - Artifact、PostgreSQL 和 Caddy 数据卷必须纳入独立备份/恢复方案；Compose 本身不是备份。
 - 生产不包含 Mailpit，也不暴露 PostgreSQL、5006 或 5007 宿主端口。
