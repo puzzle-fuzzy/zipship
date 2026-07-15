@@ -21,6 +21,7 @@ packages/db           Drizzle schema / migrations
 packages/deploy-core  产物检测、hash、发布、回滚核心逻辑
 packages/storage      文件系统与未来对象存储抽象
 services/zipshipd     Rust 控制面与访问平面
+services/zipship-worker 独立 Artifact 后台处理进程
 crates/zipship-*      Rust 领域、配置、数据库、任务、存储与 HTTP 边界
 ```
 
@@ -39,6 +40,9 @@ bun run rust:migrate
 # 启动 Rust API / Access Plane
 bun run rust:dev
 
+# 在独立终端启动 Artifact Worker
+bun run rust:worker
+
 # Rust 质量门
 bun run rust:fmt
 bun run rust:check
@@ -52,14 +56,14 @@ bun run rust:test
 - `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
 - `GET /_api/openapi.json`：当前 Rust API 契约。
 
-当前 Rust 纵向切片已经贯通注册、个人组织、项目和上传入队。上传协议为：
+当前 Rust 纵向切片已经贯通注册、个人组织、项目、上传入队和异步 Artifact 处理。上传协议为：
 
 - `POST /_api/projects/{project_id}/uploads`：预留 ZIP 文件名与精确字节数。
 - `PUT /_api/uploads/{upload_id}/content`：携带 Cookie、CSRF、`Content-Length`，以原始 Body 流式写入 staging。
 - `POST /_api/uploads/{upload_id}/complete`：幂等创建 processing Release 与持久化 Artifact Job，返回 `202`。
 - `GET /_api/uploads/{upload_id}`：查询当前上传状态。
 
-Artifact Worker 尚在下一阶段；当前 `processing` Job 已可靠持久化，但不会自动变为 ready Release。
+独立 Worker 使用 PostgreSQL lease claim 任务并持续 heartbeat；过期 lease 可回收重试。Worker 对 ZIP 执行路径、类型、大小、层级、压缩率和入口目录校验，生成稳定 Manifest 与完整 SHA-256，将内容只写一次地提交到不可变 Artifact 存储，并在同一数据库事务中收敛 Upload、Release、Artifact、Job 和 Audit 状态。
 
 ## 开发端口
 

@@ -324,8 +324,10 @@ Rust 版必须保留并强化现有 deploy-core 的安全基线：
 
 ### 2026-07-15 实施进度
 
-- 第 1～4 项已完成：Workspace 与基础设施、全新数据库模型、认证、个人组织、成员/项目，以及流式 ZIP 接收和持久化处理 Job 均已进入 Rust 实现。
+- 第 1～5 项已完成：Workspace 与基础设施、全新数据库模型、认证、个人组织、成员/项目、流式 ZIP 接收、持久化 Job 和独立 Artifact Worker 均已进入 Rust 实现。
 - 上传采用“创建预留 → 原始 Body 流式写入 → 完成入队”三步协议；数据库 transfer lease 与文件 `.part` 生命周期允许中断后重传，`/complete` 并发或重复调用不会重复创建 Release/Job。
-- PostgreSQL 事务测试已经覆盖注册时组织创建、角色隔离、项目审计、并发 Slug 冲突，以及上传重试和幂等入队；Rust 全工作区现有 49 项常规测试和 3 项真实 PostgreSQL 集成测试。
-- 下一项进入第 5 项：实现独立 Worker 的 `SKIP LOCKED` claim/heartbeat/retry，完成 ZIP 安全解压、Manifest、完整 SHA-256 Artifact 提交和 ready/failed Release 状态收敛。
+- Worker 使用 `SKIP LOCKED`、heartbeat、lease sweep、指数退避和最大尝试次数实现可恢复执行；安全解压、稳定 Manifest、完整 SHA-256、不可变 Artifact 提交以及 ready/failed 状态收敛均已完成。
+- PostgreSQL 事务测试覆盖注册时组织创建、角色隔离、项目审计、并发 Slug、上传重试、幂等入队、并发 Job、租约恢复和 Artifact 状态收敛；Rust 全工作区现有 58 项常规测试和 7 项真实 PostgreSQL 集成测试。
+- 第 8 项已有一条真实 HTTP 上传 → PostgreSQL Job → Worker → 不可变 Blob/ready Release 链路；完整发布链路仍需第 6、7 项完成后再闭环。
+- 下一项进入第 6 项：实现固定 Release Preview Access Plane，包括安全路径解析、MIME、ETag、Range、缓存头和 SPA fallback。
 - 项目更新/删除暂不开放；删除必须与活动版本下线、Artifact 保留策略和 GC 状态机一起交付。
