@@ -179,41 +179,64 @@ impl fmt::Debug for TokenDigest {
     }
 }
 
+pub struct OpaqueToken {
+    secret: SecretString,
+    digest: TokenDigest,
+}
+
+impl OpaqueToken {
+    pub fn generate() -> Result<Self, TokenGenerationError> {
+        let secret = generate_opaque_token()?;
+        let digest = digest_token(secret.expose_secret());
+        Ok(Self { secret, digest })
+    }
+
+    pub fn secret(&self) -> &SecretString {
+        &self.secret
+    }
+
+    pub fn digest(&self) -> TokenDigest {
+        self.digest
+    }
+}
+
+impl fmt::Debug for OpaqueToken {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("OpaqueToken")
+            .field("secret", &"[redacted]")
+            .field("digest", &"[redacted]")
+            .finish()
+    }
+}
+
 pub struct SessionCredentials {
-    session_token: SecretString,
-    session_digest: TokenDigest,
-    csrf_token: SecretString,
-    csrf_digest: TokenDigest,
+    session: OpaqueToken,
+    csrf: OpaqueToken,
 }
 
 impl SessionCredentials {
     pub fn generate() -> Result<Self, TokenGenerationError> {
-        let session_token = generate_opaque_token()?;
-        let csrf_token = generate_opaque_token()?;
-        let session_digest = digest_token(session_token.expose_secret());
-        let csrf_digest = digest_token(csrf_token.expose_secret());
         Ok(Self {
-            session_token,
-            session_digest,
-            csrf_token,
-            csrf_digest,
+            session: OpaqueToken::generate()?,
+            csrf: OpaqueToken::generate()?,
         })
     }
 
     pub fn session_token(&self) -> &SecretString {
-        &self.session_token
+        self.session.secret()
     }
 
     pub fn session_digest(&self) -> TokenDigest {
-        self.session_digest
+        self.session.digest()
     }
 
     pub fn csrf_token(&self) -> &SecretString {
-        &self.csrf_token
+        self.csrf.secret()
     }
 
     pub fn csrf_digest(&self) -> TokenDigest {
-        self.csrf_digest
+        self.csrf.digest()
     }
 }
 
@@ -239,6 +262,14 @@ pub fn digest_token(token: &str) -> TokenDigest {
 
 pub fn verify_token_digest(token: &str, expected: TokenDigest) -> bool {
     bool::from(digest_token(token).as_bytes().ct_eq(expected.as_bytes()))
+}
+
+pub fn digest_valid_opaque_token(token: &str) -> Option<TokenDigest> {
+    if token.len() != 43 {
+        return None;
+    }
+    let decoded = URL_SAFE_NO_PAD.decode(token).ok()?;
+    (decoded.len() == TOKEN_BYTES).then(|| digest_token(token))
 }
 
 fn generate_opaque_token() -> Result<SecretString, TokenGenerationError> {
@@ -328,5 +359,16 @@ mod tests {
             credentials.csrf_digest(),
         ));
         assert!(!format!("{credentials:?}").contains(credentials.session_token().expose_secret()));
+    }
+
+    #[test]
+    fn generates_reusable_redacted_opaque_tokens() {
+        let token = OpaqueToken::generate().unwrap();
+        let secret = token.secret().expose_secret();
+
+        assert_eq!(secret.len(), 43);
+        assert_eq!(digest_valid_opaque_token(secret), Some(token.digest()));
+        assert!(digest_valid_opaque_token("not-a-token").is_none());
+        assert!(!format!("{token:?}").contains(secret));
     }
 }
