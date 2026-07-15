@@ -212,7 +212,7 @@ impl Settings {
             trusted_proxy_networks,
             console_public_url,
             database_url: SecretString::from(database_url),
-            database_max_connections: parse_or_default(
+            database_max_connections: parse_nonzero_u32(
                 &mut lookup,
                 "ZIPSHIP_DATABASE_MAX_CONNECTIONS",
                 "20",
@@ -348,6 +348,18 @@ fn parse_nonzero_u64(
 ) -> Result<u64, ConfigError> {
     let value = lookup(key).unwrap_or_else(|| default.to_owned());
     match value.parse::<u64>() {
+        Ok(parsed) if parsed > 0 => Ok(parsed),
+        _ => Err(ConfigError::InvalidValue { key, value }),
+    }
+}
+
+fn parse_nonzero_u32(
+    lookup: &mut impl FnMut(&str) -> Option<String>,
+    key: &'static str,
+    default: &str,
+) -> Result<u32, ConfigError> {
+    let value = lookup(key).unwrap_or_else(|| default.to_owned());
+    match value.parse::<u32>() {
         Ok(parsed) if parsed > 0 => Ok(parsed),
         _ => Err(ConfigError::InvalidValue { key, value }),
     }

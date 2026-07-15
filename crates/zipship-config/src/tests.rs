@@ -173,6 +173,8 @@ fn rejects_invalid_typed_values() {
         .is_err()
     );
     assert!(settings_from(&[("ZIPSHIP_WORKER_LEASE_SECS", "never")]).is_err());
+    assert!(settings_from(&[("ZIPSHIP_DATABASE_MAX_CONNECTIONS", "0")]).is_err());
+    assert!(settings_from(&[("ZIPSHIP_DATABASE_MAX_CONNECTIONS", "4294967296")]).is_err());
     assert!(settings_from(&[("ZIPSHIP_WORKER_POLL_MS", "0")]).is_err());
     assert!(settings_from(&[("ZIPSHIP_WORKER_LEASE_SECS", "86401")]).is_err());
     assert!(settings_from(&[("ZIPSHIP_WORKER_SWEEP_SECS", "0")]).is_err());
