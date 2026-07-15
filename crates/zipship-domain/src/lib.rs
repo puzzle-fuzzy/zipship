@@ -550,18 +550,6 @@ impl MemberRole {
             ),
         }
     }
-
-    pub const fn can_manage_members(self) -> bool {
-        self.can(PermissionAction::ManageMember)
-    }
-
-    pub const fn can_upload(self) -> bool {
-        self.can(PermissionAction::UploadRelease)
-    }
-
-    pub const fn can_deploy(self) -> bool {
-        self.can(PermissionAction::PublishRelease)
-    }
 }
 
 impl FromStr for MemberRole {
@@ -726,11 +714,11 @@ mod tests {
 
     #[test]
     fn role_capabilities_match_the_product_policy() {
-        assert!(MemberRole::Admin.can_manage_members());
-        assert!(MemberRole::Developer.can_upload());
-        assert!(!MemberRole::Developer.can_deploy());
-        assert!(MemberRole::Deployer.can_deploy());
-        assert!(!MemberRole::Viewer.can_upload());
+        assert!(MemberRole::Admin.can(PermissionAction::ManageMember));
+        assert!(MemberRole::Developer.can(PermissionAction::UploadRelease));
+        assert!(!MemberRole::Developer.can(PermissionAction::PublishRelease));
+        assert!(MemberRole::Deployer.can(PermissionAction::PublishRelease));
+        assert!(!MemberRole::Viewer.can(PermissionAction::UploadRelease));
         assert!(MemberRole::Admin.can(PermissionAction::ManageProject));
         assert!(MemberRole::Developer.can(PermissionAction::CreateProject));
         assert!(!MemberRole::Developer.can(PermissionAction::ManageProject));
