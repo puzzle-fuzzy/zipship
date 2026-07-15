@@ -1,5 +1,11 @@
 use super::*;
-use std::sync::Mutex;
+use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
+use std::sync::{Arc, Mutex};
+use time::{Duration, OffsetDateTime};
+use uuid::Uuid;
+use zipship_auth::{NormalizedEmail, OpaqueToken, PasswordEngine, digest_valid_opaque_token};
 
 const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
@@ -153,8 +159,8 @@ fn parses_base64_key_rotation_configuration() {
         )),
     )
     .unwrap();
-    assert_eq!(configured.active_key_id.as_ref(), "primary");
-    assert_eq!(configured.keys.len(), 2);
+    assert_eq!(configured.active_key_id(), "primary");
+    assert_eq!(configured.key_count(), 2);
     assert!(
         EnvelopeKeyRing::from_base64_config(
             "primary",
