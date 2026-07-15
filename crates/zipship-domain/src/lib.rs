@@ -33,6 +33,8 @@ pub enum DomainError {
     InvalidUploadFilename,
     #[error("invalid upload size")]
     InvalidUploadSize,
+    #[error("invalid upload status")]
+    InvalidUploadStatus,
     #[error("invalid SHA-256 artifact digest")]
     InvalidArtifactDigest,
     #[error("invalid state transition from {from} to {to}")]
@@ -369,6 +371,23 @@ impl UploadStatus {
     }
 }
 
+impl FromStr for UploadStatus {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "pending" => Ok(Self::Pending),
+            "receiving" => Ok(Self::Receiving),
+            "uploaded" => Ok(Self::Uploaded),
+            "processing" => Ok(Self::Processing),
+            "completed" => Ok(Self::Completed),
+            "failed" => Ok(Self::Failed),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(DomainError::InvalidUploadStatus),
+        }
+    }
+}
+
 impl ReleaseStatus {
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -634,6 +653,8 @@ mod tests {
                 .transition_to(UploadStatus::Receiving)
                 .is_err()
         );
+        assert_eq!("uploaded".parse(), Ok(UploadStatus::Uploaded));
+        assert!("unknown".parse::<UploadStatus>().is_err());
     }
 
     #[test]
