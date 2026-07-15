@@ -15,6 +15,14 @@ bun run infra:down
 
 旧 Elysia API 镜像、Drizzle 迁移和基于软链接的 Nginx Access Plane 已删除。当前 Access Plane 由 `zipshipd` 的独立监听地址提供。
 
+## 隔离集成测试
+
+```bash
+bun run test:integration
+```
+
+该入口通过 `compose.integration.yml` 建立带随机宿主端口和 tmpfs 数据目录的临时 PostgreSQL/Mailpit，只运行破坏性的真实集成测试，结束后使用独立 Compose project 名清理容器与数据。不要直接对 `docker-compose.yml` 的开发数据库运行带 `#[ignore]` 的仓储测试。
+
 ## 生产栈
 
 `compose.production.yml` 是最终单机生产拓扑：

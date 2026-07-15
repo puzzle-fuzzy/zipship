@@ -1,0 +1,24 @@
+# Ephemeral dependencies for the destructive Rust integration test suite.
+# Always launch through scripts/test-rust-integration.ts so the random ports and
+# project-scoped cleanup are applied consistently.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: zipship
+      POSTGRES_PASSWORD: zipship
+      POSTGRES_DB: zipship_rust_test
+    ports:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zipship -d zipship_rust_test"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  mailpit:
+    image: axllent/mailpit:v1.30.3
+    ports:
+      - "1025"

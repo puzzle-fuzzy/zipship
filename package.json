@@ -45,6 +45,7 @@
     "rust:check": "cargo check --workspace --all-targets",
     "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "rust:test": "cargo test --workspace --all-targets",
+    "rust:test:integration": "bun scripts/test-rust-integration.ts",
     "db:migrate": "cargo run -p zipshipd -- migrate",
     "api:generate": "bun scripts/generate-api-client.ts",
     "api:check": "bun scripts/generate-api-client.ts --check",
@@ -65,7 +66,8 @@
     "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
     "ui:add": "shadcn add -c packages/ui",
     "test": "bun --filter @zipship/console-app test",
-    "test:all": "bun run test && bun run rust:test"
+    "test:all": "bun run test && bun run rust:test",
+    "test:integration": "bun run rust:test:integration"
   },
   "devDependencies": {
     "@types/bun": "catalog:",

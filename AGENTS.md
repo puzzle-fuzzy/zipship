@@ -38,9 +38,10 @@ bun run rust:fmt
 bun run rust:check
 bun run rust:clippy
 bun run rust:test
+bun run test:integration
 ```
 
-`bun run test:all` 运行 Console 与常规 Rust 测试。真实 PostgreSQL、SMTP 和完整 HTTP/Worker 测试带 `#[ignore]`，只使用隔离测试数据库；CI 会显式运行它们。
+`bun run test:all` 运行 Console 与常规 Rust 测试。`bun run test:integration` 使用随机端口启动临时 PostgreSQL/Mailpit，运行全部带 `#[ignore]` 的真实仓储、SMTP 和 HTTP/Worker 流水线测试，并自动删除临时数据；禁止把 `ZIPSHIP_TEST_DATABASE_URL` 指向开发库。CI 也会显式运行这些测试。
 
 `bun run smoke:production` 构建最终非 root Server/Worker 与 Console/Caddy 镜像，并在随机隔离的 HTTPS Compose 环境执行真实上传发布链路。生产编排位于 `infra/docker/compose.production.yml`；`infra/docker/docker-compose.yml` 仅用于本地依赖，不得向其中加入生产服务。
 
@@ -100,6 +101,7 @@ Rust `utoipa` output is the source of truth:
 - Rust unit tests live beside crate code; real repository tests live under `crates/zipship-postgres/tests`.
 - Full upload/publish/recovery HTTP pipelines live in `services/zipship-worker/tests/artifact_pipeline.rs`.
 - External-service Rust tests are ignored by default and require `ZIPSHIP_TEST_DATABASE_URL` or `ZIPSHIP_TEST_SMTP_URL`.
+- Run external-service tests locally through `bun run test:integration`; its project-scoped ephemeral Compose stack is the only safe default because repository tests truncate tables.
 - Console uses Vitest + Testing Library under `packages/console-app/tests`.
 - Route/auth tests must verify stable error shape, CSRF, credential priority, scope + RBAC intersection and secret non-disclosure.
 - Filesystem tests use temporary storage and guaranteed cleanup; never point tests at `.zipship` development data.
