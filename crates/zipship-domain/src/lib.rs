@@ -355,7 +355,7 @@ impl UploadStatus {
             (Self::Pending, Self::Receiving | Self::Cancelled)
                 | (
                     Self::Receiving,
-                    Self::Uploaded | Self::Failed | Self::Cancelled
+                    Self::Pending | Self::Uploaded | Self::Failed | Self::Cancelled
                 )
                 | (Self::Uploaded, Self::Processing | Self::Cancelled)
                 | (Self::Processing, Self::Completed | Self::Failed)
@@ -619,6 +619,10 @@ mod tests {
         assert_eq!(
             UploadStatus::Uploaded.transition_to(UploadStatus::Processing),
             Ok(UploadStatus::Processing),
+        );
+        assert_eq!(
+            UploadStatus::Receiving.transition_to(UploadStatus::Pending),
+            Ok(UploadStatus::Pending),
         );
         assert!(
             UploadStatus::Pending
