@@ -1,0 +1,36 @@
+#![forbid(unsafe_code)]
+
+use secrecy::ExposeSecret;
+use sqlx::{PgPool, postgres::PgPoolOptions};
+use std::time::Duration;
+use zipship_config::Settings;
+
+static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+pub async fn connect(settings: &Settings) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .min_connections(1)
+        .max_connections(settings.database_max_connections)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect(settings.database_url.expose_secret())
+        .await
+}
+
+pub fn connect_lazy(settings: &Settings) -> Result<PgPool, sqlx::Error> {
+    PgPoolOptions::new()
+        .min_connections(0)
+        .max_connections(settings.database_max_connections)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect_lazy(settings.database_url.expose_secret())
+}
+
+pub async fn migrate(pool: &PgPool) -> Result<(), sqlx::migrate::MigrateError> {
+    MIGRATOR.run(pool).await
+}
+
+pub async fn check_ready(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query("SELECT 1 FROM projects LIMIT 0")
+        .execute(pool)
+        .await?;
+    Ok(())
+}

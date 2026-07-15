@@ -1,0 +1,17 @@
+[package]
+name = "zipship-jobs"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+sqlx.workspace = true
+time.workspace = true
+uuid.workspace = true
+zipship-domain = { path = "../zipship-domain" }
+
+[lints]
+workspace = true

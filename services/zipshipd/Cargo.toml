@@ -1,0 +1,24 @@
+[package]
+name = "zipshipd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+axum.workspace = true
+clap.workspace = true
+dotenvy.workspace = true
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+zipship-api = { path = "../../crates/zipship-api" }
+zipship-config = { path = "../../crates/zipship-config" }
+zipship-postgres = { path = "../../crates/zipship-postgres" }
+zipship-storage = { path = "../../crates/zipship-storage" }
+
+[lints]
+workspace = true

@@ -2,6 +2,8 @@
 
 ZipShip 是一个面向静态产物的私有化部署工具。第一阶段聚焦上传产物、检测、生成测试地址、发布正式版本和回滚。
 
+`rust-dev` 正在进行第二阶段完整 Rust 重构。目标后端为 Axum + Tokio + SQLx/PostgreSQL；不兼容旧 Elysia API、旧数据库结构或软链接发布模型。现有 React Console 保留，并将在 Rust API 完备后切换到 OpenAPI 生成的 Client。
+
 ## 文档
 
 - [产品设计](docs/01-产品设计.md)
@@ -18,12 +20,42 @@ packages/console-app  Web / Desktop 共用 React 页面
 packages/db           Drizzle schema / migrations
 packages/deploy-core  产物检测、hash、发布、回滚核心逻辑
 packages/storage      文件系统与未来对象存储抽象
+services/zipshipd     Rust 控制面与访问平面
+crates/zipship-*      Rust 领域、配置、数据库、任务、存储与 HTTP 边界
 ```
+
+## Rust 第二阶段开发
+
+```bash
+# 复制并按需修改配置
+cp .env.example .env
+
+# 启动开发 PostgreSQL
+bun run db:up
+
+# 应用全新的 SQLx migrations
+bun run rust:migrate
+
+# 启动 Rust API / Access Plane
+bun run rust:dev
+
+# Rust 质量门
+bun run rust:fmt
+bun run rust:check
+bun run rust:clippy
+bun run rust:test
+```
+
+健康检查：
+
+- `GET /_health/live`：进程存活，不依赖外部服务。
+- `GET /_health/ready`：检查 PostgreSQL schema 与 Artifact 存储。
+- `GET /_api/openapi.json`：当前 Rust API 契约。
 
 ## 开发端口
 
-- API：`http://localhost:3001`
-- Web Shell：`http://127.0.0.1:5173`
+- Rust API：`http://127.0.0.1:5006`
+- Web Shell：`http://127.0.0.1:4015`
 - Desktop Shell renderer：`http://localhost:1420`（Tauri 约定端口；完整桌面开发用 `bun --filter @zipship/desktop-shell tauri dev`，需 Rust 工具链）
 
 `dev:api`、`dev:web`、`dev:desktop` 都会在启动前清理对应端口；Web 与 Desktop 的 Vite 配置使用 `strictPort`，端口被占用时不会自动漂移。

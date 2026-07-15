@@ -46,6 +46,12 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "rust:fmt": "cargo fmt --all -- --check",
+    "rust:check": "cargo check --workspace --all-targets",
+    "rust:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
+    "rust:test": "cargo test --workspace --all-targets",
+    "rust:migrate": "cargo run -p zipshipd -- migrate",
+    "rust:dev": "cargo run -p zipshipd -- serve",
     "typecheck:workspaces": "bun turbo run typecheck",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",

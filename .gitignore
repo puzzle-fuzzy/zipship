@@ -17,6 +17,8 @@ packages/*/tests/.tmp-*/
 /storage
 /tmp
 apps/api/storage
+/target
+/.zipship
 
 # IDE
 .idea

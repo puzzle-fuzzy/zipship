@@ -1,0 +1,292 @@
+#![forbid(unsafe_code)]
+
+use serde::{Deserialize, Serialize};
+use std::{fmt, str::FromStr};
+use thiserror::Error;
+
+const RESERVED_SLUGS: &[&str] = &[
+    "_api",
+    "_console",
+    "_health",
+    "_assets",
+    "favicon.ico",
+    "robots.txt",
+];
+
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum DomainError {
+    #[error("invalid project slug")]
+    InvalidProjectSlug,
+    #[error("invalid SHA-256 artifact digest")]
+    InvalidArtifactDigest,
+    #[error("invalid state transition from {from} to {to}")]
+    InvalidStateTransition {
+        from: &'static str,
+        to: &'static str,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProjectSlug(String);
+
+impl ProjectSlug {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        let value = value.as_ref();
+        let valid_length = !value.is_empty() && value.len() <= 63;
+        let valid_start = value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+            || value.as_bytes().first().is_some_and(u8::is_ascii_digit);
+        let valid_chars = value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+        });
+        let reserved = RESERVED_SLUGS.contains(&value);
+
+        if valid_length && valid_start && valid_chars && !reserved {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(DomainError::InvalidProjectSlug)
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ProjectSlug {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl FromStr for ProjectSlug {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ArtifactDigest(String);
+
+impl ArtifactDigest {
+    pub fn parse(value: impl AsRef<str>) -> Result<Self, DomainError> {
+        let value = value.as_ref();
+        let valid = value.len() == 64
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+
+        valid
+            .then(|| Self(value.to_owned()))
+            .ok_or(DomainError::InvalidArtifactDigest)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ArtifactDigest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl FromStr for ArtifactDigest {
+    type Err = DomainError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::parse(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatus {
+    Queued,
+    Running,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JobKind {
+    #[serde(rename = "artifact.process")]
+    ArtifactProcess,
+    #[serde(rename = "runtime.check")]
+    RuntimeCheck,
+    #[serde(rename = "webhook.deliver")]
+    WebhookDeliver,
+    #[serde(rename = "artifact.gc")]
+    ArtifactGc,
+}
+
+impl JobKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ArtifactProcess => "artifact.process",
+            Self::RuntimeCheck => "runtime.check",
+            Self::WebhookDeliver => "webhook.deliver",
+            Self::ArtifactGc => "artifact.gc",
+        }
+    }
+}
+
+impl JobStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Running => "running",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    pub fn transition_to(self, next: Self) -> Result<Self, DomainError> {
+        let allowed = matches!(
+            (self, next),
+            (Self::Queued, Self::Running | Self::Cancelled)
+                | (
+                    Self::Running,
+                    Self::Queued | Self::Succeeded | Self::Failed | Self::Cancelled
+                )
+                | (Self::Failed, Self::Queued)
+        );
+
+        allowed
+            .then_some(next)
+            .ok_or(DomainError::InvalidStateTransition {
+                from: self.as_str(),
+                to: next.as_str(),
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReleaseStatus {
+    Processing,
+    Ready,
+    Failed,
+    Archived,
+}
+
+impl ReleaseStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Processing => "processing",
+            Self::Ready => "ready",
+            Self::Failed => "failed",
+            Self::Archived => "archived",
+        }
+    }
+
+    pub fn transition_to(self, next: Self) -> Result<Self, DomainError> {
+        let allowed = matches!(
+            (self, next),
+            (Self::Processing, Self::Ready | Self::Failed)
+                | (Self::Ready, Self::Archived)
+                | (Self::Failed, Self::Processing | Self::Archived)
+        );
+
+        allowed
+            .then_some(next)
+            .ok_or(DomainError::InvalidStateTransition {
+                from: self.as_str(),
+                to: next.as_str(),
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemberRole {
+    Owner,
+    Admin,
+    Developer,
+    Deployer,
+    Viewer,
+}
+
+impl MemberRole {
+    pub const fn can_manage_members(self) -> bool {
+        matches!(self, Self::Owner | Self::Admin)
+    }
+
+    pub const fn can_upload(self) -> bool {
+        matches!(self, Self::Owner | Self::Admin | Self::Developer)
+    }
+
+    pub const fn can_deploy(self) -> bool {
+        matches!(self, Self::Owner | Self::Admin | Self::Deployer)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_project_slugs() {
+        assert_eq!(
+            ProjectSlug::parse("marketing_site").unwrap().as_str(),
+            "marketing_site"
+        );
+        assert!(ProjectSlug::parse("_api").is_err());
+        assert!(ProjectSlug::parse("Uppercase").is_err());
+        assert!(ProjectSlug::parse("-leading").is_err());
+        assert!(ProjectSlug::parse("a".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn requires_a_full_lowercase_sha256_digest() {
+        let digest = "0123456789abcdef".repeat(4);
+        assert_eq!(ArtifactDigest::parse(&digest).unwrap().as_str(), digest);
+        assert!(ArtifactDigest::parse("0123456789ab").is_err());
+        assert!(ArtifactDigest::parse("A".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn enforces_job_state_transitions() {
+        assert_eq!(
+            JobStatus::Queued.transition_to(JobStatus::Running),
+            Ok(JobStatus::Running)
+        );
+        assert_eq!(
+            JobStatus::Running.transition_to(JobStatus::Queued),
+            Ok(JobStatus::Queued)
+        );
+        assert!(
+            JobStatus::Succeeded
+                .transition_to(JobStatus::Running)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn release_activity_is_not_a_release_state() {
+        assert_eq!(
+            ReleaseStatus::Processing.transition_to(ReleaseStatus::Ready),
+            Ok(ReleaseStatus::Ready),
+        );
+        assert!(
+            ReleaseStatus::Ready
+                .transition_to(ReleaseStatus::Processing)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn role_capabilities_match_the_product_policy() {
+        assert!(MemberRole::Admin.can_manage_members());
+        assert!(MemberRole::Developer.can_upload());
+        assert!(!MemberRole::Developer.can_deploy());
+        assert!(MemberRole::Deployer.can_deploy());
+        assert!(!MemberRole::Viewer.can_upload());
+    }
+}
