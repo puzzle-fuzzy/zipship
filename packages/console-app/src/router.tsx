@@ -5,11 +5,9 @@ import {
   ForgotPasswordPage,
   InvitationAcceptPage,
   LoginPage,
-  LogsPage,
-  ProjectDetailPage,
-  ProjectListPage,
-  ResetPasswordPage,
-  StoragePage,
+    ProjectDetailPage,
+    ProjectListPage,
+    ResetPasswordPage,
 } from './lazyRoutes';
 
 export const router = createBrowserRouter([
@@ -49,8 +47,6 @@ export const router = createBrowserRouter([
       { index: true, element: <Navigate to="/app/projects" replace /> },
       { path: 'projects', element: <ProjectListPage /> },
       { path: 'projects/:projectId', element: <ProjectDetailPage /> },
-      { path: 'logs', element: <LogsPage /> },
-      { path: 'storage', element: <StoragePage /> },
     ],
   },
   {

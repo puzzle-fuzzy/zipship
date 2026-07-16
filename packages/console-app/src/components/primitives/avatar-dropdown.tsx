@@ -1,10 +1,15 @@
-import { LogOut, Moon, Settings, Sun, User } from 'lucide-react';
-
+import { MaterialIcon } from '../MaterialIcon';
 import { useTranslation } from '../../i18n';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { Avatar, AvatarFallback } from './avatar';
 import { Button } from './button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from './dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './dropdown-menu';
 
 interface AvatarDropdownProps {
   user: { id: string; name: string; email: string };
@@ -23,32 +28,32 @@ export function AvatarDropdown({ user, onLogout, onOpenSettings, onOpenProfile }
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="rounded-full" />}>
+      <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-10 rounded-full" />}>
         <Avatar>
           <AvatarFallback>{getUserInitials(user.name)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <div className="px-1.5 py-1.5">
+        <div className="px-2.5 py-2">
           <p className="text-sm font-medium">{user.name}</p>
-          <p className="text-xs text-muted-foreground">{user.email}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">{user.email}</p>
         </div>
         <DropdownMenuSeparator />
 
         {onOpenProfile ? (
           <DropdownMenuItem onClick={onOpenProfile}>
-            <User className="size-4" />
-            Edit Profile
+            <MaterialIcon name="person" className="text-[18px]" />
+            {t('app.profile')}
           </DropdownMenuItem>
         ) : null}
 
         <DropdownMenuItem onClick={() => setTheme(theme === 'day' ? 'night' : 'day')}>
-          {theme === 'day' ? <Moon className="size-4" /> : <Sun className="size-4" />}
+          <MaterialIcon name={theme === 'day' ? 'dark_mode' : 'light_mode'} className="text-[18px]" />
           {theme === 'day' ? t('settings.night') : t('settings.day')}
         </DropdownMenuItem>
 
         <DropdownMenuItem onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}>
-          <span className="flex size-4 items-center justify-center text-xs font-medium">
+          <span className="flex size-[18px] items-center justify-center text-xs font-medium">
             {language === 'zh' ? 'EN' : '中'}
           </span>
           {language === 'zh' ? t('settings.en') : t('settings.zh')}
@@ -57,12 +62,12 @@ export function AvatarDropdown({ user, onLogout, onOpenSettings, onOpenProfile }
         <DropdownMenuSeparator />
         {onOpenSettings ? (
           <DropdownMenuItem onClick={onOpenSettings}>
-            <Settings className="size-4" />
+            <MaterialIcon name="settings" className="text-[18px]" />
             {t('app.settings')}
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuItem onClick={onLogout} variant="destructive">
-          <LogOut className="size-4" />
+          <MaterialIcon name="logout" className="text-[18px]" />
           {t('app.signOut')}
         </DropdownMenuItem>
       </DropdownMenuContent>

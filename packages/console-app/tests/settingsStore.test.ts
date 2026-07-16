@@ -12,13 +12,13 @@ beforeEach(() => {
 });
 
 describe('settingsStore.init', () => {
-  it('defaults to day/zh when nothing is saved', () => {
+  it('defaults to night/zh when nothing is saved', () => {
     useSettingsStore.getState().init();
     const s = useSettingsStore.getState();
-    expect(s.theme).toBe('day');
+    expect(s.theme).toBe('night');
     expect(s.language).toBe('zh');
     expect(s.initialized).toBe(true);
-    expect(document.documentElement.classList.contains('night')).toBe(false);
+    expect(document.documentElement.classList.contains('night')).toBe(true);
     expect(document.documentElement.lang).toBe('zh-CN');
   });
 

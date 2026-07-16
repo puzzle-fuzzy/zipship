@@ -9,12 +9,6 @@ export const ProjectListPage = lazy(async () => ({
 export const ProjectDetailPage = lazy(async () => ({
   default: (await import('./pages/ProjectDetailPage')).ProjectDetailPage,
 }));
-export const LogsPage = lazy(async () => ({
-  default: (await import('./pages/LogsPage')).LogsPage,
-}));
-export const StoragePage = lazy(async () => ({
-  default: (await import('./pages/StoragePage')).StoragePage,
-}));
 export const LoginPage = lazy(async () => ({
   default: (await import('./pages/LoginPage')).LoginPage,
 }));

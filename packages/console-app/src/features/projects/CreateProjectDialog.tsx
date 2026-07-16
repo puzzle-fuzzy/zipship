@@ -1,6 +1,6 @@
 import { type FormEvent, useState } from 'react';
-import { FolderPlus, Link2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { MaterialIcon } from '../../components/MaterialIcon';
 import {
   Dialog,
   DialogContent,
@@ -68,16 +68,14 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" closeLabel={t('common.close')}>
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <div className="mb-2 flex size-10 items-center justify-center rounded-lg border bg-primary/10 text-primary">
-              <FolderPlus className="size-5" />
+              <MaterialIcon name="create_new_folder" />
             </div>
             <DialogTitle>{t('projects.create')}</DialogTitle>
-            <DialogDescription>
-              {t('projects.emptyDesc')}
-            </DialogDescription>
+            <DialogDescription>{t('projects.createDesc')}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-4">
@@ -98,10 +96,10 @@ export function CreateProjectDialog({ open, onClose, onCreated }: CreateProjectD
             <div className="grid gap-2">
               <Label htmlFor="slug">{t('projects.slug')}</Label>
               <div className="relative">
-                <Link2 className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <MaterialIcon name="link" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-muted-foreground" />
                 <Input
                   id="slug"
-                  className="pl-8 font-mono"
+                  className="pl-10 font-mono"
                   placeholder="my-project"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}

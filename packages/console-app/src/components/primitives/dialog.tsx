@@ -86,7 +86,7 @@ function DialogContent({
       aria-describedby={descriptionId}
       data-slot="dialog-content"
       className={cn(
-        'fixed inset-0 z-50 m-auto grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/10 outline-none backdrop:bg-black/20 backdrop:backdrop-blur-xs sm:max-w-sm',
+        'fixed inset-0 z-50 m-auto grid w-full max-w-[calc(100%-2rem)] gap-4 rounded-xl border bg-popover p-5 text-sm text-popover-foreground outline-none backdrop:bg-black/60 sm:max-w-sm',
         className,
       )}
       onCancel={(event) => {
@@ -115,7 +115,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
 }
 
 function DialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="dialog-footer" className={cn('-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end', className)} {...props} />;
+  return <div data-slot="dialog-footer" className={cn('-mx-5 -mb-5 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-5 sm:flex-row sm:justify-end', className)} {...props} />;
 }
 
 function DialogTitle({ className, ...props }: React.ComponentProps<'h2'>) {

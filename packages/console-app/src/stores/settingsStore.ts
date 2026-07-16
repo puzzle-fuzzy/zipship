@@ -27,7 +27,7 @@ function applyLanguage(language: Language) {
 }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  theme: 'day',
+  theme: 'night',
   language: 'zh',
   initialized: false,
 
@@ -45,7 +45,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   init: () => {
     if (typeof window === 'undefined') return;
-    const savedTheme = (localStorage.getItem('zipship_theme') as Theme | null) ?? 'day';
+    const savedTheme = (localStorage.getItem('zipship_theme') as Theme | null) ?? 'night';
     const savedLanguage = (localStorage.getItem('zipship_language') as Language | null) ?? 'zh';
     applyTheme(savedTheme);
     applyLanguage(savedLanguage);

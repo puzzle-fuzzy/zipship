@@ -1,11 +1,10 @@
-import { Plus } from 'lucide-react';
+import { Link } from 'react-router';
+import { MaterialIcon } from '../../components/MaterialIcon';
 import { AvatarDropdown } from '../../components/primitives/avatar-dropdown';
-import { Button } from '../../components/primitives/button';
 import { useTranslation } from '../../i18n';
 
 interface AppHeaderProps {
   user: { id: string; name: string; email: string };
-  onNewProject: () => void;
   onLogout: () => void;
   onOpenSettings?: () => void;
   onOpenProfile?: () => void;
@@ -13,7 +12,6 @@ interface AppHeaderProps {
 
 export function AppHeader({
   user,
-  onNewProject,
   onLogout,
   onOpenSettings,
   onOpenProfile,
@@ -21,28 +19,19 @@ export function AppHeader({
   const { t } = useTranslation();
 
   return (
-    <header className="sticky top-0 z-30 border-b bg-card/95 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center gap-8">
-          <div className="text-lg font-semibold tracking-tight">{t('app.name')}</div>
-          <nav className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">
-            <a href="/app/projects" className="rounded-md px-3 py-2 hover:bg-accent hover:text-foreground">
-              {t('nav.projects')}
-            </a>
-            <a href="/app/logs" className="rounded-md px-3 py-2 hover:bg-accent hover:text-foreground">
-              {t('nav.logs')}
-            </a>
-            <a href="/app/storage" className="rounded-md px-3 py-2 hover:bg-accent hover:text-foreground">
-              {t('nav.storage')}
-            </a>
-          </nav>
-        </div>
+    <header className="sticky top-0 z-30 border-b bg-background">
+      <div className="mx-auto flex h-16 w-full max-w-[67.5rem] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <Link
+          to="/app/projects"
+          className="group flex min-h-11 items-center gap-2.5 rounded-lg pr-3 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          <span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground transition-[filter] duration-200 group-hover:brightness-110">
+            <MaterialIcon name="deployed_code" className="text-[18px]" />
+          </span>
+          <span className="text-[15px] font-semibold tracking-[-0.01em]">{t('app.name')}</span>
+        </Link>
 
-        <div className="flex items-center gap-3">
-          <Button onClick={onNewProject} size="sm">
-            <Plus className="size-4" />
-            {t('app.newProject')}
-          </Button>
+        <div className="flex items-center">
           <AvatarDropdown
             user={user}
             onLogout={onLogout}

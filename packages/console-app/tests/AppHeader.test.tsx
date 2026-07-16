@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { AppHeader } from "../src/features/layout/AppHeader";
 import { useSettingsStore } from "../src/stores/settingsStore";
 
@@ -10,33 +11,20 @@ beforeEach(() => {
 const user = { id: "u1", name: "Ada Lovelace", email: "ada@example.com" };
 
 describe("AppHeader", () => {
-  it("shows the New Project button on the left and the avatar on the right", () => {
+  it("keeps the shell focused on projects and account controls", () => {
     render(
-      <AppHeader
-        user={user}
-        onNewProject={() => {}}
-        onLogout={() => {}}
-        onOpenSettings={() => {}}
-        onOpenProfile={() => {}}
-      />,
+      <MemoryRouter>
+        <AppHeader
+          user={user}
+          onLogout={() => {}}
+          onOpenSettings={() => {}}
+          onOpenProfile={() => {}}
+        />
+      </MemoryRouter>,
     );
-    expect(screen.getByRole("button", { name: /New Project/ })).toBeInTheDocument();
-    // avatar trigger is a button containing the initials fallback
+    expect(screen.getByRole("link", { name: /ZipShip/ })).toHaveAttribute("href", "/app/projects");
     expect(screen.getByText("AL")).toBeInTheDocument();
-  });
-
-  it("calls onNewProject when the New Project button is clicked", () => {
-    const onNewProject = vi.fn();
-    render(
-      <AppHeader
-        user={user}
-        onNewProject={onNewProject}
-        onLogout={() => {}}
-        onOpenSettings={() => {}}
-        onOpenProfile={() => {}}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: /New Project/ }));
-    expect(onNewProject).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Logs")).not.toBeInTheDocument();
+    expect(screen.queryByText("Storage")).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,4 @@
 import type { RuntimeAdapter } from '@zipship/runtime';
-import { LoaderCircle } from 'lucide-react';
 import { Suspense, useEffect } from 'react';
 import { RouterProvider } from 'react-router';
 import { router } from './router';
@@ -8,6 +7,7 @@ import { useSettingsStore } from './stores/settingsStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Toaster } from './components/primitives/toaster';
 import { useTranslation } from './i18n';
+import { MaterialIcon } from './components/MaterialIcon';
 import './index.css';
 
 export interface AppProps {
@@ -49,7 +49,7 @@ function AppLoadingState({ label }: { label: string }) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background text-muted-foreground">
       <div className="flex items-center gap-2 text-sm" role="status">
-        <LoaderCircle className="animate-spin" aria-hidden="true" />
+        <MaterialIcon name="progress_activity" className="animate-spin" />
         <span>{label}</span>
       </div>
     </main>

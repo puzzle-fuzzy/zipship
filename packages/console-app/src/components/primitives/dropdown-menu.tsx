@@ -80,7 +80,7 @@ function DropdownMenuContent({ align = 'start', className, children, onKeyDown, 
       data-slot="dropdown-menu-content"
       data-align={align}
       className={cn(
-        'absolute top-full z-50 mt-1 min-w-32 overflow-hidden rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none data-[align=start]:left-0 data-[align=end]:right-0 data-[align=center]:left-1/2 data-[align=center]:-translate-x-1/2',
+        'absolute top-full z-50 mt-1 min-w-32 overflow-hidden rounded-lg border bg-popover p-1 text-popover-foreground outline-none data-[align=start]:left-0 data-[align=end]:right-0 data-[align=center]:left-1/2 data-[align=center]:-translate-x-1/2',
         className,
       )}
       onKeyDown={(event) => {
@@ -115,7 +115,7 @@ function DropdownMenuItem({ className, variant = 'default', disabled, onClick, t
       disabled={disabled}
       data-slot="dropdown-menu-item"
       data-variant={variant}
-      className={cn('flex w-full cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm outline-none select-none hover:bg-accent focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:focus:bg-destructive/10', className)}
+      className={cn('flex min-h-9 w-full cursor-default items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm outline-none select-none hover:bg-accent focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 data-[variant=destructive]:text-destructive data-[variant=destructive]:hover:bg-destructive/10 data-[variant=destructive]:focus:bg-destructive/10', className)}
       onClick={(event) => {
         onClick?.(event);
         if (!event.defaultPrevented) close();
