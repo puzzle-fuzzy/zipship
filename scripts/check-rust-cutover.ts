@@ -10,6 +10,7 @@ const forbiddenTrackedPrefixes = [
   "packages/config/",
   "packages/db/",
   "packages/deploy-core/",
+  "packages/console-app/src/components/ui/",
   "packages/shared/",
   "packages/storage/",
   "tests/e2e/",
@@ -35,9 +36,13 @@ if (tracked.exitCode !== 0) {
   if (trackedFiles.includes("scripts/create-test-db.ts")) {
     failures.push("scripts/create-test-db.ts still exists");
   }
+  if (trackedFiles.includes("packages/console-app/components.json")) {
+    failures.push("packages/console-app/components.json still exists");
+  }
 }
 
 const forbiddenPackages = new Set([
+  "@base-ui/react",
   "@elysia/eden",
   "@elysiajs/cors",
   "@types/nodemailer",
@@ -49,12 +54,17 @@ const forbiddenPackages = new Set([
   "@zipship/deploy-core",
   "@zipship/shared",
   "@zipship/storage",
+  "class-variance-authority",
   "drizzle-kit",
   "drizzle-orm",
   "elysia",
   "nodemailer",
   "pg",
   "playwright",
+  "radix-ui",
+  "shadcn",
+  "sonner",
+  "tw-animate-css",
   "yauzl",
 ]);
 

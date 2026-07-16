@@ -78,7 +78,7 @@ export function LoginPage() {
           {mode === 'register' && (
             <Field
               data-invalid={Boolean(fieldErrors.name)}
-              className="animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none"
+              className="motion-safe:[animation:auth-field-in_200ms_ease-out]"
             >
               <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
               <Input

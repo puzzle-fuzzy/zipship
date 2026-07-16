@@ -1,5 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Button } from './ui/button';
+import { Button } from './primitives/button';
 
 interface Props {
   children: ReactNode;

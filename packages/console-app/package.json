@@ -6,7 +6,7 @@
     ".": "./src/index.tsx",
     "./globals.css": "./src/index.css",
     "./components/*": "./src/components/*.tsx",
-    "./components/ui/*": "./src/components/ui/*.tsx",
+    "./components/primitives/*": "./src/components/primitives/*.tsx",
     "./lib/*": "./src/lib/*.ts",
     "./hooks/*": "./src/hooks/*.ts"
   },
@@ -16,22 +16,16 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
     "@zipship/api-client": "workspace:*",
     "@zipship/runtime": "workspace:*",
-    "class-variance-authority": "catalog:",
     "clsx": "catalog:",
     "lucide-react": "catalog:",
-    "radix-ui": "catalog:",
     "react": "catalog:",
     "react-router": "catalog:",
     "tailwind-merge": "catalog:",
-    "shadcn": "catalog:",
-    "tw-animate-css": "catalog:",
     "zustand": "^5.0.4",
     "jszip": "catalog:",
-    "sonner": "^2.0.7",
     "tailwindcss": "catalog:",
     "zod": "catalog:"
   },
