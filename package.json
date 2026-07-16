@@ -55,7 +55,7 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "build": "bun turbo run build",
-    "dev": "bun run --parallel dev:*",
+    "dev": "bun run --parallel dev:api dev:worker dev:web",
     "dev:api": "cargo run -p zipshipd -- serve",
     "dev:worker": "cargo run -p zipship-worker",
     "dev:web": "bun --filter @zipship/web-shell dev",
