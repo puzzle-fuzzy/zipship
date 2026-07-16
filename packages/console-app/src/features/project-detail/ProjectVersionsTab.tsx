@@ -1,6 +1,6 @@
 import { Clock3, Info, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '../../components/primitives/alert';
 import { Button } from '../../components/primitives/button';
 import { Skeleton } from '../../components/primitives/skeleton';

@@ -1,6 +1,6 @@
 import { Check, Copy, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../lib/toast";
 import { Alert, AlertDescription, AlertTitle } from "../../components/primitives/alert";
 import { Button } from "../../components/primitives/button";
 import { Checkbox } from "../../components/primitives/checkbox";

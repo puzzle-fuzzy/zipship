@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { useTranslation } from '../../i18n';
 import { useAuthStore } from '../../stores';
 import { Button } from '../../components/primitives/button';

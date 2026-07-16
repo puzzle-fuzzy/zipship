@@ -1,6 +1,6 @@
 import { KeyRound, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "../../lib/toast";
 import {
   AlertDialog,
   AlertDialogAction,

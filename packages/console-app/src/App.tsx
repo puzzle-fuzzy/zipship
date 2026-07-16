@@ -6,7 +6,7 @@ import { router } from './router';
 import { useAuthStore } from './stores';
 import { useSettingsStore } from './stores/settingsStore';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { Toaster } from './components/ui/sonner';
+import { Toaster } from './components/primitives/toaster';
 import { useTranslation } from './i18n';
 import './index.css';
 

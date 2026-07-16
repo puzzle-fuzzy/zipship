@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Button } from '../../components/primitives/button';
 import {
   Dialog,

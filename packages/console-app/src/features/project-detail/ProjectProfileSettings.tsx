@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Button } from '../../components/primitives/button';
 import { Field, FieldGroup, FieldLabel } from '../../components/primitives/field';
 import { Input } from '../../components/primitives/input';

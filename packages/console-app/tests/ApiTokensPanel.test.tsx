@@ -26,7 +26,7 @@ vi.mock("../src/features/settings/apiTokens", async (importOriginal) => {
   };
 });
 
-vi.mock("sonner", () => ({ toast }));
+vi.mock("../src/lib/toast", () => ({ toast }));
 
 const { ApiTokensPanel } = await import(
   "../src/features/settings/ApiTokensPanel"

@@ -1,5 +1,5 @@
 import { Copy, ExternalLink, Globe2, RadioTower, UploadCloud } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "../../lib/toast";
 import { Badge } from "../../components/primitives/badge";
 import { Button } from "../../components/primitives/button";
 import { useTranslation } from "../../i18n";

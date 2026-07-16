@@ -1,6 +1,6 @@
 import { BarChart3, ExternalLink, MoreHorizontal, Plus, Rocket } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Badge } from '../../components/primitives/badge';
 import { Button } from '../../components/primitives/button';
 import {

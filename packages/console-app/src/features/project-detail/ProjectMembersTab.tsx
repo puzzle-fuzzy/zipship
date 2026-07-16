@@ -1,6 +1,6 @@
 import { UserPlus } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
-import { toast } from 'sonner';
+import { toast } from '../../lib/toast';
 import { Button } from '../../components/primitives/button';
 import {
   Card,
