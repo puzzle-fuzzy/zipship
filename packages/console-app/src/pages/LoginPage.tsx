@@ -76,7 +76,10 @@ export function LoginPage() {
           )}
 
           {mode === 'register' && (
-            <Field data-invalid={Boolean(fieldErrors.name)}>
+            <Field
+              data-invalid={Boolean(fieldErrors.name)}
+              className="animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none"
+            >
               <FieldLabel htmlFor="name">{t('auth.name')}</FieldLabel>
               <Input
                 id="name"
@@ -87,6 +90,7 @@ export function LoginPage() {
                 aria-invalid={Boolean(fieldErrors.name)}
                 aria-describedby={fieldErrors.name ? 'name-error' : undefined}
                 disabled={loading}
+                className="h-11 px-3"
               />
               <FieldError id="name-error">{fieldErrors.name}</FieldError>
             </Field>
@@ -106,6 +110,7 @@ export function LoginPage() {
               aria-invalid={Boolean(fieldErrors.email)}
               aria-describedby={fieldErrors.email ? 'email-error' : undefined}
               disabled={loading}
+              className="h-11 px-3"
             />
             <FieldError id="email-error">{fieldErrors.email}</FieldError>
           </Field>
@@ -129,11 +134,12 @@ export function LoginPage() {
               aria-invalid={Boolean(fieldErrors.password)}
               aria-describedby={fieldErrors.password ? 'password-error' : undefined}
               disabled={loading}
+              className="h-11 px-3"
             />
             <FieldError id="password-error">{fieldErrors.password}</FieldError>
           </Field>
 
-          <Button type="submit" size="lg" className="w-full" disabled={loading}>
+          <Button type="submit" size="lg" className="h-11 w-full" disabled={loading}>
             {loading && <LoaderCircle data-icon="inline-start" className="animate-spin" aria-hidden="true" />}
             {loading
               ? mode === 'login'
@@ -146,11 +152,11 @@ export function LoginPage() {
         </FieldGroup>
       </form>
 
-      <p className="mt-5 text-center text-sm text-muted-foreground">
+      <p className="mt-7 border-t pt-5 text-center text-sm text-muted-foreground">
         {mode === 'login' ? t('auth.noAccount') : t('auth.hasAccount')}{' '}
         <button
           type="button"
-          className="font-medium text-foreground underline underline-offset-4"
+          className="rounded-sm font-semibold text-foreground underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           onClick={toggleMode}
           disabled={loading}
         >

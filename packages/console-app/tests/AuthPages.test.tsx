@@ -14,8 +14,9 @@ function renderPage(page: React.ReactNode) {
 }
 
 beforeEach(() => {
-  useSettingsStore.setState({ language: 'en' });
+  useSettingsStore.setState({ language: 'en', theme: 'day' });
   useAuthStore.setState({ status: 'login', user: null });
+  document.documentElement.classList.remove('night');
   resetPasswordResetTokenForTests();
   window.history.replaceState({}, '', '/');
 });
@@ -34,6 +35,23 @@ describe('authentication pages', () => {
 
     expect(screen.getByText('Password must be between 12 and 128 characters')).toBeInTheDocument();
     expect(login).not.toHaveBeenCalled();
+  });
+
+  it('keeps language, theme, and account creation available before authentication', async () => {
+    const user = userEvent.setup();
+    renderPage(<LoginPage />);
+
+    await user.click(screen.getByRole('button', { name: 'Switch language' }));
+    expect(screen.getByRole('heading', { name: '欢迎回来' })).toBeInTheDocument();
+    expect(document.documentElement).toHaveAttribute('lang', 'zh-CN');
+
+    await user.click(screen.getByRole('button', { name: '切换主题' }));
+    expect(document.documentElement).toHaveClass('night');
+
+    await user.click(screen.getByRole('button', { name: '创建一个' }));
+    expect(screen.getByRole('heading', { name: '创建账号' })).toBeInTheDocument();
+    expect(screen.getByLabelText('姓名')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '注册' })).toBeInTheDocument();
   });
 
   it('uses one generic recovery acceptance state for all emails', async () => {
