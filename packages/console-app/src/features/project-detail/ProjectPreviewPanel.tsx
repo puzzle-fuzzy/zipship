@@ -1,6 +1,6 @@
 import { ExternalLink, Monitor, Rocket, Smartphone, UploadCloud } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Button } from "../../components/ui/button";
+import { Button } from "../../components/primitives/button";
 import { useTranslation } from "../../i18n";
 import type { Release } from "../../stores/projectsStore";
 import { releaseStatusBadgeClass, releaseStatusLabel } from "./releaseStatus";

@@ -1,14 +1,14 @@
 import { CalendarClock, Mail, X } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '../../components/primitives/alert';
+import { Badge } from '../../components/primitives/badge';
+import { Button } from '../../components/primitives/button';
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '../../components/ui/empty';
+} from '../../components/primitives/empty';
 import {
   Item,
   ItemActions,
@@ -17,8 +17,8 @@ import {
   ItemGroup,
   ItemMedia,
   ItemTitle,
-} from '../../components/ui/item';
-import { Skeleton } from '../../components/ui/skeleton';
+} from '../../components/primitives/item';
+import { Skeleton } from '../../components/primitives/skeleton';
 import { useTranslation } from '../../i18n';
 import type { Invitation } from '../../stores/membersStore';
 import { formatMemberDate } from './memberPresentation';

@@ -1,5 +1,5 @@
 import { useTranslation } from "../../i18n";
-import { Button } from "../../components/ui/button";
+import { Button } from "../../components/primitives/button";
 import type { AuditLogEntry } from "../../stores/auditStore";
 
 interface ProjectActivityTabProps {

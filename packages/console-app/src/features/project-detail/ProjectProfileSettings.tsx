@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { Button } from '../../components/ui/button';
-import { Field, FieldGroup, FieldLabel } from '../../components/ui/field';
-import { Input } from '../../components/ui/input';
-import { Textarea } from '../../components/ui/textarea';
+import { Button } from '../../components/primitives/button';
+import { Field, FieldGroup, FieldLabel } from '../../components/primitives/field';
+import { Input } from '../../components/primitives/input';
+import { Textarea } from '../../components/primitives/textarea';
 import { useTranslation } from '../../i18n';
 import type { Project } from '../../stores/projectsStore';
 import type { ProjectSettingsSaveInput } from './projectSettingsTypes';

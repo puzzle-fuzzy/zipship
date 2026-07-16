@@ -1,15 +1,15 @@
 import { BarChart3, ExternalLink, MoreHorizontal, Plus, Rocket } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/primitives/badge';
+import { Button } from '../../components/primitives/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '../../components/ui/dropdown-menu';
-import { Separator } from '../../components/ui/separator';
+import { Separator } from '../../components/primitives/separator';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 import type { Release } from '../../stores/projectsStore';

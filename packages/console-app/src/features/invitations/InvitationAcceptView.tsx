@@ -6,8 +6,8 @@ import {
   UserRoundCheck,
 } from 'lucide-react';
 import { Link } from 'react-router';
-import { Alert, AlertDescription, AlertTitle } from '../../components/ui/alert';
-import { Button, buttonVariants } from '../../components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '../../components/primitives/alert';
+import { Button, buttonVariants } from '../../components/primitives/button';
 import { AuthShell } from '../auth/AuthShell';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';

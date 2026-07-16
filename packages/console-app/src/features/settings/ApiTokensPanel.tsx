@@ -11,8 +11,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "../../components/primitives/alert";
+import { Button } from "../../components/primitives/button";
 import {
   Empty,
   EmptyContent,
@@ -20,7 +20,7 @@ import {
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from "../../components/ui/empty";
+} from "../../components/primitives/empty";
 import { useTranslation } from "../../i18n";
 import { listApiTokens, revokeApiToken, type ApiToken } from "./apiTokens";
 import { CreateApiTokenDialog } from "./CreateApiTokenDialog";

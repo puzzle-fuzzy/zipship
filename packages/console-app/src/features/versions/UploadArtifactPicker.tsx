@@ -1,6 +1,6 @@
 import { Archive, CheckCircle2, FileCode, FileUp, FolderOpen, ShieldCheck, Upload } from 'lucide-react';
 import { useRef, useState, type ChangeEvent } from 'react';
-import { Badge } from '../../components/ui/badge';
+import { Badge } from '../../components/primitives/badge';
 import {
   Dialog,
   DialogContent,

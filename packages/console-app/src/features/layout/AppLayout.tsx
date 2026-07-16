@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router';
 import { toast } from 'sonner';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import {
   Dialog,
   DialogContent,
@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { ScrollArea } from '../../components/ui/scroll-area';
+import { ScrollArea } from '../../components/primitives/scroll-area';
 import { useTranslation } from '../../i18n';
 import { useAuthStore, useProjectsStore } from '../../stores';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';

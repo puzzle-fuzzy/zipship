@@ -1,6 +1,6 @@
 import { FileArchive, History, RotateCcw, Rocket, ShieldCheck } from "lucide-react";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
+import { Badge } from "../../components/primitives/badge";
+import { Button } from "../../components/primitives/button";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { Deployment, Release } from "../../stores/projectsStore";

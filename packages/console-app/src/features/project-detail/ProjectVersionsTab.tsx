@@ -1,9 +1,9 @@
 import { Clock3, Info, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Alert, AlertAction, AlertDescription, AlertTitle } from '../../components/ui/alert';
-import { Button } from '../../components/ui/button';
-import { Skeleton } from '../../components/ui/skeleton';
+import { Alert, AlertAction, AlertDescription, AlertTitle } from '../../components/primitives/alert';
+import { Button } from '../../components/primitives/button';
+import { Skeleton } from '../../components/primitives/skeleton';
 import { useTranslation } from '../../i18n';
 import type { Release } from '../../stores/projectsStore';
 import { DeploymentConfirmDialog, type DeploymentIntent } from './DeploymentConfirmDialog';

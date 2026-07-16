@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react';
 import { AvatarDropdown } from '../../components/ui/avatar-dropdown';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import { useTranslation } from '../../i18n';
 
 interface AppHeaderProps {

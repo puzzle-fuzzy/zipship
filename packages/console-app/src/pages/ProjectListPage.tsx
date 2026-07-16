@@ -1,8 +1,8 @@
 import { ArrowRight, Clock3, FolderOpen, Globe2, Plus, RefreshCw, Rocket } from 'lucide-react';
 import { useMemo } from 'react';
 import { useNavigate, useOutletContext } from 'react-router';
-import { Badge } from '../components/ui/badge';
-import { Button } from '../components/ui/button';
+import { Badge } from '../components/primitives/badge';
+import { Button } from '../components/primitives/button';
 import { useTranslation } from '../i18n';
 import { useProjectsStore } from '../stores';
 import type { Project } from '../stores/projectsStore';

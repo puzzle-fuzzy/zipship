@@ -1,5 +1,5 @@
 import { ExternalLink, Plus } from "lucide-react";
-import { Button } from "../../components/ui/button";
+import { Button } from "../../components/primitives/button";
 import { useTranslation } from "../../i18n";
 import type { Project, Release } from "../../stores/projectsStore";
 

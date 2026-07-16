@@ -1,5 +1,5 @@
 import { CheckCircle2, Clock3, ExternalLink, Rocket, UploadCloud } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import { useTranslation } from '../../i18n';
 import type { Release } from '../../stores/projectsStore';
 import { parseReleaseReport } from './releaseReport';

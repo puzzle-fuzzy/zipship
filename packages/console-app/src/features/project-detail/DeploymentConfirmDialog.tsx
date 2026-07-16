@@ -10,9 +10,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
-import { Checkbox } from "../../components/ui/checkbox";
-import { Label } from "../../components/ui/label";
-import { Textarea } from "../../components/ui/textarea";
+import { Checkbox } from "../../components/primitives/checkbox";
+import { Label } from "../../components/primitives/label";
+import { Textarea } from "../../components/primitives/textarea";
 import { useTranslation } from "../../i18n";
 import { cn } from "../../lib/utils";
 import type { Release } from "../../stores/projectsStore";

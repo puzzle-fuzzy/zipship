@@ -1,14 +1,14 @@
 import { Users, X } from 'lucide-react';
-import { Avatar, AvatarFallback } from '../../components/ui/avatar';
-import { Badge } from '../../components/ui/badge';
-import { Button } from '../../components/ui/button';
+import { Avatar, AvatarFallback } from '../../components/primitives/avatar';
+import { Badge } from '../../components/primitives/badge';
+import { Button } from '../../components/primitives/button';
 import {
   Empty,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
   EmptyTitle,
-} from '../../components/ui/empty';
+} from '../../components/primitives/empty';
 import {
   Item,
   ItemActions,
@@ -17,7 +17,7 @@ import {
   ItemGroup,
   ItemMedia,
   ItemTitle,
-} from '../../components/ui/item';
+} from '../../components/primitives/item';
 import {
   Select,
   SelectContent,
@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { Skeleton } from '../../components/ui/skeleton';
+import { Skeleton } from '../../components/primitives/skeleton';
 import { useTranslation } from '../../i18n';
 import type { Member } from '../../stores/membersStore';
 import { formatMemberDate, MANAGEABLE_ROLES } from './memberPresentation';

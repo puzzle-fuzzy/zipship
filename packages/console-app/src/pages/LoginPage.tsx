@@ -1,10 +1,10 @@
 import { AlertCircle, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Alert, AlertDescription, AlertTitle } from '../components/ui/alert';
-import { Button } from '../components/ui/button';
-import { Field, FieldError, FieldGroup, FieldLabel } from '../components/ui/field';
-import { Input } from '../components/ui/input';
+import { Alert, AlertDescription, AlertTitle } from '../components/primitives/alert';
+import { Button } from '../components/primitives/button';
+import { Field, FieldError, FieldGroup, FieldLabel } from '../components/primitives/field';
+import { Input } from '../components/primitives/input';
 import { AuthShell } from '../features/auth/AuthShell';
 import { authErrorMessage } from '../features/auth/authErrorMessage';
 import { useTranslation } from '../i18n';

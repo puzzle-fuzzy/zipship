@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { useTranslation } from '../../i18n';
 import { useMembersStore } from '../../stores';
 import { emailSchema } from '../../lib/validation';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { Input } from '../../components/ui/input';
-import { Field, FieldError, FieldGroup, FieldLabel } from '../../components/ui/field';
+import { Input } from '../../components/primitives/input';
+import { Field, FieldError, FieldGroup, FieldLabel } from '../../components/primitives/field';
 import {
   Select,
   SelectContent,

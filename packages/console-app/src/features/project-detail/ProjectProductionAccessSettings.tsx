@@ -1,14 +1,14 @@
 import { Globe2, LockKeyhole, Route, ShieldAlert, TimerReset } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import {
   Field,
   FieldContent,
   FieldDescription,
   FieldGroup,
   FieldLabel,
-} from '../../components/ui/field';
+} from '../../components/primitives/field';
 import {
   Select,
   SelectContent,
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '../../components/ui/select';
-import { Switch } from '../../components/ui/switch';
+import { Switch } from '../../components/primitives/switch';
 import { useTranslation } from '../../i18n';
 import type { Project, Release } from '../../stores/projectsStore';
 import {

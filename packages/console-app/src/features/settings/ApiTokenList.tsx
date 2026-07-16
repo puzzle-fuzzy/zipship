@@ -1,7 +1,7 @@
 import { Trash2 } from "lucide-react";
-import { Badge } from "../../components/ui/badge";
-import { Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
+import { Badge } from "../../components/primitives/badge";
+import { Button } from "../../components/primitives/button";
+import { Skeleton } from "../../components/primitives/skeleton";
 import { useTranslation } from "../../i18n";
 import type { ApiToken } from "./apiTokens";
 import { formatTokenDate } from "./apiTokenPresentation";

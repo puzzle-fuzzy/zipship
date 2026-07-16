@@ -1,15 +1,15 @@
 import { UserPlus } from 'lucide-react';
 import { useState, type MouseEvent } from 'react';
 import { toast } from 'sonner';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from '../../components/ui/card';
-import { Separator } from '../../components/ui/separator';
+} from '../../components/primitives/card';
+import { Separator } from '../../components/primitives/separator';
 import { useTranslation } from '../../i18n';
 import type { Invitation, Member } from '../../stores/membersStore';
 import { ActiveMemberList } from './ActiveMemberList';

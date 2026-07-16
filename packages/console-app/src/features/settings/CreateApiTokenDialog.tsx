@@ -1,9 +1,9 @@
 import { Check, Copy, ShieldCheck } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
-import { Alert, AlertDescription, AlertTitle } from "../../components/ui/alert";
-import { Button } from "../../components/ui/button";
-import { Checkbox } from "../../components/ui/checkbox";
+import { Alert, AlertDescription, AlertTitle } from "../../components/primitives/alert";
+import { Button } from "../../components/primitives/button";
+import { Checkbox } from "../../components/primitives/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -20,9 +20,9 @@ import {
   FieldLabel,
   FieldLegend,
   FieldSet,
-} from "../../components/ui/field";
-import { Input } from "../../components/ui/input";
-import { Label } from "../../components/ui/label";
+} from "../../components/primitives/field";
+import { Input } from "../../components/primitives/input";
+import { Label } from "../../components/primitives/label";
 import {
   Select,
   SelectContent,

@@ -1,5 +1,5 @@
 import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
-import { Button } from '../../components/ui/button';
+import { Button } from '../../components/primitives/button';
 import {
   Dialog,
   DialogContent,
@@ -7,7 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { Progress } from '../../components/ui/progress';
+import { Progress } from '../../components/primitives/progress';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';
 import {
