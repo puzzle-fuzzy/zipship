@@ -1,13 +1,13 @@
-import { AlertCircle, LoaderCircle } from 'lucide-react';
+import { LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Alert, AlertDescription, AlertTitle } from '../components/primitives/alert';
 import { Button } from '../components/primitives/button';
 import { Field, FieldError, FieldGroup, FieldLabel } from '../components/primitives/field';
 import { Input } from '../components/primitives/input';
 import { AuthShell } from '../features/auth/AuthShell';
 import { authErrorMessage } from '../features/auth/authErrorMessage';
 import { useTranslation } from '../i18n';
+import { toast } from '../lib/toast';
 import { displayNameSchema, emailSchema, passwordSchema } from '../lib/validation';
 import { useAuthStore } from '../stores/authStore';
 
@@ -24,11 +24,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [requestError, setRequestError] = useState('');
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setRequestError('');
 
     const nextErrors: FieldErrors = {};
     const parsedEmail = emailSchema.safeParse(email);
@@ -48,7 +46,9 @@ export function LoginPage() {
         await register(parsedName.data, parsedEmail.data, parsedPassword.data);
       }
     } catch (error) {
-      setRequestError(authErrorMessage(error, t, mode === 'login' ? 'auth.loginFailed' : 'auth.registrationFailed'));
+      toast.error(
+        authErrorMessage(error, t, mode === 'login' ? 'auth.loginFailed' : 'auth.registrationFailed'),
+      );
     } finally {
       setLoading(false);
     }
@@ -57,7 +57,6 @@ export function LoginPage() {
   const toggleMode = () => {
     setMode((current) => (current === 'login' ? 'register' : 'login'));
     setFieldErrors({});
-    setRequestError('');
   };
 
   return (
@@ -67,14 +66,6 @@ export function LoginPage() {
     >
       <form onSubmit={handleSubmit} noValidate>
         <FieldGroup>
-          {requestError && (
-            <Alert variant="destructive">
-              <AlertCircle aria-hidden="true" />
-              <AlertTitle>{t('auth.couldNotContinue')}</AlertTitle>
-              <AlertDescription>{requestError}</AlertDescription>
-            </Alert>
-          )}
-
           {mode === 'register' && (
             <Field
               data-invalid={Boolean(fieldErrors.name)}

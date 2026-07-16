@@ -1,8 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiClientError } from '../src/api/errors';
+import { Toaster } from '../src/components/primitives/toaster';
 import { resetPasswordResetTokenForTests } from '../src/features/auth/resetToken';
+import { getToastSnapshot, toast } from '../src/lib/toast';
 import { ForgotPasswordPage } from '../src/pages/ForgotPasswordPage';
 import { LoginPage } from '../src/pages/LoginPage';
 import { ResetPasswordPage } from '../src/pages/ResetPasswordPage';
@@ -18,6 +21,7 @@ beforeEach(() => {
   useAuthStore.setState({ status: 'login', user: null });
   document.documentElement.classList.remove('night');
   resetPasswordResetTokenForTests();
+  for (const entry of getToastSnapshot()) toast.dismiss(entry.id);
   window.history.replaceState({}, '', '/');
 });
 
@@ -35,6 +39,29 @@ describe('authentication pages', () => {
 
     expect(screen.getByText('Password must be between 12 and 128 characters')).toBeInTheDocument();
     expect(login).not.toHaveBeenCalled();
+  });
+
+  it('reports login request failures through the global toast', async () => {
+    const login = vi.fn().mockRejectedValue(new ApiClientError('Login failed'));
+    useAuthStore.setState({ login });
+    const user = userEvent.setup();
+    renderPage(
+      <>
+        <LoginPage />
+        <Toaster />
+      </>,
+    );
+
+    await user.type(screen.getByLabelText('Email'), 'ada@example.com');
+    await user.type(screen.getByLabelText('Password'), 'correct horse battery');
+    const submit = screen.getByRole('button', { name: 'Sign in' });
+    await user.click(submit);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Sign-in is temporarily unavailable. Check the service connection and try again.',
+    );
+    expect(within(submit.closest('form')!).queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Could not continue')).not.toBeInTheDocument();
   });
 
   it('keeps language, theme, and account creation available before authentication', async () => {

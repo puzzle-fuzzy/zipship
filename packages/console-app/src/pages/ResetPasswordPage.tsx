@@ -12,6 +12,7 @@ import {
   usePasswordResetToken,
 } from '../features/auth/resetToken';
 import { useTranslation } from '../i18n';
+import { toast } from '../lib/toast';
 import { passwordSchema } from '../lib/validation';
 import { useAuthStore } from '../stores/authStore';
 
@@ -24,13 +25,11 @@ export function ResetPasswordPage() {
   const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [fieldErrors, setFieldErrors] = useState<PasswordErrors>({});
-  const [requestError, setRequestError] = useState('');
   const [loading, setLoading] = useState(false);
   const [complete, setComplete] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setRequestError('');
     const nextErrors: PasswordErrors = {};
     const parsedPassword = passwordSchema.safeParse(password);
     if (!parsedPassword.success) nextErrors.password = t('auth.passwordPolicy');
@@ -44,7 +43,7 @@ export function ResetPasswordPage() {
       clearPasswordResetToken();
       setComplete(true);
     } catch (error) {
-      setRequestError(authErrorMessage(error, t, 'auth.resetFailed'));
+      toast.error(authErrorMessage(error, t, 'auth.resetFailed'));
     } finally {
       setLoading(false);
     }
@@ -87,13 +86,6 @@ export function ResetPasswordPage() {
     <AuthShell title={t('auth.resetTitle')} description={t('auth.resetDesc')}>
       <form onSubmit={handleSubmit} noValidate>
         <FieldGroup>
-          {requestError && (
-            <Alert variant="destructive">
-              <AlertCircle aria-hidden="true" />
-              <AlertTitle>{t('auth.resetFailedTitle')}</AlertTitle>
-              <AlertDescription>{requestError}</AlertDescription>
-            </Alert>
-          )}
           <Field data-invalid={Boolean(fieldErrors.password)}>
             <FieldLabel htmlFor="new-password">{t('auth.newPassword')}</FieldLabel>
             <Input

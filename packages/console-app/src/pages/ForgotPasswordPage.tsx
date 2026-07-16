@@ -1,4 +1,4 @@
-import { AlertCircle, CircleCheck, LoaderCircle } from 'lucide-react';
+import { CircleCheck, LoaderCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { Alert, AlertDescription, AlertTitle } from '../components/primitives/alert';
@@ -8,6 +8,7 @@ import { Input } from '../components/primitives/input';
 import { AuthShell } from '../features/auth/AuthShell';
 import { authErrorMessage } from '../features/auth/authErrorMessage';
 import { useTranslation } from '../i18n';
+import { toast } from '../lib/toast';
 import { emailSchema } from '../lib/validation';
 import { useAuthStore } from '../stores/authStore';
 
@@ -16,14 +17,12 @@ export function ForgotPasswordPage() {
   const requestPasswordReset = useAuthStore((state) => state.requestPasswordReset);
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
-  const [requestError, setRequestError] = useState('');
   const [loading, setLoading] = useState(false);
   const [accepted, setAccepted] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setEmailError('');
-    setRequestError('');
     const parsedEmail = emailSchema.safeParse(email);
     if (!parsedEmail.success) {
       setEmailError(t('auth.invalidEmail'));
@@ -35,7 +34,7 @@ export function ForgotPasswordPage() {
       await requestPasswordReset(parsedEmail.data);
       setAccepted(true);
     } catch (error) {
-      setRequestError(authErrorMessage(error, t, 'auth.resetRequestFailed'));
+      toast.error(authErrorMessage(error, t, 'auth.resetRequestFailed'));
     } finally {
       setLoading(false);
     }
@@ -58,13 +57,6 @@ export function ForgotPasswordPage() {
         <>
           <form onSubmit={handleSubmit} noValidate>
             <FieldGroup>
-              {requestError && (
-                <Alert variant="destructive">
-                  <AlertCircle aria-hidden="true" />
-                  <AlertTitle>{t('auth.resetRequestFailedTitle')}</AlertTitle>
-                  <AlertDescription>{requestError}</AlertDescription>
-                </Alert>
-              )}
               <Field data-invalid={Boolean(emailError)}>
                 <FieldLabel htmlFor="reset-email">{t('auth.email')}</FieldLabel>
                 <Input
