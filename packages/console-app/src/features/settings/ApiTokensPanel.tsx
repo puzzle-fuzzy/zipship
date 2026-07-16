@@ -10,7 +10,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../../components/ui/alert-dialog";
+} from "../../components/primitives/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "../../components/primitives/alert";
 import { Button } from "../../components/primitives/button";
 import {

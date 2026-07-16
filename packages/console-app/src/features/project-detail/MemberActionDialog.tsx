@@ -8,7 +8,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '../../components/ui/alert-dialog';
+} from '../../components/primitives/alert-dialog';
 import { useTranslation } from '../../i18n';
 import type { PendingMemberAction } from './memberPresentation';
 

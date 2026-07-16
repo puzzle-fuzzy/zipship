@@ -6,7 +6,7 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '../../components/primitives/dialog';
 import { Progress } from '../../components/primitives/progress';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';

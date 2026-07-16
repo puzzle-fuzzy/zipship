@@ -9,14 +9,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from '../../components/primitives/field';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { Select } from '../../components/primitives/select';
 import { Switch } from '../../components/primitives/switch';
 import { useTranslation } from '../../i18n';
 import type { Project, Release } from '../../stores/projectsStore';
@@ -107,19 +100,14 @@ export function ProjectProductionAccessSettings({
             <Field>
               <FieldLabel htmlFor="cache-policy">{t('settings.cachePolicyTitle')}</FieldLabel>
               <Select
+                id="cache-policy"
+                className="w-full"
                 value={cachePolicy}
                 onValueChange={(value) => setCachePolicy(cachePolicyValue(value))}
                 disabled={!canManage}
               >
-                <SelectTrigger id="cache-policy" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value="standard">{t('settings.cacheStandard')}</SelectItem>
-                    <SelectItem value="aggressive">{t('settings.cacheAggressive')}</SelectItem>
-                  </SelectGroup>
-                </SelectContent>
+                <option value="standard">{t('settings.cacheStandard')}</option>
+                <option value="aggressive">{t('settings.cacheAggressive')}</option>
               </Select>
               <FieldDescription>{t('settings.cachePolicyDesc')}</FieldDescription>
             </Field>

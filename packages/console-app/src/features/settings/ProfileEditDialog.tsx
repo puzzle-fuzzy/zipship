@@ -10,7 +10,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '../../components/primitives/dialog';
 import { Input } from '../../components/primitives/input';
 import { Label } from '../../components/primitives/label';
 

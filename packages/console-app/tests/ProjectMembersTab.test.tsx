@@ -97,8 +97,7 @@ describe("ProjectMembersTab", () => {
     const user = userEvent.setup();
     renderTab({ members: [member], onChangeRole });
 
-    await user.click(screen.getByLabelText("Role"));
-    await user.click(screen.getByRole("option", { name: "Deployer" }));
+    await user.selectOptions(screen.getByLabelText("Role"), "deployer");
 
     await waitFor(() => expect(onChangeRole).toHaveBeenCalledWith(member, "deployer"));
   });

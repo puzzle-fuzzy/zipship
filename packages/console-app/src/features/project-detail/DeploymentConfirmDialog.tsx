@@ -9,7 +9,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "../../components/ui/alert-dialog";
+} from "../../components/primitives/alert-dialog";
 import { Checkbox } from "../../components/primitives/checkbox";
 import { Label } from "../../components/primitives/label";
 import { Textarea } from "../../components/primitives/textarea";

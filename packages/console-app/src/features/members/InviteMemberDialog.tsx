@@ -12,17 +12,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '../../components/primitives/dialog';
 import { Input } from '../../components/primitives/input';
 import { Field, FieldError, FieldGroup, FieldLabel } from '../../components/primitives/field';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { Select } from '../../components/primitives/select';
 
 interface InviteMemberDialogProps {
   open: boolean;
@@ -112,18 +105,11 @@ export function InviteMemberDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="invite-role">{t('members.role')}</FieldLabel>
-                <Select value={role} onValueChange={setRole} disabled={sending}>
-                  <SelectTrigger id="invite-role" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      <SelectItem value="admin">{t('members.admin')}</SelectItem>
-                      <SelectItem value="developer">{t('members.developer')}</SelectItem>
-                      <SelectItem value="deployer">{t('members.deployer')}</SelectItem>
-                      <SelectItem value="viewer">{t('members.viewer')}</SelectItem>
-                    </SelectGroup>
-                  </SelectContent>
+                <Select id="invite-role" className="w-full" value={role} onValueChange={setRole} disabled={sending}>
+                  <option value="admin">{t('members.admin')}</option>
+                  <option value="developer">{t('members.developer')}</option>
+                  <option value="deployer">{t('members.deployer')}</option>
+                  <option value="viewer">{t('members.viewer')}</option>
                 </Select>
               </Field>
             </FieldGroup>

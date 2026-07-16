@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { AvatarDropdown } from '../../components/ui/avatar-dropdown';
+import { AvatarDropdown } from '../../components/primitives/avatar-dropdown';
 import { Button } from '../../components/primitives/button';
 import { useTranslation } from '../../i18n';
 

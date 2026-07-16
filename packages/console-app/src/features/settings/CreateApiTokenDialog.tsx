@@ -11,7 +11,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../../components/ui/dialog";
+} from "../../components/primitives/dialog";
 import {
   Field,
   FieldDescription,
@@ -23,14 +23,7 @@ import {
 } from "../../components/primitives/field";
 import { Input } from "../../components/primitives/input";
 import { Label } from "../../components/primitives/label";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
+import { Select } from "../../components/primitives/select";
 import { useTranslation } from "../../i18n";
 import {
   createApiToken,
@@ -211,22 +204,17 @@ export function CreateApiTokenDialog({
                   {t("settings.apiTokenExpiration")}
                 </FieldLabel>
                 <Select
+                  id="api-token-expiration"
+                  className="w-full"
                   value={String(expiresInDays)}
                   disabled={creating}
                   onValueChange={(value) => setExpiresInDays(Number(value))}
                 >
-                  <SelectTrigger id="api-token-expiration" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {EXPIRATION_OPTIONS.map((days) => (
-                        <SelectItem key={days} value={String(days)}>
-                          {t("settings.apiTokenExpirationDays", { days })}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
+                  {EXPIRATION_OPTIONS.map((days) => (
+                    <option key={days} value={String(days)}>
+                      {t("settings.apiTokenExpirationDays", { days })}
+                    </option>
+                  ))}
                 </Select>
               </Field>
 

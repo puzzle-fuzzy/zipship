@@ -8,7 +8,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '../../components/primitives/dialog';
 import { Button } from '../../components/primitives/button';
 import { Input } from '../../components/primitives/input';
 import { Label } from '../../components/primitives/label';

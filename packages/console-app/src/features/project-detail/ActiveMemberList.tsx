@@ -18,14 +18,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from '../../components/primitives/item';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../../components/ui/select';
+import { Select } from '../../components/primitives/select';
 import { Skeleton } from '../../components/primitives/skeleton';
 import { useTranslation } from '../../i18n';
 import type { Member } from '../../stores/membersStore';
@@ -112,19 +105,15 @@ export function ActiveMemberList({
                       value={member.role}
                       disabled={!canManage || isSelf}
                       onValueChange={(role) => onChangeRole(member, role)}
+                      size="sm"
+                      className="w-32"
+                      aria-label={t('members.role')}
                     >
-                      <SelectTrigger size="sm" className="w-32" aria-label={t('members.role')}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {MANAGEABLE_ROLES.map((role) => (
-                            <SelectItem key={role} value={role}>
-                              {t(`members.${role}`)}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
+                      {MANAGEABLE_ROLES.map((role) => (
+                        <option key={role} value={role}>
+                          {t(`members.${role}`)}
+                        </option>
+                      ))}
                     </Select>
                   )}
                   <Button

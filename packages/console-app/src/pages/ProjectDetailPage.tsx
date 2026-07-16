@@ -4,7 +4,7 @@ import { useParams } from "react-router";
 import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
 import { getAccessPlaneBaseUrl } from "../api/client";
 import { useTranslation } from "../i18n";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/primitives/tabs";
 import { InviteMemberDialog } from "../features/members/InviteMemberDialog";
 import { UploadVersionDialog } from "../features/versions/UploadVersionDialog";
 import { ProjectActivityTab } from "../features/project-detail/ProjectActivityTab";

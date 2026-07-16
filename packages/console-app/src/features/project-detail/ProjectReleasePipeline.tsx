@@ -8,7 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from '../../components/ui/dropdown-menu';
+} from '../../components/primitives/dropdown-menu';
 import { Separator } from '../../components/primitives/separator';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../lib/utils';

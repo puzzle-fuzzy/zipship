@@ -9,7 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '../../components/ui/dialog';
+} from '../../components/primitives/dialog';
 import { ScrollArea } from '../../components/primitives/scroll-area';
 import { useTranslation } from '../../i18n';
 import { useAuthStore, useProjectsStore } from '../../stores';
