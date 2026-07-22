@@ -1,7 +1,13 @@
-import { Code2, History, Rocket, Settings, Users } from "lucide-react";
+import { ArrowLeft, Code2, FolderX, History, RefreshCw, Rocket, Settings, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router";
-import { useAuditStore, useAuthStore, useMembersStore, useProjectsStore } from "../stores";
+import { useNavigate, useParams } from "react-router";
+import {
+  useAuditStore,
+  useAuthStore,
+  useMembersStore,
+  useOrganizationsStore,
+  useProjectsStore,
+} from "../stores";
 import { getAccessPlaneBaseUrl } from "../api/client";
 import { useTranslation } from "../i18n";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/primitives/tabs";
@@ -20,6 +26,9 @@ import { getProjectRolePermissions } from "../features/project-detail/rolePermis
 import { findUploadedReleaseHighlight } from "../features/project-detail/uploadResultHighlight";
 import { useProjectReleasePolling } from "../features/project-detail/useProjectReleasePolling";
 import type { Release } from "../stores/projectsStore";
+import { Button } from "../components/primitives/button";
+import { useRuntime } from "../runtime";
+import { toast } from "../lib/toast";
 
 type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "activity";
 
@@ -31,20 +40,32 @@ type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "a
  */
 export function ProjectDetailPage() {
   const { t } = useTranslation();
+  const runtime = useRuntime();
+  const navigate = useNavigate();
   const { projectId } = useParams();
   const { user } = useAuthStore();
   const {
     projects,
+    projectsOrganizationId,
+    loading: projectsLoading,
     releases,
     releaseErrors,
     deployments,
     deploymentErrors,
     fetchReleases,
     fetchDeployments,
+    resolveProject,
     publishRelease,
     rollbackRelease,
     updateProject,
   } = useProjectsStore();
+  const {
+    selectedOrganizationId,
+    loading: organizationsLoading,
+    initialized: organizationsInitialized,
+    error: organizationsError,
+    selectOrganization,
+  } = useOrganizationsStore();
   const {
     members,
     membersOrganizationId,
@@ -67,8 +88,17 @@ export function ProjectDetailPage() {
   const [activeTab, setActiveTab] = useState<ProjectDetailTab>("versions");
   const [pendingUploadAnchorId, setPendingUploadAnchorId] = useState<string | null | undefined>(undefined);
   const [highlightedReleaseId, setHighlightedReleaseId] = useState<string | null>(null);
+  const [resolvedProject, setResolvedProject] = useState<
+    Awaited<ReturnType<typeof resolveProject>>
+  >(null);
+  const [projectResolution, setProjectResolution] = useState<
+    "loading" | "ready" | "not-found" | "error"
+  >("loading");
+  const [projectResolutionAttempt, setProjectResolutionAttempt] = useState(0);
 
-  const project = projects.find((p) => p.id === projectId) ?? null;
+  const listedProject = projects.find((candidate) => candidate.id === projectId) ?? null;
+  const project =
+    listedProject ?? (resolvedProject?.id === projectId ? resolvedProject : null);
   const currentMember =
     membersOrganizationId === project?.organizationId
       ? members.find((member) => member.userId === user?.id)
@@ -86,6 +116,82 @@ export function ProjectDetailPage() {
     releases: projectReleases,
     fetchReleases,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!projectId) {
+      setResolvedProject(null);
+      setProjectResolution("not-found");
+      return;
+    }
+    if (listedProject || resolvedProject?.id === projectId) {
+      setProjectResolution("ready");
+      return;
+    }
+    if (!organizationsInitialized || organizationsLoading) {
+      setProjectResolution("loading");
+      return;
+    }
+    if (organizationsError) {
+      setProjectResolution("error");
+      return;
+    }
+    if (!selectedOrganizationId) {
+      setProjectResolution("not-found");
+      return;
+    }
+    if (
+      projectsLoading ||
+      projectsOrganizationId !== selectedOrganizationId
+    ) {
+      setProjectResolution("loading");
+      return;
+    }
+
+    setProjectResolution("loading");
+    void resolveProject(projectId)
+      .then((resolved) => {
+        if (cancelled) return;
+        if (!resolved) {
+          setResolvedProject(null);
+          setProjectResolution("not-found");
+          return;
+        }
+        if (
+          resolved.organizationId !== selectedOrganizationId &&
+          !selectOrganization(resolved.organizationId)
+        ) {
+          setResolvedProject(null);
+          setProjectResolution("error");
+          return;
+        }
+        setResolvedProject(resolved);
+        setProjectResolution("ready");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setResolvedProject(null);
+        setProjectResolution("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    projectId,
+    listedProject,
+    resolvedProject,
+    organizationsInitialized,
+    organizationsLoading,
+    organizationsError,
+    selectedOrganizationId,
+    projectsLoading,
+    projectsOrganizationId,
+    resolveProject,
+    selectOrganization,
+    projectResolutionAttempt,
+  ]);
 
   useEffect(() => {
     if (projectId) {
@@ -133,11 +239,29 @@ export function ProjectDetailPage() {
   }, [pendingUploadAnchorId, projectReleases]);
 
   if (!project) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-      </div>
-    );
+    if (projectResolution === "not-found") {
+      return (
+        <ProjectResolutionState
+          title={t("projects.detailNotFoundTitle")}
+          description={t("projects.detailNotFoundDesc")}
+          onBack={() => navigate("/app/projects")}
+        />
+      );
+    }
+    if (projectResolution === "error") {
+      return (
+        <ProjectResolutionState
+          title={t("projects.detailLoadFailedTitle")}
+          description={t("projects.detailLoadFailedDesc")}
+          onBack={() => navigate("/app/projects")}
+          onRetry={() => {
+            setProjectResolution("loading");
+            setProjectResolutionAttempt((attempt) => attempt + 1);
+          }}
+        />
+      );
+    }
+    return <ProjectDetailLoading label={t("common.loading")} />;
   }
 
   const activeRelease = projectReleases.find((r) => r.status === "active");
@@ -151,7 +275,11 @@ export function ProjectDetailPage() {
     : null;
 
   const handlePreview = (release: Release) => {
-    window.open(buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, release.id), "_blank");
+    void runtime
+      .openExternal(
+        buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, release.id),
+      )
+      .catch(() => toast.error(t("preview.openFailed")));
   };
 
   const handleRetryReleases = () => {
@@ -302,5 +430,49 @@ export function ProjectDetailPage() {
         organizationId={project.organizationId}
       />
     </section>
+  );
+}
+
+function ProjectDetailLoading({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center py-16" role="status">
+      <RefreshCw className="mr-2 size-4 animate-spin text-muted-foreground" />
+      <p className="text-sm text-muted-foreground">{label}</p>
+    </div>
+  );
+}
+
+function ProjectResolutionState({
+  title,
+  description,
+  onBack,
+  onRetry,
+}: {
+  title: string;
+  description: string;
+  onBack: () => void;
+  onRetry?: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex min-h-[28rem] flex-col items-center justify-center py-12 text-center">
+      <span className="flex size-12 items-center justify-center rounded-xl border bg-muted text-muted-foreground">
+        <FolderX className="size-5" />
+      </span>
+      <h1 className="mt-5 text-xl font-semibold">{title}</h1>
+      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
+      <div className="mt-6 flex flex-wrap justify-center gap-2">
+        <Button variant="outline" onClick={onBack}>
+          <ArrowLeft className="size-4" />
+          {t("projects.backToProjects")}
+        </Button>
+        {onRetry ? (
+          <Button onClick={onRetry}>
+            <RefreshCw className="size-4" />
+            {t("common.retry")}
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }

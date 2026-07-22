@@ -45,6 +45,7 @@
     "api:generate": "bun scripts/generate-api-client.ts",
     "api:check": "bun scripts/generate-api-client.ts --check",
     "cutover:check": "bun scripts/check-rust-cutover.ts",
+    "production:check": "bun scripts/check-production-config.ts",
     "smoke:production": "bun scripts/smoke-production.ts",
     "typecheck:workspaces": "bun turbo run typecheck",
     "lint": "oxlint .",
@@ -54,12 +55,14 @@
     "dev:api": "cargo run -p zipshipd -- serve",
     "dev:worker": "cargo run -p zipship-worker",
     "dev:web": "bun --filter @zipship/web-shell dev",
-    "desktop:dev": "bun --filter @zipship/desktop-shell dev",
+    "desktop:dev": "bun --filter @zipship/desktop-shell tauri dev",
+    "desktop:build": "bun --filter @zipship/desktop-shell tauri build --no-bundle",
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
     "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "test": "bun --filter @zipship/console-app test && bun --filter @zipship/web-shell test",
+    "test": "bun run test:production-config && bun --filter @zipship/runtime test && bun --filter @zipship/console-app test && bun --filter @zipship/web-shell test",
+    "test:production-config": "bun test scripts/check-production-config.test.ts",
     "test:all": "bun run test && bun run rust:test",
     "test:integration": "bun run rust:test:integration"
   },
@@ -73,5 +76,8 @@
     "openapi-typescript": "catalog:",
     "turbo": "^2.10.3",
     "typescript": "catalog:"
+  },
+  "overrides": {
+    "js-yaml": "4.3.0"
   }
 }

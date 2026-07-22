@@ -1,4 +1,6 @@
 export { useAuthStore } from './authStore';
+export { useOrganizationsStore } from './organizationsStore';
+export type { Organization } from './organizationsStore';
 export { useProjectsStore } from './projectsStore';
 export type { Project, Release } from './projectsStore';
 export { useMembersStore } from './membersStore';

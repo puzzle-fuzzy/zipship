@@ -73,6 +73,8 @@ impl ArtifactJobsRepository for PgArtifactJobsRepository {
             .map_err(|_| ArtifactJobsRepositoryError::ArtifactConflict)?;
         let manifest = serde_json::to_value(&artifact.manifest)
             .map_err(ArtifactJobsRepositoryError::unavailable)?;
+        let detect_report = serde_json::to_value(&artifact.detect_report)
+            .map_err(ArtifactJobsRepositoryError::unavailable)?;
         let mut transaction = self
             .pool
             .begin()
@@ -101,7 +103,7 @@ impl ArtifactJobsRepository for PgArtifactJobsRepository {
             )
             VALUES (
                 $1, $2, $3, 'ready', $4, $5, $6,
-                jsonb_build_object('entryPoint', 'index.html', 'manifestVersion', 1),
+                $7,
                 now()
             )
             ON CONFLICT (sha256) DO NOTHING
@@ -114,6 +116,7 @@ impl ArtifactJobsRepository for PgArtifactJobsRepository {
         .bind(file_count)
         .bind(total_size)
         .bind(&manifest)
+        .bind(&detect_report)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(ArtifactJobsRepositoryError::unavailable)?;
@@ -122,7 +125,7 @@ impl ArtifactJobsRepository for PgArtifactJobsRepository {
             None => {
                 let existing = sqlx::query_as::<_, ExistingArtifactRow>(
                     r#"
-                    SELECT id, storage_key, state, file_count, total_size, manifest
+                    SELECT id, storage_key, state, file_count, total_size, manifest, detect_report
                     FROM artifacts
                     WHERE sha256 = $1
                     FOR UPDATE
@@ -139,6 +142,30 @@ impl ArtifactJobsRepository for PgArtifactJobsRepository {
                     || existing.manifest != manifest
                 {
                     return Err(ArtifactJobsRepositoryError::ArtifactConflict);
+                }
+                let existing_report_version = existing
+                    .detect_report
+                    .get("reportVersion")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let incoming_report_version = u64::from(artifact.detect_report.report_version);
+                if existing_report_version > incoming_report_version
+                    || (existing_report_version == incoming_report_version
+                        && existing.detect_report != detect_report)
+                {
+                    return Err(ArtifactJobsRepositoryError::ArtifactConflict);
+                }
+                if existing_report_version < incoming_report_version {
+                    let updated =
+                        sqlx::query("UPDATE artifacts SET detect_report = $2 WHERE id = $1")
+                            .bind(existing.id)
+                            .bind(&detect_report)
+                            .execute(&mut *transaction)
+                            .await
+                            .map_err(ArtifactJobsRepositoryError::unavailable)?;
+                    if updated.rows_affected() != 1 {
+                        return Err(ArtifactJobsRepositoryError::ArtifactConflict);
+                    }
                 }
                 (existing.id, true)
             }

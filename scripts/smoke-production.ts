@@ -161,6 +161,12 @@ async function main(): Promise<void> {
       }
     }
 
+    await run([
+      'bun',
+      'scripts/check-production-config.ts',
+      '--env-file',
+      environmentFile,
+    ]);
     await run(compose('config', '--quiet'));
     composeAttempted = true;
     console.log(`Starting isolated production stack ${projectName}...`);

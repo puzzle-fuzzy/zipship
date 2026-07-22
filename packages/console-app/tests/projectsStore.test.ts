@@ -63,6 +63,8 @@ beforeEach(() => {
   document.cookie = 'zipship_csrf=test-csrf; Path=/';
   useProjectsStore.setState({
     projects: [],
+    projectsOrganizationId: null,
+    projectsError: null,
     releases: {},
     releaseErrors: {},
     deployments: {},
@@ -72,33 +74,66 @@ beforeEach(() => {
 });
 
 describe('projectsStore', () => {
-  it('loads the first organization and adapts Rust project fields', async () => {
-    api.verb('get')
-      .mockResolvedValueOnce({ data: { organizations: [{ id: 'org-1' }] } })
-      .mockResolvedValueOnce({ data: { projects: [project] } });
+  it('loads projects for the explicit organization context', async () => {
+    api.verb('get').mockResolvedValueOnce({ data: { projects: [project] } });
 
-    await useProjectsStore.getState().fetchProjects();
+    await useProjectsStore.getState().fetchProjects('org-1');
 
     expect(api.verb('get').mock.calls).toEqual([
-      ['/_api/organizations'],
       ['/_api/organizations/{organization_id}/projects', { params: { path: { organization_id: 'org-1' } } }],
     ]);
     expect(useProjectsStore.getState()).toMatchObject({
       loading: false,
+      projectsOrganizationId: 'org-1',
       projects: [{ id: 'p1', currentReleaseId: null, cachePolicy: 'standard' }],
     });
   });
 
-  it('finishes with an empty list when the user has no organization', async () => {
-    api.verb('get').mockResolvedValueOnce({ data: { organizations: [] } });
-    await useProjectsStore.getState().fetchProjects();
-    expect(useProjectsStore.getState()).toMatchObject({ projects: [], loading: false });
+  it('resolves an accessible project for a direct detail link without mutating the scoped list', async () => {
+    api.verb('get').mockResolvedValueOnce({ data: { project } });
+
+    const resolved = await useProjectsStore.getState().resolveProject('p1');
+
+    expect(api.verb('get')).toHaveBeenCalledWith('/_api/projects/{project_id}', {
+      params: { path: { project_id: 'p1' } },
+    });
+    expect(resolved).toMatchObject({ id: 'p1', organizationId: 'org-1' });
+    expect(useProjectsStore.getState().projects).toEqual([]);
+  });
+
+  it('treats an inaccessible or invalid direct project link as not found', async () => {
+    api.verb('get')
+      .mockResolvedValueOnce({ error: { code: 'PROJECT_NOT_FOUND' } })
+      .mockResolvedValueOnce({ error: { code: 'INVALID_PATH_PARAMETER' } });
+
+    await expect(useProjectsStore.getState().resolveProject('missing')).resolves.toBeNull();
+    await expect(useProjectsStore.getState().resolveProject('invalid')).resolves.toBeNull();
+  });
+
+  it('surfaces temporary direct project lookup failures', async () => {
+    api.verb('get').mockResolvedValueOnce({ error: { code: 'SERVICE_UNAVAILABLE' } });
+
+    await expect(useProjectsStore.getState().resolveProject('p1')).rejects.toThrow(
+      'Failed to load project',
+    );
+  });
+
+  it('clears projects without making a request when no organization is selected', async () => {
+    useProjectsStore.setState({ projects: [project as never] });
+
+    await useProjectsStore.getState().fetchProjects(null);
+
+    expect(api.verb('get')).not.toHaveBeenCalled();
+    expect(useProjectsStore.getState()).toMatchObject({
+      projects: [],
+      projectsOrganizationId: null,
+      loading: false,
+    });
   });
 
   it('creates a project with CSRF and the Rust request body', async () => {
-    api.verb('get').mockResolvedValueOnce({ data: { organizations: [{ id: 'org-1' }] } });
     api.verb('post').mockResolvedValueOnce({ data: { project } });
-    await useProjectsStore.getState().createProject({ name: 'Docs', slug: 'docs', description: '' });
+    await useProjectsStore.getState().createProject('org-1', { name: 'Docs', slug: 'docs', description: '' });
     expect(api.verb('post')).toHaveBeenCalledWith(
       '/_api/organizations/{organization_id}/projects',
       {
@@ -112,11 +147,33 @@ describe('projectsStore', () => {
   });
 
   it('retains duplicate slug errors from the Rust API', async () => {
-    api.verb('get').mockResolvedValueOnce({ data: { organizations: [{ id: 'org-1' }] } });
     api.verb('post').mockResolvedValueOnce({ error: { code: 'DUPLICATE_PROJECT_SLUG' } });
     await expect(
-      useProjectsStore.getState().createProject({ name: 'Docs', slug: 'docs', description: '' }),
+      useProjectsStore.getState().createProject('org-1', { name: 'Docs', slug: 'docs', description: '' }),
     ).rejects.toThrow('A project with this slug already exists');
+  });
+
+  it('ignores a stale project response after the organization changes', async () => {
+    let resolveFirst!: (value: unknown) => void;
+    const firstResponse = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    api.verb('get')
+      .mockReturnValueOnce(firstResponse)
+      .mockResolvedValueOnce({
+        data: { projects: [{ ...project, id: 'p2', organizationId: 'org-2', name: 'Orbit docs' }] },
+      });
+
+    const firstRequest = useProjectsStore.getState().fetchProjects('org-1');
+    await useProjectsStore.getState().fetchProjects('org-2');
+    resolveFirst({ data: { projects: [project] } });
+    await firstRequest;
+
+    expect(useProjectsStore.getState()).toMatchObject({
+      projectsOrganizationId: 'org-2',
+      projects: [{ id: 'p2', name: 'Orbit docs' }],
+      loading: false,
+    });
   });
 
   it('adapts releases and deployments for the current Console view', async () => {

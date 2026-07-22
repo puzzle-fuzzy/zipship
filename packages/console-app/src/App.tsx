@@ -9,6 +9,7 @@ import { Toaster } from './components/primitives/toaster';
 import { useTranslation } from './i18n';
 import { MaterialIcon } from './components/MaterialIcon';
 import './index.css';
+import { RuntimeProvider } from './runtime-provider';
 
 export interface AppProps {
   runtime: RuntimeAdapter;
@@ -16,7 +17,7 @@ export interface AppProps {
   accessBaseUrl: string;
 }
 
-export function App({ apiBaseUrl, accessBaseUrl }: AppProps) {
+export function App({ runtime, apiBaseUrl, accessBaseUrl }: AppProps) {
   const { status, initSession } = useAuthStore();
   const { t } = useTranslation();
 
@@ -38,7 +39,9 @@ export function App({ apiBaseUrl, accessBaseUrl }: AppProps) {
   return (
     <ErrorBoundary>
       <Suspense fallback={<AppLoadingState label={t('common.loading')} />}>
-        <RouterProvider router={router} />
+        <RuntimeProvider runtime={runtime}>
+          <RouterProvider router={router} />
+        </RuntimeProvider>
       </Suspense>
       <Toaster />
     </ErrorBoundary>

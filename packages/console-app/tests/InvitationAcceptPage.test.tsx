@@ -11,6 +11,7 @@ import { resetInvitationTokenForTests } from "../src/features/invitations/invita
 import { InvitationAcceptPage } from "../src/pages/InvitationAcceptPage";
 import { useAuthStore } from "../src/stores/authStore";
 import { useMembersStore } from "../src/stores/membersStore";
+import { useOrganizationsStore } from "../src/stores/organizationsStore";
 import { useSettingsStore } from "../src/stores/settingsStore";
 
 function renderPage() {
@@ -27,6 +28,7 @@ beforeEach(() => {
   useMembersStore.setState({
     acceptInvitation: vi.fn(),
   });
+  useOrganizationsStore.getState().resetOrganizations();
   resetInvitationTokenForTests();
   resetAuthContinuationForTests();
   window.history.replaceState({}, "", "/invitations/accept");
@@ -85,6 +87,8 @@ describe("InvitationAcceptPage", () => {
     );
     expect(screen.getByText("Invitation accepted")).toBeInTheDocument();
     expect(screen.getByText("You joined the organization as Developer.")).toBeInTheDocument();
+    expect(useOrganizationsStore.getState().selectedOrganizationId).toBe("org-1");
+    expect(localStorage.getItem("zipship_organization_id")).toBe("org-1");
     expect(getAuthContinuation()).toBeNull();
   });
 

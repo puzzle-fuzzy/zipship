@@ -44,10 +44,7 @@ bun run test:integration
 复制 `production.env.example` 到仓库外并替换占位符：
 
 ```bash
-docker compose \
-  --env-file /secure/path/zipship-production.env \
-  -f infra/docker/compose.production.yml \
-  config --quiet
+bun run production:check -- --env-file /secure/path/zipship-production.env
 
 docker compose \
   --env-file /secure/path/zipship-production.env \
@@ -62,6 +59,7 @@ docker compose \
 
 关键运维约束：
 
+- 部署前必须运行 `production:check`。它会先让 Docker Compose 解析最终配置，再拒绝未替换占位符、`latest`/无标签镜像、Host/Origin 错配、数据库凭据错配和受信代理网段错配；错误报告不会输出凭据值。
 - `ZIPSHIP_DATABASE_URL` 中的密码必须 URL 编码，并与 PostgreSQL 初始化变量一致。
 - 三个公共 Origin 必须是 HTTPS 且无结尾 `/`；Host 与 Origin 必须成对一致。推荐同一主域的三个子域，以满足 Strict Cookie 的 same-site 边界。
 - Edge 在启动时通过同源 `/runtime-config.js` 注入 API/Access Origin；修改公共 Origin 后只需重启 Edge，不需要重建镜像。

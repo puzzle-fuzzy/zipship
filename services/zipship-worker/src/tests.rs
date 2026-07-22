@@ -9,7 +9,8 @@ use std::{
 use tempfile::tempdir;
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 use zipship_artifact::{
-    ArtifactJobCompletion, ArtifactJobContext, ArtifactJobsRepositoryError, ReadyArtifact,
+    ArtifactJobCompletion, ArtifactJobContext, ArtifactJobsRepositoryError, ArtifactReportLevel,
+    ReadyArtifact,
 };
 use zipship_jobs::{JobLease, NewJob};
 
@@ -156,6 +157,10 @@ async fn processes_a_claimed_archive_into_an_immutable_blob() {
         .clone()
         .unwrap();
     assert_eq!(artifact.file_count, 2);
+    assert_eq!(artifact.detect_report.report_version, 1);
+    assert_eq!(artifact.detect_report.level, ArtifactReportLevel::Warning);
+    assert_eq!(artifact.detect_report.insights.assets.total_files, 2);
+    assert_eq!(artifact.detect_report.insights.seo.score, 0);
     assert_eq!(
         std::fs::read_to_string(
             fixture

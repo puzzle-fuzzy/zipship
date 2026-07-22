@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Outlet, Route, Routes } from 'react-router';
 import { ProjectListPage } from '../src/pages/ProjectListPage';
+import { useOrganizationsStore } from '../src/stores/organizationsStore';
 import { useProjectsStore } from '../src/stores/projectsStore';
 import { useSettingsStore } from '../src/stores/settingsStore';
 
@@ -21,7 +22,27 @@ const project = {
 
 beforeEach(() => {
   useSettingsStore.setState({ language: 'en' });
-  useProjectsStore.setState({ projects: [project], loading: false });
+  useOrganizationsStore.setState({
+    organizations: [
+      {
+        id: 'org-1',
+        name: 'Acme',
+        slug: 'acme',
+        role: 'owner',
+        createdAt: '2026-07-15T00:00:00Z',
+      },
+    ],
+    selectedOrganizationId: 'org-1',
+    loading: false,
+    initialized: true,
+    error: null,
+  });
+  useProjectsStore.setState({
+    projects: [project],
+    projectsOrganizationId: 'org-1',
+    projectsError: null,
+    loading: false,
+  });
 });
 
 describe('ProjectListPage', () => {
@@ -39,6 +60,48 @@ describe('ProjectListPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'New Project' }));
     expect(setShowCreate).toHaveBeenCalledWith(true);
+  });
+
+  it('disables project creation when the account has no organization access', () => {
+    const setShowCreate = vi.fn();
+    useOrganizationsStore.setState({
+      organizations: [],
+      selectedOrganizationId: null,
+      loading: false,
+      initialized: true,
+      error: null,
+    });
+    useProjectsStore.setState({
+      projects: [],
+      projectsOrganizationId: null,
+      projectsError: null,
+      loading: false,
+    });
+
+    renderPage(setShowCreate);
+
+    expect(screen.getByRole('heading', { name: 'No organization access' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Project' })).toBeDisabled();
+    expect(screen.queryByText('No projects yet')).not.toBeInTheDocument();
+  });
+
+  it('surfaces organization failures and retries the organization request', () => {
+    const setShowCreate = vi.fn();
+    const initializeOrganizations = vi.fn().mockResolvedValue(undefined);
+    useOrganizationsStore.setState({
+      organizations: [],
+      selectedOrganizationId: null,
+      loading: false,
+      initialized: true,
+      error: 'offline',
+      initializeOrganizations,
+    });
+
+    renderPage(setShowCreate);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+
+    expect(screen.getByRole('heading', { name: 'Could not load organizations' })).toBeInTheDocument();
+    expect(initializeOrganizations).toHaveBeenCalledOnce();
   });
 });
 

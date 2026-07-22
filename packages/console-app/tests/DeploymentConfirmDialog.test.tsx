@@ -139,6 +139,49 @@ describe("DeploymentConfirmDialog", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it("treats a missing quality report as unverified and requires acknowledgement", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+
+    render(
+      <DeploymentConfirmDialog
+        intent={{
+          action: "publish",
+          release: makeRelease({
+            detectResult: {
+              entryPoint: "index.html",
+              manifestVersion: 1,
+            },
+          }),
+        }}
+        activeRelease={null}
+        loading={false}
+        message=""
+        onMessageChange={() => {}}
+        onCancel={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+
+    expect(
+      screen.getByText("Automated quality checks did not run for this release. Review the preview before publishing."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No blocking issues were detected for this release.")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Not evaluated")).toHaveLength(3);
+
+    const confirmButtons = screen.getAllByRole("button", { name: "Publish" });
+    const confirmButton = confirmButtons[confirmButtons.length - 1]!;
+    expect(confirmButton).toBeDisabled();
+
+    await user.click(screen.getByRole("checkbox", {
+      name: "I reviewed the preview and understand that ZipShip has not verified this release",
+    }));
+    expect(confirmButton).toBeEnabled();
+
+    await user.click(confirmButton);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it("does not require failed-check acceptance when rolling back", async () => {
     const user = userEvent.setup();
     const onConfirm = vi.fn();

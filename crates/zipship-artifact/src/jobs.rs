@@ -8,7 +8,7 @@ use uuid::Uuid;
 use zipship_domain::ArtifactDigest;
 use zipship_jobs::WorkerId;
 
-use crate::ArtifactManifest;
+use crate::{ArtifactDetectReport, ArtifactManifest};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArtifactJobContext {
@@ -23,6 +23,7 @@ pub struct ReadyArtifact {
     pub digest: ArtifactDigest,
     pub storage_key: String,
     pub manifest: ArtifactManifest,
+    pub detect_report: ArtifactDetectReport,
     pub file_count: u32,
     pub total_size: u64,
 }

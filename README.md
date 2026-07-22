@@ -23,6 +23,7 @@ services/zipship-worker    Artifact 与邮件后台 Worker
 - Artifact 存储只保存 staging 与内容寻址的不可变文件；发布和回滚不写 `current` 软链接。
 - `zipshipd` 分别监听 Control Plane 与 Access Plane；正式访问每次依据数据库活动指针解析 Artifact。
 - Worker 使用数据库 lease、heartbeat、重试和终态收敛处理 ZIP 与可靠邮件 Outbox。
+- Worker 在安全解压后执行有读取上限的静态 Artifact 检测，记录文件分布、HTML/SEO 元信息、路径兼容性与敏感文件信号；当前报告不包含浏览器运行时验证，Console 会明确显示运行检测尚未启用。
 - Console 只使用生成 Client、HttpOnly Cookie Session、CSRF 和受 scope 限制的 API Token。
 
 ## 本地启动
@@ -44,7 +45,7 @@ bun run dev
 - Web Console：`http://127.0.0.1:4015`
 - Artifact/Mail Worker
 
-也可以分别运行 `bun run dev:api`、`bun run dev:worker` 和 `bun run dev:web`。桌面开发使用 `bun run desktop:dev`。
+也可以分别运行 `bun run dev:api`、`bun run dev:worker` 和 `bun run dev:web`。原生薄壳使用 `bun run desktop:dev` 启动；`bun run desktop:build` 会生成不带安装器的 Tauri 可执行文件。Desktop 与 Web 共用 Console，外部预览通过受限的系统浏览器 opener 打开。
 
 健康与契约端点：
 
@@ -87,10 +88,7 @@ bun run rust:test
 先复制 [production.env.example](infra/docker/production.env.example) 到仓库外的受保护路径并替换所有占位符。Console/API/Access 应使用同一主域下的三个 HTTPS 子域；Origin 在 Console 构建时固化，改变域名需要重建 Edge 镜像。
 
 ```bash
-docker compose \
-  --env-file /secure/path/zipship-production.env \
-  -f infra/docker/compose.production.yml \
-  config --quiet
+bun run production:check -- --env-file /secure/path/zipship-production.env
 
 docker compose \
   --env-file /secure/path/zipship-production.env \
