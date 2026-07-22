@@ -18,18 +18,23 @@ type DeploymentDto = components["schemas"]["DeploymentResponse"];
 
 interface ProjectsState {
   projects: Project[];
+  projectsOrganizationId: string | null;
+  projectsError: string | null;
   releases: Record<string, Release[]>;
   releaseErrors: Record<string, string | null>;
   deployments: Record<string, Deployment[]>;
   deploymentErrors: Record<string, string | null>;
   loading: boolean;
 
-  fetchProjects: () => Promise<void>;
-  createProject: (input: {
-    name: string;
-    slug: string;
-    description: string;
-  }) => Promise<void>;
+  fetchProjects: (organizationId: string | null) => Promise<void>;
+  createProject: (
+    organizationId: string,
+    input: {
+      name: string;
+      slug: string;
+      description: string;
+    },
+  ) => Promise<void>;
   fetchReleases: (projectId: string) => Promise<void>;
   fetchDeployments: (projectId: string) => Promise<void>;
   publishRelease: (
@@ -53,6 +58,8 @@ interface ProjectsState {
     },
   ) => Promise<void>;
 }
+
+let projectsRequestSequence = 0;
 
 export const useProjectsStore = create<ProjectsState>((set) => {
   const projectAccessErrorCodes = {
@@ -115,24 +122,35 @@ export const useProjectsStore = create<ProjectsState>((set) => {
 
   return {
     projects: [],
+    projectsOrganizationId: null,
+    projectsError: null,
     releases: {},
     releaseErrors: {},
     deployments: {},
     deploymentErrors: {},
     loading: true,
 
-    fetchProjects: async () => {
-      set({ loading: true });
+    fetchProjects: async (organizationId) => {
+      const requestSequence = ++projectsRequestSequence;
+      if (!organizationId) {
+        set({
+          projects: [],
+          projectsOrganizationId: null,
+          projectsError: null,
+          loading: false,
+        });
+        return;
+      }
+      set({
+        projects: [],
+        projectsOrganizationId: organizationId,
+        projectsError: null,
+        loading: true,
+      });
       try {
-        const organizations = await getApi().GET("/_api/organizations");
-        const organization = organizations.data?.organizations[0];
-        if (!organization) {
-          set({ projects: [], loading: false });
-          return;
-        }
         const projects = await getApi().GET(
           "/_api/organizations/{organization_id}/projects",
-          { params: { path: { organization_id: organization.id } } },
+          { params: { path: { organization_id: organizationId } } },
         );
         if (projects.error || !projects.data) {
           throw mapApiError(projects, {
@@ -140,20 +158,26 @@ export const useProjectsStore = create<ProjectsState>((set) => {
             fallback: "Failed to load projects",
           });
         }
+        if (requestSequence !== projectsRequestSequence) return;
         set({
           projects: projects.data.projects.map(projectView),
           loading: false,
         });
       } catch (error) {
+        if (requestSequence !== projectsRequestSequence) return;
         console.error("Failed to fetch projects", error);
-        set({ loading: false });
+        set({
+          projects: [],
+          loading: false,
+          projectsError:
+            error instanceof ApiClientError
+              ? error.message
+              : "Failed to load projects",
+        });
       }
     },
 
-    createProject: async (input) => {
-      const organizations = await getApi().GET("/_api/organizations");
-      const organizationId = organizations.data?.organizations[0]?.id;
-      if (!organizationId) throw new Error("No organization found");
+    createProject: async (organizationId, input) => {
       const result = await getApi().POST(
         "/_api/organizations/{organization_id}/projects",
         {

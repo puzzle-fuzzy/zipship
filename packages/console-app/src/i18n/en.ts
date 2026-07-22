@@ -13,6 +13,16 @@ export const en = {
     more: 'More',
     noProjects: 'No projects',
   },
+  organizations: {
+    label: 'Organization',
+    loading: 'Loading organizations...',
+    none: 'No organizations',
+    required: 'Select an organization before creating a project.',
+    loadFailedTitle: 'Could not load organizations',
+    loadFailedDesc: 'Your organization access could not be verified. Retry before viewing or creating projects.',
+    noAccessTitle: 'No organization access',
+    noAccessDesc: 'Ask an administrator for an invitation before viewing or creating projects.',
+  },
   projects: {
     title: 'Projects',
     subtitle: 'Track every static site from upload to preview to production.',
@@ -37,6 +47,8 @@ export const en = {
     creating: 'Creating...',
     slugExists: 'A project with this slug already exists',
     createFailed: 'Failed to create project',
+    loadFailedTitle: 'Could not load projects',
+    loadFailedDesc: 'Projects for this organization could not be loaded. Retry before making changes.',
   },
   versions: {
     title: 'Versions',

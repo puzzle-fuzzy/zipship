@@ -13,6 +13,16 @@ export const zh = {
     more: '更多',
     noProjects: '暂无项目',
   },
+  organizations: {
+    label: '组织',
+    loading: '正在加载组织...',
+    none: '暂无组织',
+    required: '请先选择一个组织，再创建项目。',
+    loadFailedTitle: '无法加载组织',
+    loadFailedDesc: '当前账号的组织权限尚未验证。请重试后再查看或创建项目。',
+    noAccessTitle: '暂无组织权限',
+    noAccessDesc: '请联系管理员发送邀请，再查看或创建项目。',
+  },
   projects: {
     title: '项目',
     subtitle: '从上传、预览到正式发布，集中管理每个静态站点。',
@@ -37,6 +47,8 @@ export const zh = {
     creating: '创建中...',
     slugExists: '此标识已被使用',
     createFailed: '创建失败',
+    loadFailedTitle: '无法加载项目',
+    loadFailedDesc: '无法加载当前组织的项目。请重试后再进行操作。',
   },
   versions: {
     title: '版本',

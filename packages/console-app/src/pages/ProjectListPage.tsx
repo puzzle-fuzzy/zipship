@@ -3,15 +3,38 @@ import { MaterialIcon } from '../components/MaterialIcon';
 import { Button } from '../components/primitives/button';
 import { Skeleton } from '../components/primitives/skeleton';
 import { useTranslation } from '../i18n';
-import { useProjectsStore } from '../stores';
+import { useOrganizationsStore, useProjectsStore } from '../stores';
 import type { Project } from '../stores/projectsStore';
 
 export function ProjectListPage() {
   const { t } = useTranslation();
-  const { projects, loading, fetchProjects } = useProjectsStore();
+  const { projects, projectsOrganizationId, projectsError, loading, fetchProjects } = useProjectsStore();
+  const {
+    selectedOrganizationId,
+    loading: organizationsLoading,
+    initialized: organizationsInitialized,
+    error: organizationsError,
+    initializeOrganizations,
+  } = useOrganizationsStore();
   const navigate = useNavigate();
   const { setShowCreate } = useOutletContext<{ setShowCreate: (value: boolean) => void }>();
-  const liveProjects = projects.filter((project) => project.currentReleaseId).length;
+  const contextReady =
+    organizationsInitialized &&
+    !organizationsLoading &&
+    !organizationsError &&
+    Boolean(selectedOrganizationId);
+  const scopedProjects =
+    selectedOrganizationId === projectsOrganizationId ? projects : [];
+  const scopedLiveProjects = scopedProjects.filter((project) => project.currentReleaseId).length;
+  const refreshing = organizationsLoading || loading;
+
+  const handleRefresh = () => {
+    if (organizationsError || !organizationsInitialized || !selectedOrganizationId) {
+      void initializeOrganizations();
+      return;
+    }
+    void fetchProjects(selectedOrganizationId);
+  };
 
   return (
     <section className="py-8 sm:py-12">
@@ -21,9 +44,9 @@ export function ProjectListPage() {
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground text-pretty">
             {t('projects.subtitle')}
           </p>
-          {!loading || projects.length > 0 ? (
+          {contextReady && (!loading || scopedProjects.length > 0) ? (
             <p className="mt-3 text-xs text-muted-foreground">
-              {t('projects.summary', { count: projects.length, live: liveProjects })}
+              {t('projects.summary', { count: scopedProjects.length, live: scopedLiveProjects })}
             </p>
           ) : null}
         </div>
@@ -35,12 +58,16 @@ export function ProjectListPage() {
             variant="outline"
             size="icon-lg"
             className="size-11"
-            disabled={loading}
-            onClick={() => void fetchProjects()}
+            disabled={refreshing}
+            onClick={handleRefresh}
           >
-            <MaterialIcon name="refresh" className={loading ? 'animate-spin' : undefined} />
+            <MaterialIcon name="refresh" className={refreshing ? 'animate-spin' : undefined} />
           </Button>
-          <Button className="h-11 gap-2 px-5" onClick={() => setShowCreate(true)}>
+          <Button
+            className="h-11 gap-2 px-5"
+            disabled={!contextReady}
+            onClick={() => setShowCreate(true)}
+          >
             <MaterialIcon name="add" className="text-[19px]" />
             {t('app.newProject')}
           </Button>
@@ -48,20 +75,42 @@ export function ProjectListPage() {
       </div>
 
       <div className="mt-8">
-        {loading && projects.length === 0 ? (
+        {!organizationsInitialized || organizationsLoading ? (
           <ProjectListSkeleton label={t('common.loading')} />
-        ) : projects.length === 0 ? (
+        ) : organizationsError ? (
+          <ProjectContextState
+            icon="error"
+            title={t('organizations.loadFailedTitle')}
+            description={t('organizations.loadFailedDesc')}
+            onRetry={() => void initializeOrganizations()}
+          />
+        ) : !selectedOrganizationId ? (
+          <ProjectContextState
+            icon="group_off"
+            title={t('organizations.noAccessTitle')}
+            description={t('organizations.noAccessDesc')}
+          />
+        ) : projectsError ? (
+          <ProjectContextState
+            icon="error"
+            title={t('projects.loadFailedTitle')}
+            description={t('projects.loadFailedDesc')}
+            onRetry={() => void fetchProjects(selectedOrganizationId)}
+          />
+        ) : loading && scopedProjects.length === 0 ? (
+          <ProjectListSkeleton label={t('common.loading')} />
+        ) : scopedProjects.length === 0 ? (
           <EmptyProjects onCreate={() => setShowCreate(true)} />
         ) : (
           <div className="overflow-hidden rounded-xl border bg-card" aria-busy={loading}>
             <div className="flex items-center justify-between gap-4 border-b px-4 py-3 sm:px-5">
               <h2 className="text-sm font-medium">{t('projects.allProjects')}</h2>
               <span className="text-xs text-muted-foreground">
-                {t('projects.projectCount', { count: projects.length })}
+                {t('projects.projectCount', { count: scopedProjects.length })}
               </span>
             </div>
             <ul aria-label={t('projects.allProjects')}>
-              {projects.map((project) => (
+              {scopedProjects.map((project) => (
                 <li key={project.id} className="border-b last:border-b-0">
                   <ProjectRow
                     project={project}
@@ -74,6 +123,34 @@ export function ProjectListPage() {
         )}
       </div>
     </section>
+  );
+}
+
+function ProjectContextState({
+  icon,
+  title,
+  description,
+  onRetry,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  onRetry?: () => void;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex min-h-80 flex-col items-center justify-center rounded-xl border border-dashed bg-card/40 px-6 py-12 text-center">
+      <MaterialIcon name={icon} className="text-[32px] text-muted-foreground" />
+      <h2 className="mt-5 text-base font-medium">{title}</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">{description}</p>
+      {onRetry ? (
+        <Button className="mt-6 h-11 gap-2 px-5" variant="outline" onClick={onRetry}>
+          <MaterialIcon name="refresh" className="text-[19px]" />
+          {t('common.retry')}
+        </Button>
+      ) : null}
+    </div>
   );
 }
 

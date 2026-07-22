@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet } from 'react-router';
+import { Outlet, useNavigate } from 'react-router';
 import { toast } from '../../lib/toast';
 import { Button } from '../../components/primitives/button';
 import {
@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '../../components/primitives/dialog';
 import { useTranslation } from '../../i18n';
-import { useAuthStore, useProjectsStore } from '../../stores';
+import { useAuthStore, useOrganizationsStore, useProjectsStore } from '../../stores';
 import { CreateProjectDialog } from '../projects/CreateProjectDialog';
 import { ProfileEditDialog } from '../settings/ProfileEditDialog';
 import { SettingsDialog } from '../settings/SettingsDialog';
@@ -19,20 +19,37 @@ import { AppHeader } from './AppHeader';
 
 export function AppLayout() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { user, logout } = useAuthStore();
   const { fetchProjects, createProject } = useProjectsStore();
+  const {
+    organizations,
+    selectedOrganizationId,
+    loading: organizationsLoading,
+    initialized: organizationsInitialized,
+    initializeOrganizations,
+    selectOrganization,
+    resetOrganizations,
+  } = useOrganizationsStore();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   useEffect(() => {
-    void fetchProjects();
-  }, [fetchProjects]);
+    void initializeOrganizations();
+  }, [initializeOrganizations]);
+
+  useEffect(() => {
+    if (!organizationsInitialized) return;
+    void fetchProjects(selectedOrganizationId);
+  }, [fetchProjects, organizationsInitialized, selectedOrganizationId]);
 
   const handleLogout = async () => {
     try {
       await logout();
+      resetOrganizations();
+      await fetchProjects(null);
       setShowLogoutConfirm(false);
       toast.info(t('app.signOut'));
     } catch (error) {
@@ -45,6 +62,13 @@ export function AppLayout() {
       <div className="min-h-dvh bg-background">
         <AppHeader
           user={user!}
+          organizations={organizations}
+          selectedOrganizationId={selectedOrganizationId}
+          organizationsLoading={organizationsLoading}
+          onOrganizationChange={(organizationId) => {
+            if (!selectOrganization(organizationId)) return;
+            navigate('/app/projects');
+          }}
           onLogout={() => setShowLogoutConfirm(true)}
           onOpenSettings={() => setShowSettings(true)}
           onOpenProfile={() => setShowProfile(true)}
@@ -59,12 +83,15 @@ export function AppLayout() {
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onCreated={async ({ name, slug, description }) => {
-          await createProject({
+          if (!selectedOrganizationId) {
+            throw new Error(t('organizations.required'));
+          }
+          await createProject(selectedOrganizationId, {
             name,
             slug,
             description,
           });
-          await fetchProjects();
+          await fetchProjects(selectedOrganizationId);
           setShowCreate(false);
         }}
       />

@@ -12,7 +12,7 @@ import {
   clearInvitationToken,
   useInvitationToken,
 } from '../features/invitations/invitationToken';
-import { useAuthStore, useMembersStore } from '../stores';
+import { useAuthStore, useMembersStore, useOrganizationsStore } from '../stores';
 import type { AcceptedInvitation } from '../stores/membersStore';
 
 export function InvitationAcceptPage() {
@@ -21,6 +21,7 @@ export function InvitationAcceptPage() {
   const logout = useAuthStore((state) => state.logout);
   const initSession = useAuthStore((state) => state.initSession);
   const acceptInvitation = useMembersStore((state) => state.acceptInvitation);
+  const preferOrganization = useOrganizationsStore((state) => state.preferOrganization);
   const [accepted, setAccepted] = useState<AcceptedInvitation | null>(null);
   const [problem, setProblem] = useState<InvitationProblem | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +42,7 @@ export function InvitationAcceptPage() {
     setProblem(null);
     try {
       const result = await acceptInvitation(token);
+      preferOrganization(result.organizationId);
       clearInvitationToken();
       clearAuthContinuation();
       setAccepted(result);
