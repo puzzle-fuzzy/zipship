@@ -14,7 +14,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+
   publish:
+    needs: verify
     name: Publish ${{ matrix.name }} image
     runs-on: ubuntu-latest
     timeout-minutes: 90
