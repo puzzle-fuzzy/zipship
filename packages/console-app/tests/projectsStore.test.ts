@@ -89,6 +89,35 @@ describe('projectsStore', () => {
     });
   });
 
+  it('resolves an accessible project for a direct detail link without mutating the scoped list', async () => {
+    api.verb('get').mockResolvedValueOnce({ data: { project } });
+
+    const resolved = await useProjectsStore.getState().resolveProject('p1');
+
+    expect(api.verb('get')).toHaveBeenCalledWith('/_api/projects/{project_id}', {
+      params: { path: { project_id: 'p1' } },
+    });
+    expect(resolved).toMatchObject({ id: 'p1', organizationId: 'org-1' });
+    expect(useProjectsStore.getState().projects).toEqual([]);
+  });
+
+  it('treats an inaccessible or invalid direct project link as not found', async () => {
+    api.verb('get')
+      .mockResolvedValueOnce({ error: { code: 'PROJECT_NOT_FOUND' } })
+      .mockResolvedValueOnce({ error: { code: 'INVALID_PATH_PARAMETER' } });
+
+    await expect(useProjectsStore.getState().resolveProject('missing')).resolves.toBeNull();
+    await expect(useProjectsStore.getState().resolveProject('invalid')).resolves.toBeNull();
+  });
+
+  it('surfaces temporary direct project lookup failures', async () => {
+    api.verb('get').mockResolvedValueOnce({ error: { code: 'SERVICE_UNAVAILABLE' } });
+
+    await expect(useProjectsStore.getState().resolveProject('p1')).rejects.toThrow(
+      'Failed to load project',
+    );
+  });
+
   it('clears projects without making a request when no organization is selected', async () => {
     useProjectsStore.setState({ projects: [project as never] });
 

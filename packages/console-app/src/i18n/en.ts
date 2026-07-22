@@ -49,6 +49,11 @@ export const en = {
     createFailed: 'Failed to create project',
     loadFailedTitle: 'Could not load projects',
     loadFailedDesc: 'Projects for this organization could not be loaded. Retry before making changes.',
+    detailNotFoundTitle: 'Project not found',
+    detailNotFoundDesc: 'This project does not exist or your account no longer has access to it.',
+    detailLoadFailedTitle: 'Could not load project',
+    detailLoadFailedDesc: 'The project context could not be verified. Retry or return to your project list.',
+    backToProjects: 'Back to projects',
   },
   versions: {
     title: 'Versions',

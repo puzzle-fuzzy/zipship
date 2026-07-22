@@ -49,6 +49,11 @@ export const zh = {
     createFailed: '创建失败',
     loadFailedTitle: '无法加载项目',
     loadFailedDesc: '无法加载当前组织的项目。请重试后再进行操作。',
+    detailNotFoundTitle: '找不到项目',
+    detailNotFoundDesc: '此项目不存在，或当前账号已无权访问。',
+    detailLoadFailedTitle: '无法加载项目',
+    detailLoadFailedDesc: '无法验证项目上下文。请重试，或返回项目列表。',
+    backToProjects: '返回项目列表',
   },
   versions: {
     title: '版本',

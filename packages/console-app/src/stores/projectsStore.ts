@@ -1,7 +1,12 @@
 import type { ApiClient, components } from "@zipship/api-client";
 import { create } from "zustand";
 import { getApi, getCsrfHeaders } from "../api/client";
-import { ApiClientError, API_ERROR_MESSAGES, mapApiError } from "../api/errors";
+import {
+  ApiClientError,
+  API_ERROR_MESSAGES,
+  getApiErrorCode,
+  mapApiError,
+} from "../api/errors";
 import {
   deploymentView,
   projectView,
@@ -27,6 +32,7 @@ interface ProjectsState {
   loading: boolean;
 
   fetchProjects: (organizationId: string | null) => Promise<void>;
+  resolveProject: (projectId: string) => Promise<Project | null>;
   createProject: (
     organizationId: string,
     input: {
@@ -175,6 +181,23 @@ export const useProjectsStore = create<ProjectsState>((set) => {
               : "Failed to load projects",
         });
       }
+    },
+
+    resolveProject: async (projectId) => {
+      const result = await getApi().GET("/_api/projects/{project_id}", {
+        params: { path: { project_id: projectId } },
+      });
+      if (result.error || !result.data) {
+        const code = getApiErrorCode(result);
+        if (code === "PROJECT_NOT_FOUND" || code === "INVALID_PATH_PARAMETER") {
+          return null;
+        }
+        throw mapApiError(result, {
+          codes: projectAccessErrorCodes,
+          fallback: "Failed to load project",
+        });
+      }
+      return projectView(result.data.project);
     },
 
     createProject: async (organizationId, input) => {
