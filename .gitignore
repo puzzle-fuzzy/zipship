@@ -12,6 +12,7 @@ coverage
 .DS_Store
 .codegraph/
 .superpowers/
+/.worktrees/
 packages/*/tests/.tmp-*/
 /storage
 /tmp
