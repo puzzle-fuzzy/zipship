@@ -70,6 +70,15 @@ docker compose \
 - Artifact、PostgreSQL 和 Caddy 数据卷必须纳入独立备份/恢复方案；Compose 本身不是备份。
 - 生产不包含 Mailpit，也不暴露 PostgreSQL、5006 或 5007 宿主端口。
 
+### 发行证据等级
+
+1. `bun run release:check` 只证明工作流结构仍有发布门禁。
+2. 本地 lint、类型、测试和构建只证明非 Docker 检查通过。
+3. `bun run test:integration` 与 `bun run smoke:production` 成功，才证明隔离数据库、SMTP、Worker、最终镜像和 HTTPS 发布链在该环境通过。
+4. Pull Request 或标签对应提交的远端 `Verify` 工作流成功，才证明进入发行链的确切提交通过统一门禁。
+
+只有第 3、4 级同时成立时，才可以把当前提交记为生产发行验证通过。Docker 或 GitHub 不可用时必须记录为未验证，不能用较低等级替代。
+
 ## 发行冒烟
 
 ```bash

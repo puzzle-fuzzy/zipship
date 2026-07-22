@@ -84,7 +84,9 @@ bun run rust:test
 - PostgreSQL、Artifact 与 Caddy 证书状态使用独立持久卷；后端网络为 internal，Worker 单独获得 SMTP 出网能力。
 - 生产模式强制 HTTPS Console URL、Secure Cookie、显式 CORS Origin、加密 Outbox Key 和安全 SMTP。
 
-先复制 [production.env.example](infra/docker/production.env.example) 到仓库外的受保护路径并替换所有占位符。Console/API/Access 应使用同一主域下的三个 HTTPS 子域；Origin 在 Console 构建时固化，改变域名需要重建 Edge 镜像。
+先复制 [production.env.example](infra/docker/production.env.example) 到仓库外的受保护路径并替换所有占位符。Console/API/Access 应使用同一主域下的三个 HTTPS 子域。Edge 在启动时通过同源 `/runtime-config.js` 注入 API/Access Origin；修改公共 Origin 后只需重启 Edge，不需要重建镜像。
+
+生产 Compose 只消费 `ZIPSHIP_SERVER_IMAGE` 与 `ZIPSHIP_EDGE_IMAGE` 指定的不可变发行镜像，不在服务器上从源码构建：
 
 ```bash
 docker compose \
@@ -95,7 +97,7 @@ docker compose \
 docker compose \
   --env-file /secure/path/zipship-production.env \
   -f infra/docker/compose.production.yml \
-  up -d --build --wait
+  up -d --wait
 ```
 
 CI 和本机发行验收使用：
