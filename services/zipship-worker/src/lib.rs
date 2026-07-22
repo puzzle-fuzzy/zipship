@@ -8,8 +8,9 @@ use tokio::task::JoinError;
 use tracing::warn;
 use uuid::Uuid;
 use zipship_artifact::{
-    ArtifactError, ArtifactFailureOutcome, ArtifactJobsRepository, ArtifactJobsRepositoryError,
-    ArtifactLimits, ExtractedArtifact, ReadyArtifact, extract_artifact,
+    ArtifactDetectReport, ArtifactError, ArtifactFailureOutcome, ArtifactJobsRepository,
+    ArtifactJobsRepositoryError, ArtifactLimits, ExtractedArtifact, ReadyArtifact, detect_artifact,
+    extract_artifact,
 };
 use zipship_domain::{JobKind, JobStatus};
 use zipship_jobs::{
@@ -125,9 +126,17 @@ impl ArtifactWorker {
             .artifact_work_path(context.upload_id, job.id, job.attempts);
         let limits = self.limits;
         let extraction = tokio::task::spawn_blocking(move || {
-            extract_artifact(&archive_path, &work_path, limits)
+            let extracted = extract_artifact(&archive_path, &work_path, limits)?;
+            let detect_report = match detect_artifact(&extracted.root, &extracted.manifest) {
+                Ok(report) => report,
+                Err(error) => {
+                    cleanup_work_directory(&extracted);
+                    return Err(error);
+                }
+            };
+            Ok((extracted, detect_report))
         });
-        let extracted = match self
+        let (extracted, detect_report) = match self
             .await_extraction_with_heartbeat(job.id, extraction)
             .await
         {
@@ -185,6 +194,7 @@ impl ArtifactWorker {
             digest: extracted.digest,
             storage_key,
             manifest: extracted.manifest,
+            detect_report,
             file_count: extracted.file_count,
             total_size: extracted.total_size,
         };
@@ -235,8 +245,10 @@ impl ArtifactWorker {
     async fn await_extraction_with_heartbeat(
         &self,
         job_id: Uuid,
-        mut extraction: tokio::task::JoinHandle<Result<ExtractedArtifact, ArtifactError>>,
-    ) -> Result<ExtractedArtifact, ProcessingError> {
+        mut extraction: tokio::task::JoinHandle<
+            Result<(ExtractedArtifact, ArtifactDetectReport), ArtifactError>,
+        >,
+    ) -> Result<(ExtractedArtifact, ArtifactDetectReport), ProcessingError> {
         let heartbeat_millis = (self.lease.duration().as_millis() / 3).max(100);
         let heartbeat_interval = Duration::from_millis(
             u64::try_from(heartbeat_millis).expect("validated lease interval fits in u64"),

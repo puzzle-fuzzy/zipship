@@ -38,6 +38,7 @@ pub(super) struct ExistingArtifactRow {
     pub(super) file_count: i32,
     pub(super) total_size: i64,
     pub(super) manifest: Value,
+    pub(super) detect_report: Value,
 }
 
 #[derive(Debug, FromRow)]

@@ -9,6 +9,7 @@ use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
 use super::*;
 
+mod detection;
 mod extraction;
 mod format_security;
 mod limits;

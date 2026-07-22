@@ -6,6 +6,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use zipship_artifact::{
     ArtifactFailureOutcome, ArtifactJobsRepository, ArtifactManifest, ManifestEntry, ReadyArtifact,
+    detect_artifact,
 };
 use zipship_auth::{AuthService, RegisterCommand};
 use zipship_domain::{ArtifactDigest, JobKind};
@@ -59,6 +60,24 @@ async fn converges_success_reuse_retry_and_terminal_failure_atomically() {
         completed.artifact_id,
     )
     .await;
+    let stored_report: serde_json::Value =
+        sqlx::query_scalar("SELECT detect_report FROM artifacts WHERE id = $1")
+            .bind(completed.artifact_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        stored_report,
+        serde_json::to_value(&artifact.detect_report).unwrap()
+    );
+
+    sqlx::query(
+        "UPDATE artifacts SET detect_report = jsonb_build_object('entryPoint', 'index.html', 'manifestVersion', 1) WHERE id = $1",
+    )
+    .bind(completed.artifact_id)
+    .execute(&pool)
+    .await
+    .unwrap();
 
     let second = create_processing_upload(&uploads, owner_id, project_id).await;
     let second_job = jobs
@@ -83,6 +102,14 @@ async fn converges_success_reuse_retry_and_terminal_failure_atomically() {
         reused.artifact_id,
     )
     .await;
+    let upgraded_report: serde_json::Value =
+        sqlx::query_scalar("SELECT detect_report FROM artifacts WHERE id = $1")
+            .bind(reused.artifact_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(upgraded_report["reportVersion"], 1);
+    assert_eq!(upgraded_report, stored_report);
     let artifact_count: i64 = sqlx::query_scalar("SELECT count(*) FROM artifacts")
         .fetch_one(&pool)
         .await
@@ -250,17 +277,22 @@ async fn create_processing_upload(
 
 fn ready_artifact() -> ReadyArtifact {
     let digest = ArtifactDigest::parse("01".repeat(32)).unwrap();
+    let manifest = ArtifactManifest {
+        version: 1,
+        files: vec![ManifestEntry {
+            path: "index.html".to_owned(),
+            size: 13,
+            sha256: "ab".repeat(32),
+        }],
+    };
+    let root = tempfile::tempdir().unwrap();
+    std::fs::write(root.path().join("index.html"), "<main></main>").unwrap();
+    let detect_report = detect_artifact(root.path(), &manifest).unwrap();
     ReadyArtifact {
         storage_key: format!("blobs/sha256/01/01/{}", digest.as_str(),),
         digest,
-        manifest: ArtifactManifest {
-            version: 1,
-            files: vec![ManifestEntry {
-                path: "index.html".to_owned(),
-                size: 13,
-                sha256: "ab".repeat(32),
-            }],
-        },
+        manifest,
+        detect_report,
         file_count: 1,
         total_size: 13,
     }

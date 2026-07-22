@@ -245,6 +245,27 @@ async fn processes_and_serves_the_real_http_upload_pipeline() {
         releases["releases"][0]["artifact"]["sha256"],
         digest.as_str()
     );
+    assert_eq!(
+        releases["releases"][0]["artifact"]["detectReport"]["reportVersion"],
+        1
+    );
+    assert_eq!(
+        releases["releases"][0]["artifact"]["detectReport"]["level"],
+        "warning"
+    );
+    assert_eq!(
+        releases["releases"][0]["artifact"]["detectReport"]["insights"]["assets"]["totalFiles"],
+        2
+    );
+    assert_eq!(
+        releases["releases"][0]["artifact"]["detectReport"]["insights"]["seo"]["score"],
+        0
+    );
+    assert!(
+        releases["releases"][0]["artifact"]["detectReport"]
+            .get("runtime")
+            .is_none()
+    );
     assert!(releases["releases"][0].get("storageKey").is_none());
 
     let access = zipship_access::build_router(PreviewService::new(
