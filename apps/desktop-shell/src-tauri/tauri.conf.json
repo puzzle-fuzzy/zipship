@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "desktop-shell",
+  "productName": "ZipShip",
   "version": "0.1.0",
-  "identifier": "com.tauri-app.desktop-shell",
+  "identifier": "com.zipship.desktop",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -12,13 +12,16 @@
   "app": {
     "windows": [
       {
-        "title": "desktop-shell",
-        "width": 800,
-        "height": 600
+        "title": "ZipShip",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "center": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; base-uri 'self'; connect-src 'self' ipc: http://ipc.localhost http: https:; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; frame-src http: https:; img-src 'self' asset: http://asset.localhost blob: data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {

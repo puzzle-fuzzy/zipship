@@ -1,8 +1,9 @@
 import { ConsoleApp } from '@zipship/console-app';
 import { createDesktopRuntime } from '@zipship/runtime';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { createRoot } from 'react-dom/client';
 
-import './main.css'
+import './main.css';
 
 const root = document.getElementById('root');
 
@@ -15,7 +16,7 @@ const accessBaseUrl = import.meta.env.VITE_ZIPSHIP_ACCESS_BASE_URL ?? 'http://lo
 
 createRoot(root).render(
   <ConsoleApp
-    runtime={createDesktopRuntime()}
+    runtime={createDesktopRuntime((url) => openUrl(url))}
     apiBaseUrl={apiBaseUrl}
     accessBaseUrl={accessBaseUrl}
   />,

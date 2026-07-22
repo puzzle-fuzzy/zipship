@@ -5,11 +5,17 @@ import { ProjectProductionPanel } from "../src/features/project-detail/ProjectPr
 import { buildProductionUrls } from "../src/features/project-detail/projectProductionUrls";
 import type { Release } from "../src/stores/projectsStore";
 import { useSettingsStore } from "../src/stores/settingsStore";
+import { RuntimeProvider } from "../src/runtime-provider";
+import type { RuntimeAdapter } from "@zipship/runtime";
 
 let writeTextMock: ReturnType<typeof vi.fn>;
+let openExternalMock: ReturnType<typeof vi.fn>;
+let runtime: RuntimeAdapter;
 
 beforeEach(() => {
   useSettingsStore.setState({ language: "en" });
+  openExternalMock = vi.fn().mockResolvedValue(undefined);
+  runtime = { kind: "web", openExternal: openExternalMock };
 });
 
 function makeRelease(overrides: Partial<Release> = {}): Release {
@@ -43,7 +49,7 @@ describe("ProjectProductionPanel", () => {
       },
     });
 
-    render(
+    renderPanel(
       <ProjectProductionPanel
         projectSlug="demo"
         activeRelease={makeRelease()}
@@ -59,10 +65,15 @@ describe("ProjectProductionPanel", () => {
 
     await user.click(screen.getByRole("button", { name: "Copy live production URL" }));
     await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith("http://localhost:5007/demo/"));
+
+    await user.click(screen.getByRole("button", { name: "Open production" }));
+    await waitFor(() =>
+      expect(openExternalMock).toHaveBeenCalledWith("http://localhost:5007/demo/"),
+    );
   });
 
   it("shows an empty production state before a release is active", () => {
-    render(
+    renderPanel(
       <ProjectProductionPanel
         projectSlug="demo"
         activeRelease={undefined}
@@ -82,3 +93,7 @@ describe("ProjectProductionPanel", () => {
     });
   });
 });
+
+function renderPanel(panel: React.ReactNode) {
+  return render(<RuntimeProvider runtime={runtime}>{panel}</RuntimeProvider>);
+}

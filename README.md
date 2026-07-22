@@ -45,7 +45,7 @@ bun run dev
 - Web Console：`http://127.0.0.1:4015`
 - Artifact/Mail Worker
 
-也可以分别运行 `bun run dev:api`、`bun run dev:worker` 和 `bun run dev:web`。桌面开发使用 `bun run desktop:dev`。
+也可以分别运行 `bun run dev:api`、`bun run dev:worker` 和 `bun run dev:web`。原生薄壳使用 `bun run desktop:dev` 启动；`bun run desktop:build` 会生成不带安装器的 Tauri 可执行文件。Desktop 与 Web 共用 Console，外部预览通过受限的系统浏览器 opener 打开。
 
 健康与契约端点：
 

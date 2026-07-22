@@ -27,6 +27,8 @@ import { findUploadedReleaseHighlight } from "../features/project-detail/uploadR
 import { useProjectReleasePolling } from "../features/project-detail/useProjectReleasePolling";
 import type { Release } from "../stores/projectsStore";
 import { Button } from "../components/primitives/button";
+import { useRuntime } from "../runtime";
+import { toast } from "../lib/toast";
 
 type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "activity";
 
@@ -38,6 +40,7 @@ type ProjectDetailTab = "versions" | "members" | "deployments" | "settings" | "a
  */
 export function ProjectDetailPage() {
   const { t } = useTranslation();
+  const runtime = useRuntime();
   const navigate = useNavigate();
   const { projectId } = useParams();
   const { user } = useAuthStore();
@@ -272,7 +275,11 @@ export function ProjectDetailPage() {
     : null;
 
   const handlePreview = (release: Release) => {
-    window.open(buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, release.id), "_blank");
+    void runtime
+      .openExternal(
+        buildSitePreviewUrl(getAccessPlaneBaseUrl(), project.slug, release.id),
+      )
+      .catch(() => toast.error(t("preview.openFailed")));
   };
 
   const handleRetryReleases = () => {

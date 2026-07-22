@@ -7,6 +7,7 @@ import type { Release } from "../../stores/projectsStore";
 import { buildProductionUrls } from "./projectProductionUrls";
 import { getAccessPlaneBaseUrl } from "../../api/client";
 import { parseReleaseReport, summarizeReleaseGate } from "./releaseReport";
+import { useRuntime } from "../../runtime";
 
 interface ProjectProductionPanelProps {
   projectSlug: string;
@@ -22,6 +23,7 @@ export function ProjectProductionPanel({
   onUploadClick,
 }: ProjectProductionPanelProps) {
   const { t } = useTranslation();
+  const runtime = useRuntime();
   const urls = activeRelease
     ? buildProductionUrls(getAccessPlaneBaseUrl(), projectSlug, activeRelease.id)
     : null;
@@ -100,7 +102,15 @@ export function ProjectProductionPanel({
         </div>
         <div className="flex flex-wrap gap-2">
           {activeRelease && urls ? (
-            <Button variant="outline" size="sm" onClick={() => window.open(urls.liveUrl, "_blank")}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                void runtime.openExternal(urls.liveUrl).catch(() => {
+                  toast.error(t("production.openFailed"));
+                });
+              }}
+            >
               <ExternalLink className="size-4" />
               {t("production.open")}
             </Button>

@@ -9,6 +9,7 @@ import { useMembersStore } from '../src/stores/membersStore';
 import { useOrganizationsStore } from '../src/stores/organizationsStore';
 import { useProjectsStore } from '../src/stores/projectsStore';
 import { useSettingsStore } from '../src/stores/settingsStore';
+import { RuntimeProvider } from '../src/runtime-provider';
 
 const orbitProject = {
   id: 'project-orbit',
@@ -115,10 +116,12 @@ describe('ProjectDetailPage direct links', () => {
 function renderPage(projectId: string) {
   return render(
     <MemoryRouter initialEntries={[`/app/projects/${projectId}`]}>
-      <Routes>
-        <Route path="/app/projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="/app/projects" element={<div>Project list</div>} />
-      </Routes>
+      <RuntimeProvider runtime={{ kind: 'web', openExternal: vi.fn() }}>
+        <Routes>
+          <Route path="/app/projects/:projectId" element={<ProjectDetailPage />} />
+          <Route path="/app/projects" element={<div>Project list</div>} />
+        </Routes>
+      </RuntimeProvider>
     </MemoryRouter>,
   );
 }
