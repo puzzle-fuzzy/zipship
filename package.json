@@ -45,6 +45,7 @@
     "api:generate": "bun scripts/generate-api-client.ts",
     "api:check": "bun scripts/generate-api-client.ts --check",
     "cutover:check": "bun scripts/check-rust-cutover.ts",
+    "production:check": "bun scripts/check-production-config.ts",
     "smoke:production": "bun scripts/smoke-production.ts",
     "typecheck:workspaces": "bun turbo run typecheck",
     "lint": "oxlint .",
@@ -59,7 +60,8 @@
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
     "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
     "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "test": "bun --filter @zipship/console-app test && bun --filter @zipship/web-shell test",
+    "test": "bun run test:production-config && bun --filter @zipship/console-app test && bun --filter @zipship/web-shell test",
+    "test:production-config": "bun test scripts/check-production-config.test.ts",
     "test:all": "bun run test && bun run rust:test",
     "test:integration": "bun run rust:test:integration"
   },

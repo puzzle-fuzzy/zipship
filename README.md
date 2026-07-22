@@ -88,10 +88,7 @@ bun run rust:test
 先复制 [production.env.example](infra/docker/production.env.example) 到仓库外的受保护路径并替换所有占位符。Console/API/Access 应使用同一主域下的三个 HTTPS 子域；Origin 在 Console 构建时固化，改变域名需要重建 Edge 镜像。
 
 ```bash
-docker compose \
-  --env-file /secure/path/zipship-production.env \
-  -f infra/docker/compose.production.yml \
-  config --quiet
+bun run production:check -- --env-file /secure/path/zipship-production.env
 
 docker compose \
   --env-file /secure/path/zipship-production.env \
