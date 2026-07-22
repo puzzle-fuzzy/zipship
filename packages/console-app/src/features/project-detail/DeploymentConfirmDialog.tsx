@@ -1,4 +1,4 @@
-import { ShieldAlert } from "lucide-react";
+import { ShieldAlert, ShieldQuestion } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   AlertDialog,
@@ -46,8 +46,11 @@ export function DeploymentConfirmDialog({
   const [riskAccepted, setRiskAccepted] = useState(false);
   const report = intent ? parseReleaseReport(intent.release.detectResult) : null;
   const gate = report ? summarizeReleaseGate(report) : null;
-  const requiresRiskAcceptance = intent?.action === "publish" && (gate?.failedCount ?? 0) > 0;
+  const qualityNotEvaluated = gate?.level === "unknown";
+  const requiresRiskAcceptance =
+    intent?.action === "publish" && ((gate?.failedCount ?? 0) > 0 || qualityNotEvaluated);
   const confirmDisabled = loading || (requiresRiskAcceptance && !riskAccepted);
+  const QualityGateIcon = qualityNotEvaluated ? ShieldQuestion : ShieldAlert;
 
   useEffect(() => {
     setRiskAccepted(false);
@@ -93,18 +96,18 @@ export function DeploymentConfirmDialog({
               "grid gap-3 rounded-lg border p-3 text-sm",
               gate.level === "failed"
                 ? "border-destructive/30 bg-destructive/10"
-                : gate.level === "warning"
+                : gate.level === "warning" || gate.level === "unknown"
                   ? "border-amber-500/30 bg-amber-500/10"
                   : "bg-muted/25",
             )}
           >
             <div className="flex items-start gap-2">
-              <ShieldAlert
+              <QualityGateIcon
                 className={cn(
                   "mt-0.5 size-4 shrink-0",
                   gate.level === "failed"
                     ? "text-destructive"
-                    : gate.level === "warning"
+                    : gate.level === "warning" || gate.level === "unknown"
                       ? "text-amber-600"
                       : "text-muted-foreground",
                 )}
@@ -112,11 +115,13 @@ export function DeploymentConfirmDialog({
               <div className="min-w-0">
                 <div className="font-medium">{t("versions.qualityGateTitle")}</div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {gate.failedCount > 0
-                    ? t("versions.qualityGateFailedDesc", { count: gate.failedCount })
-                    : gate.warningCount > 0
-                      ? t("versions.qualityGateWarningDesc", { count: gate.warningCount })
-                      : t("versions.qualityGatePassedDesc")}
+                  {qualityNotEvaluated
+                    ? t("versions.qualityGateUnknownDesc")
+                    : gate.failedCount > 0
+                      ? t("versions.qualityGateFailedDesc", { count: gate.failedCount })
+                      : gate.warningCount > 0
+                        ? t("versions.qualityGateWarningDesc", { count: gate.warningCount })
+                        : t("versions.qualityGatePassedDesc")}
                 </p>
               </div>
             </div>
@@ -124,22 +129,28 @@ export function DeploymentConfirmDialog({
             <div className="grid gap-2 sm:grid-cols-3">
               <QualityMetric
                 label={t("versions.qualitySeo")}
-                value={gate.seoScore === null ? t("releaseReport.noSeoScore") : t("releaseReport.seoScore", { score: gate.seoScore })}
+                value={qualityNotEvaluated
+                  ? t("releaseReport.notEvaluated")
+                  : gate.seoScore === null
+                    ? t("releaseReport.noSeoScore")
+                    : t("releaseReport.seoScore", { score: gate.seoScore })}
               />
               <QualityMetric
                 label={t("versions.qualityRuntime")}
                 value={
                   gate.runtimeLevel === "unknown"
-                    ? t("releaseReport.unknown")
+                    ? t("releaseReport.notEvaluated")
                     : t(`releaseReport.runtimeLevels.${gate.runtimeLevel}`)
                 }
               />
               <QualityMetric
                 label={t("versions.qualityIssues")}
-                value={t("versions.qualityIssueCounts", {
-                  failed: gate.failedCount,
-                  warnings: gate.warningCount,
-                })}
+                value={qualityNotEvaluated
+                  ? t("releaseReport.notEvaluated")
+                  : t("versions.qualityIssueCounts", {
+                    failed: gate.failedCount,
+                    warnings: gate.warningCount,
+                  })}
               />
             </div>
 
@@ -171,21 +182,43 @@ export function DeploymentConfirmDialog({
         ) : null}
 
         {requiresRiskAcceptance ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3">
+          <div
+            className={cn(
+              "rounded-lg border p-3",
+              qualityNotEvaluated
+                ? "border-amber-500/30 bg-amber-500/10"
+                : "border-destructive/30 bg-destructive/10",
+            )}
+          >
             <Label className="items-start gap-3 text-sm leading-5">
               <Checkbox
                 checked={riskAccepted}
                 onCheckedChange={(checked) => setRiskAccepted(checked === true)}
                 disabled={loading}
-                aria-label={t("versions.riskAcceptanceLabel")}
+                aria-label={t(
+                  qualityNotEvaluated
+                    ? "versions.unknownRiskAcceptanceLabel"
+                    : "versions.riskAcceptanceLabel",
+                )}
                 className="mt-0.5"
               />
               <span>
-                <span className="block font-medium text-destructive">
-                  {t("versions.riskAcceptanceTitle")}
+                <span
+                  className={cn(
+                    "block font-medium",
+                    qualityNotEvaluated ? "text-amber-700" : "text-destructive",
+                  )}
+                >
+                  {t(
+                    qualityNotEvaluated
+                      ? "versions.unknownRiskAcceptanceTitle"
+                      : "versions.riskAcceptanceTitle",
+                  )}
                 </span>
                 <span className="mt-1 block text-xs font-normal text-muted-foreground">
-                  {t("versions.riskAcceptanceDesc", { count: gate?.failedCount ?? 0 })}
+                  {qualityNotEvaluated
+                    ? t("versions.unknownRiskAcceptanceDesc")
+                    : t("versions.riskAcceptanceDesc", { count: gate?.failedCount ?? 0 })}
                 </span>
               </span>
             </Label>
