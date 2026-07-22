@@ -9,12 +9,14 @@ import { RuntimeProvider } from "../src/runtime-provider";
 import type { RuntimeAdapter } from "@zipship/runtime";
 
 let writeTextMock: ReturnType<typeof vi.fn>;
-let openExternalMock: ReturnType<typeof vi.fn>;
+const createOpenExternalMock = () =>
+  vi.fn(async (_url: string): Promise<void> => {});
+let openExternalMock = createOpenExternalMock();
 let runtime: RuntimeAdapter;
 
 beforeEach(() => {
   useSettingsStore.setState({ language: "en" });
-  openExternalMock = vi.fn().mockResolvedValue(undefined);
+  openExternalMock = createOpenExternalMock();
   runtime = { kind: "web", openExternal: openExternalMock };
 });
 
