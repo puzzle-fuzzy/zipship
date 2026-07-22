@@ -45,6 +45,7 @@
     "api:generate": "bun scripts/generate-api-client.ts",
     "api:check": "bun scripts/generate-api-client.ts --check",
     "cutover:check": "bun scripts/check-rust-cutover.ts",
+    "release:check": "bun scripts/check-release-integrity.ts",
     "smoke:production": "bun scripts/smoke-production.ts",
     "typecheck:workspaces": "bun turbo run typecheck",
     "lint": "oxlint .",
