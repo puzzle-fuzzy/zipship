@@ -75,5 +75,8 @@
     "openapi-typescript": "catalog:",
     "turbo": "^2.10.3",
     "typescript": "catalog:"
+  },
+  "overrides": {
+    "js-yaml": "4.3.0"
   }
 }
